@@ -81,14 +81,47 @@ interface FlexLine {
 /**
  * Lay out a node's children. The container's own `layout.width` and
  * `layout.height` must already be set when this is called.
+ *
+ * Two child populations are handled here:
+ *   - In-flow flex children (positionType !== 'absolute', display !== 'none'):
+ *     run through the 8-step flex pipeline.
+ *   - Out-of-flow absolute children (positionType === 'absolute',
+ *     display !== 'none'): positioned independently against the parent's
+ *     content box. They do not contribute to the flex pipeline.
+ *
+ * After both populations are positioned, the function recurses into every
+ * non-hidden child so their own descendants are laid out within the box
+ * we just assigned them.
  */
 export function layoutChildren(node: Node): void {
-  const visible = visibleChildrenOf(node);
-  if (visible.length === 0) {
+  const flowChildren = visibleChildrenOf(node);
+  const absoluteList = absoluteChildrenOf(node);
+
+  if (flowChildren.length === 0 && absoluteList.length === 0) {
     measureLeafIfNeeded(node);
     return;
   }
 
+  if (flowChildren.length > 0) {
+    layoutFlexFlow(node, flowChildren);
+  }
+
+  if (absoluteList.length > 0) {
+    layoutAbsoluteChildren(node, absoluteList);
+  }
+
+  // Recurse into every non-hidden child so descendants are laid out within
+  // the box we just assigned them. (Absolute children may have their own
+  // flex subtrees.)
+  for (let i = 0; i < node.getChildCount(); i++) {
+    const c = node.getChild(i)!;
+    if (c.style.display === 'none') continue;
+    layoutChildren(c);
+  }
+}
+
+/** The 8-step flex pipeline for in-flow children. */
+function layoutFlexFlow(node: Node, visible: Node[]): void {
   const main: Axis = mainAxis(node.style.flexDirection);
   const cross: Axis = crossAxis(node.style.flexDirection);
 
@@ -150,11 +183,122 @@ export function layoutChildren(node: Node): void {
   if (isReverse(node.style.flexDirection)) {
     flipMainAxis(visible, main, containerMain);
   }
+}
 
-  // Step 9: recurse.
-  for (const item of items) {
-    layoutChildren(item.node);
+/**
+ * Lay out absolutely-positioned children against the parent's outer box.
+ *
+ * Position offsets are measured from the parent's outer edges, NOT its
+ * content (post-padding) edges. This matches Yoga / React Native semantics,
+ * which differs from CSS — under CSS, absolute children are positioned
+ * against the padding edge. We keep Yoga's choice so consumers porting from
+ * Yoga / Ink see consistent results.
+ *
+ * Sizing rules per axis:
+ *   - explicit `width`/`height` style → use it (clamped).
+ *   - both opposite edges set, no explicit size → derive from edges.
+ *   - measure function on a leaf → ask it.
+ *   - otherwise → 0.
+ *
+ * Position rules per axis:
+ *   - start edge set → anchor `start_offset + margin_start` from parent's outer edge.
+ *   - else end edge set → anchor relative to parent's opposite outer edge.
+ *   - else → 0 from parent's outer edge (no anchor; v1 simplification —
+ *     Yoga falls back to justify/align here, which we may revisit).
+ */
+function layoutAbsoluteChildren(parent: Node, absolutes: Node[]): void {
+  const outerW = parent.layout.width;
+  const outerH = parent.layout.height;
+  for (const child of absolutes) {
+    layoutAbsoluteChild(child, outerW, outerH);
   }
+}
+
+const POS_TOP = 0;
+const POS_RIGHT = 1;
+const POS_BOTTOM = 2;
+const POS_LEFT = 3;
+
+function layoutAbsoluteChild(child: Node, parentOuterW: number, parentOuterH: number): void {
+  const pos = child.style.position;
+  const margin = child.style.margin;
+
+  // Resolve width.
+  let width: number;
+  const wStyle = child.style.width;
+  if (typeof wStyle === 'number') {
+    width = clampSize(child.style, 'row', wStyle);
+  } else if (pos[POS_LEFT] !== undefined && pos[POS_RIGHT] !== undefined) {
+    const candidate =
+      parentOuterW - pos[POS_LEFT] - pos[POS_RIGHT] - margin[POS_LEFT] - margin[POS_RIGHT];
+    width = clampSize(child.style, 'row', Math.max(0, candidate));
+  } else if (child.getMeasureFunc() !== null && child.getChildCount() === 0) {
+    const result = child.getMeasureFunc()!(
+      parentOuterW,
+      MeasureMode.AtMost,
+      parentOuterH,
+      MeasureMode.AtMost,
+    );
+    width = clampSize(child.style, 'row', result.width);
+  } else {
+    width = clampSize(child.style, 'row', 0);
+  }
+
+  // Resolve height.
+  let height: number;
+  const hStyle = child.style.height;
+  if (typeof hStyle === 'number') {
+    height = clampSize(child.style, 'column', hStyle);
+  } else if (pos[POS_TOP] !== undefined && pos[POS_BOTTOM] !== undefined) {
+    const candidate =
+      parentOuterH - pos[POS_TOP] - pos[POS_BOTTOM] - margin[POS_TOP] - margin[POS_BOTTOM];
+    height = clampSize(child.style, 'column', Math.max(0, candidate));
+  } else if (child.getMeasureFunc() !== null && child.getChildCount() === 0) {
+    const result = child.getMeasureFunc()!(
+      width,
+      MeasureMode.Exactly,
+      parentOuterH,
+      MeasureMode.AtMost,
+    );
+    height = clampSize(child.style, 'column', result.height);
+  } else {
+    height = clampSize(child.style, 'column', 0);
+  }
+
+  // Resolve left.
+  let left: number;
+  if (pos[POS_LEFT] !== undefined) {
+    left = pos[POS_LEFT] + margin[POS_LEFT];
+  } else if (pos[POS_RIGHT] !== undefined) {
+    left = parentOuterW - width - pos[POS_RIGHT] - margin[POS_RIGHT];
+  } else {
+    left = margin[POS_LEFT];
+  }
+
+  // Resolve top.
+  let top: number;
+  if (pos[POS_TOP] !== undefined) {
+    top = pos[POS_TOP] + margin[POS_TOP];
+  } else if (pos[POS_BOTTOM] !== undefined) {
+    top = parentOuterH - height - pos[POS_BOTTOM] - margin[POS_BOTTOM];
+  } else {
+    top = margin[POS_TOP];
+  }
+
+  child.layout.left = left;
+  child.layout.top = top;
+  child.layout.width = width;
+  child.layout.height = height;
+}
+
+function absoluteChildrenOf(node: Node): Node[] {
+  const out: Node[] = [];
+  for (let i = 0; i < node.getChildCount(); i++) {
+    const c = node.getChild(i)!;
+    if (c.style.display === 'none') continue;
+    if (c.style.positionType === 'absolute') out.push(c);
+  }
+  return out;
 }
 
 // ─── step 1: build items ────────────────────────────────────────────────

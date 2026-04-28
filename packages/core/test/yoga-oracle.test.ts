@@ -17,11 +17,12 @@ import Yoga, {
   FlexDirection as YFlexDir,
   Gutter as YGutter,
   Justify as YJustify,
+  PositionType as YPositionType,
   Wrap as YWrap,
 } from 'yoga-layout';
 import { Edge } from '../src/edge.js';
 import { Node } from '../src/node.js';
-import type { Align, FlexDirection, FlexWrap, Justify } from '../src/style.js';
+import type { Align, FlexDirection, FlexWrap, Justify, PositionType } from '../src/style.js';
 
 interface SpecNode {
   flexDirection?: FlexDirection;
@@ -44,6 +45,11 @@ interface SpecNode {
   alignItems?: Align;
   alignSelf?: Align;
   alignContent?: Align;
+  positionType?: PositionType;
+  positionTop?: number;
+  positionRight?: number;
+  positionBottom?: number;
+  positionLeft?: number;
   children?: SpecNode[];
 }
 
@@ -74,6 +80,11 @@ const JUSTIFY_MAP: Record<Justify, YJustify> = {
   'space-between': YJustify.SpaceBetween,
   'space-around': YJustify.SpaceAround,
   'space-evenly': YJustify.SpaceEvenly,
+};
+
+const POSITION_TYPE_MAP: Record<PositionType, YPositionType> = {
+  relative: YPositionType.Relative,
+  absolute: YPositionType.Absolute,
 };
 
 const ALIGN_MAP: Record<Align, YAlign> = {
@@ -108,6 +119,11 @@ function buildOurs(spec: SpecNode): Node {
   if (spec.alignItems) n.setAlignItems(spec.alignItems);
   if (spec.alignSelf) n.setAlignSelf(spec.alignSelf);
   if (spec.alignContent) n.setAlignContent(spec.alignContent);
+  if (spec.positionType) n.setPositionType(spec.positionType);
+  if (spec.positionTop !== undefined) n.setPosition(Edge.Top, spec.positionTop);
+  if (spec.positionRight !== undefined) n.setPosition(Edge.Right, spec.positionRight);
+  if (spec.positionBottom !== undefined) n.setPosition(Edge.Bottom, spec.positionBottom);
+  if (spec.positionLeft !== undefined) n.setPosition(Edge.Left, spec.positionLeft);
   if (spec.children) {
     for (let i = 0; i < spec.children.length; i++) {
       n.insertChild(buildOurs(spec.children[i]!), i);
@@ -138,6 +154,11 @@ function buildYoga(spec: SpecNode): import('yoga-layout').Node {
   if (spec.alignItems) n.setAlignItems(ALIGN_MAP[spec.alignItems]);
   if (spec.alignSelf) n.setAlignSelf(ALIGN_MAP[spec.alignSelf]);
   if (spec.alignContent) n.setAlignContent(ALIGN_MAP[spec.alignContent]);
+  if (spec.positionType) n.setPositionType(POSITION_TYPE_MAP[spec.positionType]);
+  if (spec.positionTop !== undefined) n.setPosition(YEdge.Top, spec.positionTop);
+  if (spec.positionRight !== undefined) n.setPosition(YEdge.Right, spec.positionRight);
+  if (spec.positionBottom !== undefined) n.setPosition(YEdge.Bottom, spec.positionBottom);
+  if (spec.positionLeft !== undefined) n.setPosition(YEdge.Left, spec.positionLeft);
   if (spec.children) {
     for (let i = 0; i < spec.children.length; i++) {
       n.insertChild(buildYoga(spec.children[i]!), i);
@@ -424,6 +445,114 @@ const FIXTURES: Fixture[] = [
       children: [
         { width: 10, height: 4 },
         { width: 10, height: 4, alignSelf: 'flex-end' },
+      ],
+    },
+  },
+
+  // ── M6: absolute positioning ─────────────────────────────────────────
+  {
+    name: 'absolute: top-left anchored, fixed size',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 20,
+      children: [
+        { flex: 1 },
+        {
+          positionType: 'absolute',
+          positionTop: 2,
+          positionLeft: 3,
+          width: 10,
+          height: 5,
+        },
+      ],
+    },
+  },
+  {
+    name: 'absolute: bottom-right anchored',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 20,
+      children: [
+        {
+          positionType: 'absolute',
+          positionBottom: 0,
+          positionRight: 0,
+          width: 5,
+          height: 5,
+        },
+      ],
+    },
+  },
+  {
+    name: 'absolute: sized from left+right',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 20,
+      children: [
+        {
+          positionType: 'absolute',
+          positionTop: 0,
+          positionLeft: 5,
+          positionRight: 5,
+          height: 10,
+        },
+      ],
+    },
+  },
+  {
+    name: 'absolute: sized from top+bottom',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 20,
+      children: [
+        {
+          positionType: 'absolute',
+          positionTop: 1,
+          positionBottom: 2,
+          positionLeft: 0,
+          width: 10,
+        },
+      ],
+    },
+  },
+  {
+    name: 'absolute: parent has padding, edges relative to inner',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 20,
+      paddingAll: 2,
+      children: [
+        {
+          positionType: 'absolute',
+          positionTop: 0,
+          positionLeft: 0,
+          width: 10,
+          height: 5,
+        },
+      ],
+    },
+  },
+  {
+    name: 'absolute: nested flex subtree inside an absolute',
+    spec: {
+      flexDirection: 'row',
+      width: 80,
+      height: 24,
+      children: [
+        {
+          positionType: 'absolute',
+          positionTop: 5,
+          positionLeft: 10,
+          width: 40,
+          height: 10,
+          flexDirection: 'row',
+          children: [{ flex: 1 }, { flex: 1 }],
+        },
       ],
     },
   },
