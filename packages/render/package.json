@@ -1,6 +1,6 @@
 {
   "name": "@tercli/render",
-  "version": "0.0.0",
+  "version": "1.0.0-rc.1",
   "description": "Out-of-box renderer for @tercli/core. Declarative tree to ANSI-styled string.",
   "license": "MIT",
   "type": "module",

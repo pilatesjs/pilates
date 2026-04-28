@@ -731,7 +731,7 @@ function writeCrossSize(node: Node, cross: Axis, value: number): void {
 function resolveHypotheticalMainSize(
   child: Node,
   main: Axis,
-  innerMain: number,
+  _innerMain: number,
   innerCross: number,
 ): number {
   const basis = child.style.flexBasis;
@@ -742,15 +742,34 @@ function resolveHypotheticalMainSize(
 
   const measure = child.getMeasureFunc();
   if (measure !== null && child.getChildCount() === 0) {
-    const cross = main === 'row' ? 'column' : 'row';
+    // Ask the leaf for its natural main-axis size: cross axis is
+    // constrained (AtMost the available cross), main axis is free
+    // (Undefined). The measure function reports `{ width, height }` as
+    // dimensions of the node, so we map main/cross to width/height before
+    // calling.
+    const cross: Axis = main === 'row' ? 'column' : 'row';
     const cs = preferredSize(child.style, cross);
-    const crossHint = typeof cs === 'number' ? cs : innerCross;
-    const result = measure(
-      main === 'row' ? innerMain : crossHint,
-      main === 'row' ? MeasureMode.AtMost : MeasureMode.Undefined,
-      main === 'column' ? innerMain : crossHint,
-      main === 'column' ? MeasureMode.AtMost : MeasureMode.Undefined,
-    );
+    const crossConstraint = typeof cs === 'number' ? cs : innerCross;
+
+    let widthArg: number;
+    let heightArg: number;
+    let widthMode: MeasureMode;
+    let heightMode: MeasureMode;
+    if (main === 'row') {
+      // main = width (free), cross = height (constrained)
+      widthArg = 0;
+      widthMode = MeasureMode.Undefined;
+      heightArg = crossConstraint;
+      heightMode = MeasureMode.AtMost;
+    } else {
+      // main = height (free), cross = width (constrained)
+      widthArg = crossConstraint;
+      widthMode = MeasureMode.AtMost;
+      heightArg = 0;
+      heightMode = MeasureMode.Undefined;
+    }
+
+    const result = measure(widthArg, widthMode, heightArg, heightMode);
     return main === 'row' ? result.width : result.height;
   }
 
