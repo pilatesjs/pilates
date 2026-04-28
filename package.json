@@ -15,11 +15,15 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck"
+    "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck",
+    "gen:unicode": "tsx tools/generate-unicode-tables.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/node": "^22.10.0",
+    "@xterm/addon-unicode11": "^0.8.0",
+    "@xterm/headless": "^5.5.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
   },

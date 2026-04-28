@@ -6,7 +6,13 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": ["dist", "node_modules", "coverage", "**/__snapshots__/**"]
+    "ignore": [
+      "dist",
+      "node_modules",
+      "coverage",
+      "**/__snapshots__/**",
+      "packages/core/src/measure/tables.ts"
+    ]
   },
   "formatter": {
     "enabled": true,
