@@ -1,0 +1,29 @@
+{
+  "name": "@tercli/render",
+  "version": "0.0.0",
+  "description": "Out-of-box renderer for @tercli/core. Declarative tree to ANSI-styled string.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "src", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@tercli/core": "workspace:*"
+  },
+  "keywords": ["terminal", "tui", "cli", "render", "ansi", "tercli"],
+  "engines": {
+    "node": ">=20"
+  }
+}
