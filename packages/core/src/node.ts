@@ -16,6 +16,7 @@
  *   - `dirty`     — set on style/tree mutation; consumed by the algorithm.
  */
 
+import { calculateLayout as runCalculateLayout } from './algorithm/index.js';
 import { Edge } from './edge.js';
 import { type ComputedLayout, defaultLayout } from './layout.js';
 import type { MeasureFunc } from './measure-func.js';
@@ -280,16 +281,13 @@ export class Node {
    *
    * If `availableWidth` / `availableHeight` are omitted the node's own
    * `width` / `height` style is used. If those are also `'auto'` the
-   * algorithm treats the missing axis as unconstrained.
+   * algorithm treats the missing axis as 0.
    *
-   * NOTE: the algorithm is implemented across milestones M4-M6. In M3 this
-   * is a stub that throws so downstream code can integrate against the
-   * stable API surface.
+   * Implementation lives in `./algorithm/`. This method delegates so that
+   * Node remains a focused state holder.
    */
-  calculateLayout(_availableWidth?: number, _availableHeight?: number): void {
-    throw new Error(
-      'calculateLayout is not implemented yet; the flex algorithm lands in milestone M4.',
-    );
+  calculateLayout(availableWidth?: number, availableHeight?: number): void {
+    runCalculateLayout(this, availableWidth, availableHeight);
   }
 
   /**

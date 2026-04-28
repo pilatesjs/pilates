@@ -81,7 +81,9 @@ export function defaultStyle(): Style {
     flexDirection: 'column',
     flexWrap: 'nowrap',
     flexGrow: 0,
-    flexShrink: 1,
+    // Yoga / React Native default rather than CSS spec's 1 — avoids surprise
+    // shrinking when a designer just declares a width.
+    flexShrink: 0,
     flexBasis: 'auto',
 
     width: 'auto',

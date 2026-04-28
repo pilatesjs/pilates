@@ -10,7 +10,7 @@ describe('Node — defaults', () => {
     expect(s.flexDirection).toBe('column');
     expect(s.flexWrap).toBe('nowrap');
     expect(s.flexGrow).toBe(0);
-    expect(s.flexShrink).toBe(1);
+    expect(s.flexShrink).toBe(0);
     expect(s.flexBasis).toBe('auto');
     expect(s.width).toBe('auto');
     expect(s.height).toBe('auto');
@@ -254,15 +254,19 @@ describe('Node — dirty tracking', () => {
 });
 
 describe('Node — layout entry points', () => {
-  it('calculateLayout throws until the algorithm lands in M4', () => {
-    expect(() => Node.create().calculateLayout()).toThrow(/not implemented/);
-  });
-
   it('getComputedLayout returns a fresh object each call', () => {
     const n = Node.create();
     const a = n.getComputedLayout();
     const b = n.getComputedLayout();
     expect(a).toEqual(b);
     expect(a).not.toBe(b);
+  });
+
+  it('calculateLayout produces a layout for a leaf root', () => {
+    const n = Node.create();
+    n.setWidth(40);
+    n.setHeight(10);
+    n.calculateLayout();
+    expect(n.getComputedLayout()).toEqual({ left: 0, top: 0, width: 40, height: 10 });
   });
 });
