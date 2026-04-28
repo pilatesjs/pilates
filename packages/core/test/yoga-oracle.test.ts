@@ -11,13 +11,21 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import Yoga, { Edge as YEdge, FlexDirection as YFlexDir, Gutter as YGutter } from 'yoga-layout';
+import Yoga, {
+  Align as YAlign,
+  Edge as YEdge,
+  FlexDirection as YFlexDir,
+  Gutter as YGutter,
+  Justify as YJustify,
+  Wrap as YWrap,
+} from 'yoga-layout';
 import { Edge } from '../src/edge.js';
 import { Node } from '../src/node.js';
-import type { FlexDirection } from '../src/style.js';
+import type { Align, FlexDirection, FlexWrap, Justify } from '../src/style.js';
 
 interface SpecNode {
   flexDirection?: FlexDirection;
+  flexWrap?: FlexWrap;
   width?: number;
   height?: number;
   minWidth?: number;
@@ -32,6 +40,10 @@ interface SpecNode {
   marginAll?: number;
   gapRow?: number;
   gapColumn?: number;
+  justifyContent?: Justify;
+  alignItems?: Align;
+  alignSelf?: Align;
+  alignContent?: Align;
   children?: SpecNode[];
 }
 
@@ -49,9 +61,35 @@ const FLEX_DIR_MAP: Record<FlexDirection, YFlexDir> = {
   'column-reverse': YFlexDir.ColumnReverse,
 };
 
+const WRAP_MAP: Record<FlexWrap, YWrap> = {
+  nowrap: YWrap.NoWrap,
+  wrap: YWrap.Wrap,
+  'wrap-reverse': YWrap.WrapReverse,
+};
+
+const JUSTIFY_MAP: Record<Justify, YJustify> = {
+  'flex-start': YJustify.FlexStart,
+  'flex-end': YJustify.FlexEnd,
+  center: YJustify.Center,
+  'space-between': YJustify.SpaceBetween,
+  'space-around': YJustify.SpaceAround,
+  'space-evenly': YJustify.SpaceEvenly,
+};
+
+const ALIGN_MAP: Record<Align, YAlign> = {
+  auto: YAlign.Auto,
+  'flex-start': YAlign.FlexStart,
+  'flex-end': YAlign.FlexEnd,
+  center: YAlign.Center,
+  stretch: YAlign.Stretch,
+  'space-between': YAlign.SpaceBetween,
+  'space-around': YAlign.SpaceAround,
+};
+
 function buildOurs(spec: SpecNode): Node {
   const n = Node.create();
   if (spec.flexDirection) n.setFlexDirection(spec.flexDirection);
+  if (spec.flexWrap) n.setFlexWrap(spec.flexWrap);
   if (spec.width !== undefined) n.setWidth(spec.width);
   if (spec.height !== undefined) n.setHeight(spec.height);
   if (spec.minWidth !== undefined) n.setMinWidth(spec.minWidth);
@@ -66,6 +104,10 @@ function buildOurs(spec: SpecNode): Node {
   if (spec.marginAll !== undefined) n.setMargin(Edge.All, spec.marginAll);
   if (spec.gapRow !== undefined) n.setGap('row', spec.gapRow);
   if (spec.gapColumn !== undefined) n.setGap('column', spec.gapColumn);
+  if (spec.justifyContent) n.setJustifyContent(spec.justifyContent);
+  if (spec.alignItems) n.setAlignItems(spec.alignItems);
+  if (spec.alignSelf) n.setAlignSelf(spec.alignSelf);
+  if (spec.alignContent) n.setAlignContent(spec.alignContent);
   if (spec.children) {
     for (let i = 0; i < spec.children.length; i++) {
       n.insertChild(buildOurs(spec.children[i]!), i);
@@ -77,6 +119,7 @@ function buildOurs(spec: SpecNode): Node {
 function buildYoga(spec: SpecNode): import('yoga-layout').Node {
   const n = Yoga.Node.create();
   if (spec.flexDirection) n.setFlexDirection(FLEX_DIR_MAP[spec.flexDirection]);
+  if (spec.flexWrap) n.setFlexWrap(WRAP_MAP[spec.flexWrap]);
   if (spec.width !== undefined) n.setWidth(spec.width);
   if (spec.height !== undefined) n.setHeight(spec.height);
   if (spec.minWidth !== undefined) n.setMinWidth(spec.minWidth);
@@ -91,6 +134,10 @@ function buildYoga(spec: SpecNode): import('yoga-layout').Node {
   if (spec.marginAll !== undefined) n.setMargin(YEdge.All, spec.marginAll);
   if (spec.gapRow !== undefined) n.setGap(YGutter.Row, spec.gapRow);
   if (spec.gapColumn !== undefined) n.setGap(YGutter.Column, spec.gapColumn);
+  if (spec.justifyContent) n.setJustifyContent(JUSTIFY_MAP[spec.justifyContent]);
+  if (spec.alignItems) n.setAlignItems(ALIGN_MAP[spec.alignItems]);
+  if (spec.alignSelf) n.setAlignSelf(ALIGN_MAP[spec.alignSelf]);
+  if (spec.alignContent) n.setAlignContent(ALIGN_MAP[spec.alignContent]);
   if (spec.children) {
     for (let i = 0; i < spec.children.length; i++) {
       n.insertChild(buildYoga(spec.children[i]!), i);
@@ -271,6 +318,114 @@ const FIXTURES: Fixture[] = [
     },
     availableWidth: 80,
     availableHeight: 24,
+  },
+
+  // ── M5: justify-content ──────────────────────────────────────────────
+  {
+    name: 'justify-content: flex-end',
+    spec: {
+      flexDirection: 'row',
+      width: 60,
+      height: 5,
+      justifyContent: 'flex-end',
+      children: [{ width: 10 }, { width: 10 }],
+    },
+  },
+  {
+    name: 'justify-content: center',
+    spec: {
+      flexDirection: 'row',
+      width: 60,
+      height: 5,
+      justifyContent: 'center',
+      children: [{ width: 10 }, { width: 10 }],
+    },
+  },
+  {
+    name: 'justify-content: space-between (3 items)',
+    spec: {
+      flexDirection: 'row',
+      width: 60,
+      height: 5,
+      justifyContent: 'space-between',
+      children: [{ width: 10 }, { width: 10 }, { width: 10 }],
+    },
+  },
+  {
+    name: 'justify-content: space-around (2 items)',
+    spec: {
+      flexDirection: 'row',
+      width: 60,
+      height: 5,
+      justifyContent: 'space-around',
+      children: [{ width: 10 }, { width: 10 }],
+    },
+  },
+  {
+    name: 'justify-content: flex-end on column',
+    spec: {
+      flexDirection: 'column',
+      width: 20,
+      height: 30,
+      justifyContent: 'flex-end',
+      children: [{ height: 5 }, { height: 5 }],
+    },
+  },
+
+  // ── M5: align-items ──────────────────────────────────────────────────
+  {
+    name: 'align-items: flex-start',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 10,
+      alignItems: 'flex-start',
+      children: [
+        { width: 10, height: 4 },
+        { width: 10, height: 6 },
+      ],
+    },
+  },
+  {
+    name: 'align-items: flex-end',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 10,
+      alignItems: 'flex-end',
+      children: [
+        { width: 10, height: 4 },
+        { width: 10, height: 6 },
+      ],
+    },
+  },
+  {
+    name: 'align-items: center',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 10,
+      alignItems: 'center',
+      children: [
+        { width: 10, height: 4 },
+        { width: 10, height: 6 },
+      ],
+    },
+  },
+
+  // ── M5: align-self ───────────────────────────────────────────────────
+  {
+    name: 'align-self overrides align-items per item',
+    spec: {
+      flexDirection: 'row',
+      width: 40,
+      height: 10,
+      alignItems: 'flex-start',
+      children: [
+        { width: 10, height: 4 },
+        { width: 10, height: 4, alignSelf: 'flex-end' },
+      ],
+    },
   },
 ];
 

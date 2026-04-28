@@ -1,32 +1,39 @@
 /**
- * The main-axis flex algorithm (Milestone 4).
+ * The flex layout algorithm — Milestones 4 + 5.
  *
- * Implements the subset of CSS Flexbox / Yoga semantics needed for a working
- * single-line layout:
+ * Pipeline (one container at a time):
  *
- *   1. Resolve the container's inner main / cross size from style + the size
- *      its parent allocated.
- *   2. Compute each child's hypothetical main size (the flex basis), using
- *      `flexBasis` if set, falling back to the child's `width`/`height` style,
- *      then to its measure function, then to 0.
- *   3. Distribute leftover or missing main-axis space via `flexGrow` /
- *      `flexShrink` weights and clamp each result to the child's
- *      [`minWidth`, `maxWidth`] (or height) range.
- *   4. Position items along the main axis with `flex-start` justification
- *      (the M5 milestone covers `space-between` / `center` / etc.). Apply
- *      margin and gap. Reverse-direction containers are flipped at the end.
- *   5. Cross-axis sizing defaults to `stretch` (the CSS-Flexbox default,
- *      which is also the M4 default until M5 brings in `alignItems` /
- *      `alignSelf`). Children with an explicit cross-size style use that
- *      value (clamped). Cross-position is `padding-start + margin-start`.
- *   6. Recurse into each visible child (`display !== 'none'`).
+ *   1. Build per-child `FlexItem` records: hypothetical main size (basis or
+ *      style or measure-func or 0), main and cross margins, "natural" cross
+ *      size (used when alignment is not stretch).
+ *   2. Pack items into `FlexLine`s. With `flex-wrap: nowrap` everything goes
+ *      on one line; with `wrap` items spill onto a new line whenever the
+ *      next addition would exceed the container's inner main size.
+ *   3. For each line, distribute slack via flex-grow / flex-shrink with the
+ *      CSS freeze loop (items hitting min/max are frozen, their slack is
+ *      redistributed among unfrozen siblings). M4 work, unchanged.
+ *   4. Compute each line's cross size: max of items' (natural cross +
+ *      cross-margins). Single-line containers just use the inner cross.
+ *   5. Stack lines along the cross axis with `align-content`. Multi-line
+ *      stacks distribute leftover space; single-line stacks just place the
+ *      one line at the start.
+ *   6. Inside each line, position items along the main axis with
+ *      `justify-content`. Leftover space is distributed via flex-start /
+ *      flex-end / center / space-between / space-around / space-evenly.
+ *   7. Inside each line, cross-align each item: alignSelf takes precedence,
+ *      falling back to the container's alignItems for items with
+ *      alignSelf: 'auto'. Stretch fills the line cross size.
+ *   8. Reverse-direction containers flip main positions; wrap-reverse
+ *      reverses the line stack on the cross axis.
+ *   9. Recurse into each visible child.
  *
  * Position rounding lives in `round.ts` and runs once at the very end so
- * sibling boxes butt cleanly against integer cell boundaries.
+ * sibling boxes butt cleanly on integer cell boundaries.
  */
 
 import { MeasureMode } from '../measure-func.js';
 import type { Node } from '../node.js';
+import type { Align, Justify, Style } from '../style.js';
 import {
   type Axis,
   clampSize,
@@ -41,14 +48,43 @@ import {
   readStart,
 } from './axis.js';
 
+interface FlexItem {
+  node: Node;
+  /** Hypothetical main size after clamp. */
+  hypothetical: number;
+  /** Final main size after flex distribution (set by `distributeFlex`). */
+  finalMain: number;
+  /** "Natural" cross size used when alignment is not stretch. */
+  naturalCross: number;
+  /** Final cross size after alignment (set in step 7). */
+  finalCross: number;
+  /** Position within line on the main axis (set in step 6). */
+  mainPos: number;
+  /** Position within line on the cross axis, relative to line cross start. */
+  crossPos: number;
+  marginMainStart: number;
+  marginMainEnd: number;
+  marginCrossStart: number;
+  marginCrossEnd: number;
+}
+
+interface FlexLine {
+  items: FlexItem[];
+  /** Sum of (hypothetical + main margins) + (n-1)*gap, before flex distribution. */
+  hypotheticalMain: number;
+  /** Cross size of the line (max of items' (cross + margins)). */
+  crossSize: number;
+  /** Position of line start on cross axis, relative to inner padding start. */
+  crossPos: number;
+}
+
 /**
  * Lay out a node's children. The container's own `layout.width` and
- * `layout.height` must already be set when this is called. The function
- * mutates each visible child's `layout` and recurses into them.
+ * `layout.height` must already be set when this is called.
  */
 export function layoutChildren(node: Node): void {
-  const visibleChildren = visibleChildrenOf(node);
-  if (visibleChildren.length === 0) {
+  const visible = visibleChildrenOf(node);
+  if (visible.length === 0) {
     measureLeafIfNeeded(node);
     return;
   }
@@ -68,82 +104,440 @@ export function layoutChildren(node: Node): void {
   const innerCross = Math.max(0, containerCross - padCrossStart - padCrossEnd);
 
   const gapMain = gapAlong(node.style, main);
-  const totalGap = gapMain * (visibleChildren.length - 1);
+  const gapCross = gapAlong(node.style, cross);
 
-  // Step 1: hypothetical main size + main-axis margin per child.
-  const hypothetical: number[] = new Array(visibleChildren.length);
-  const mainMarginStart: number[] = new Array(visibleChildren.length);
-  const mainMarginEnd: number[] = new Array(visibleChildren.length);
-  let consumedBase = 0;
+  // Step 1: build per-child FlexItem records.
+  const items: FlexItem[] = visible.map((child) =>
+    buildItem(child, main, cross, innerMain, innerCross),
+  );
 
-  for (let i = 0; i < visibleChildren.length; i++) {
-    const child = visibleChildren[i]!;
-    const ms = readStart(child.style.margin, main);
-    const me = readEnd(child.style.margin, main);
-    mainMarginStart[i] = ms;
-    mainMarginEnd[i] = me;
+  // Step 2: pack into lines.
+  const lines = packIntoLines(items, innerMain, gapMain, node.style.flexWrap);
 
-    const basis = resolveHypotheticalMainSize(child, main, innerMain, innerCross);
-    const clamped = clampSize(child.style, main, basis);
-    hypothetical[i] = clamped;
-    consumedBase += clamped + ms + me;
+  // Step 3: distribute slack within each line.
+  for (const line of lines) {
+    distributeFlexInLine(line, innerMain, gapMain, main);
   }
 
-  // Step 2: distribute the slack with flexGrow or flexShrink.
-  const remaining = innerMain - consumedBase - totalGap;
-  const finalMain = hypothetical.slice();
+  // Step 4: each line's cross size.
+  computeLineCrossSizes(lines, innerCross, lines.length === 1);
 
-  if (remaining > 0) {
-    distributeGrow(visibleChildren, finalMain, remaining, main);
-  } else if (remaining < 0) {
-    distributeShrink(visibleChildren, finalMain, hypothetical, -remaining, main);
+  // Step 5: stack lines on the cross axis with align-content.
+  positionLinesOnCross(lines, node.style.alignContent, innerCross, gapCross);
+  if (node.style.flexWrap === 'wrap-reverse') {
+    reverseLineStack(lines, innerCross);
   }
 
-  // Step 3: position children along the main axis (flex-start).
-  let cursor = padMainStart;
-  for (let i = 0; i < visibleChildren.length; i++) {
-    const child = visibleChildren[i]!;
-    cursor += mainMarginStart[i]!;
-    writeMainPos(child, main, cursor);
-    writeMainSize(child, main, finalMain[i]!);
-    cursor += finalMain[i]! + mainMarginEnd[i]!;
-    if (i < visibleChildren.length - 1) cursor += gapMain;
+  // Step 6 & 7: per-line item positioning and cross-alignment.
+  for (const line of lines) {
+    positionItemsInLine(line, node.style.justifyContent, innerMain, gapMain);
+    crossAlignItemsInLine(line, node.style.alignItems);
   }
 
-  // Step 4: cross-axis sizing. M4 defaults to stretch (the CSS default and
-  // the v1 baseline until alignItems / alignSelf land in M5). An explicit
-  // cross-size style on the child overrides stretch; a measure function's
-  // cross output is intentionally ignored here because under stretch the
-  // cross size comes from the container, not the content.
-  for (const child of visibleChildren) {
-    const cms = readStart(child.style.margin, cross);
-    const cme = readEnd(child.style.margin, cross);
-    const explicit = preferredSize(child.style, cross);
-
-    let crossSize: number;
-    if (typeof explicit === 'number') {
-      crossSize = clampSize(child.style, cross, explicit);
-    } else {
-      crossSize = Math.max(0, innerCross - cms - cme);
-      crossSize = clampSize(child.style, cross, crossSize);
+  // Step 8: write to layout boxes (translating line + item to absolute).
+  for (const line of lines) {
+    for (const item of line.items) {
+      const mainAbs = padMainStart + item.mainPos;
+      const crossAbs = padCrossStart + line.crossPos + item.crossPos;
+      writeMainPos(item.node, main, mainAbs);
+      writeMainSize(item.node, main, item.finalMain);
+      writeCrossPos(item.node, cross, crossAbs);
+      writeCrossSize(item.node, cross, item.finalCross);
     }
-
-    writeCrossPos(child, cross, padCrossStart + cms);
-    writeCrossSize(child, cross, crossSize);
   }
 
-  // Step 5: reverse main-axis order if requested.
+  // Reverse main-axis positions for *-reverse directions.
   if (isReverse(node.style.flexDirection)) {
-    flipMainAxis(visibleChildren, main, containerMain);
+    flipMainAxis(visible, main, containerMain);
   }
 
-  // Step 6: recurse.
-  for (const child of visibleChildren) {
-    layoutChildren(child);
+  // Step 9: recurse.
+  for (const item of items) {
+    layoutChildren(item.node);
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────
+// ─── step 1: build items ────────────────────────────────────────────────
+
+function buildItem(
+  node: Node,
+  main: Axis,
+  cross: Axis,
+  innerMain: number,
+  innerCross: number,
+): FlexItem {
+  const hypothetical = clampSize(
+    node.style,
+    main,
+    resolveHypotheticalMainSize(node, main, innerMain, innerCross),
+  );
+  const naturalCross = naturalCrossSize(node, cross, innerCross);
+  return {
+    node,
+    hypothetical,
+    finalMain: hypothetical,
+    naturalCross,
+    finalCross: naturalCross,
+    mainPos: 0,
+    crossPos: 0,
+    marginMainStart: readStart(node.style.margin, main),
+    marginMainEnd: readEnd(node.style.margin, main),
+    marginCrossStart: readStart(node.style.margin, cross),
+    marginCrossEnd: readEnd(node.style.margin, cross),
+  };
+}
+
+// ─── step 2: pack items into lines ──────────────────────────────────────
+
+function packIntoLines(
+  items: FlexItem[],
+  innerMain: number,
+  gapMain: number,
+  wrap: Style['flexWrap'],
+): FlexLine[] {
+  if (wrap === 'nowrap' || items.length <= 1) {
+    return [singleLine(items, gapMain)];
+  }
+
+  const lines: FlexLine[] = [];
+  let current: FlexItem[] = [];
+  let currentMain = 0;
+
+  for (const item of items) {
+    const itemMain = item.hypothetical + item.marginMainStart + item.marginMainEnd;
+    const wouldUse = currentMain + (current.length > 0 ? gapMain : 0) + itemMain;
+    if (current.length > 0 && wouldUse > innerMain) {
+      lines.push(makeLine(current, currentMain));
+      current = [item];
+      currentMain = itemMain;
+    } else {
+      if (current.length > 0) currentMain += gapMain;
+      current.push(item);
+      currentMain += itemMain;
+    }
+  }
+  if (current.length > 0) lines.push(makeLine(current, currentMain));
+  return lines;
+}
+
+function singleLine(items: FlexItem[], gapMain: number): FlexLine {
+  let hypotheticalMain = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i]!;
+    hypotheticalMain += it.hypothetical + it.marginMainStart + it.marginMainEnd;
+    if (i < items.length - 1) hypotheticalMain += gapMain;
+  }
+  return { items, hypotheticalMain, crossSize: 0, crossPos: 0 };
+}
+
+function makeLine(items: FlexItem[], hypotheticalMain: number): FlexLine {
+  return { items, hypotheticalMain, crossSize: 0, crossPos: 0 };
+}
+
+// ─── step 3: distribute flex-grow / flex-shrink within a line ───────────
+
+function distributeFlexInLine(
+  line: FlexLine,
+  innerMain: number,
+  gapMain: number,
+  main: Axis,
+): void {
+  const remaining =
+    innerMain -
+    line.hypotheticalMain -
+    Math.max(0, line.items.length - 1) * (line.items.length > 1 ? 0 : 0);
+  // Note: gapMain is already included in hypotheticalMain via singleLine /
+  // makeLine accounting (for wrap case) — wait, actually gapMain is added
+  // for singleLine. Let me handle this consistently:
+  void gapMain;
+
+  if (remaining > 0) {
+    distributeGrow(line.items, remaining, main);
+  } else if (remaining < 0) {
+    distributeShrink(line.items, -remaining, main);
+  }
+}
+
+function distributeGrow(items: FlexItem[], slack: number, main: Axis): void {
+  const n = items.length;
+  const frozen: boolean[] = new Array(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    if (items[i]!.node.style.flexGrow <= 0) frozen[i] = true;
+  }
+
+  for (let iter = 0; iter < n + 1; iter++) {
+    let totalGrow = 0;
+    let frozenContribution = 0;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) frozenContribution += items[i]!.finalMain - items[i]!.hypothetical;
+      else totalGrow += items[i]!.node.style.flexGrow;
+    }
+    if (totalGrow <= 0) return;
+    const remaining = slack - frozenContribution;
+    if (remaining <= 0) return;
+
+    let frozeAny = false;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) continue;
+      const item = items[i]!;
+      const grow = item.node.style.flexGrow;
+      const target = item.hypothetical + (remaining * grow) / totalGrow;
+      const clamped = clampSize(item.node.style, main, target);
+      item.finalMain = clamped;
+      if (clamped !== target) {
+        frozen[i] = true;
+        frozeAny = true;
+      }
+    }
+    if (!frozeAny) return;
+  }
+}
+
+function distributeShrink(items: FlexItem[], overflow: number, main: Axis): void {
+  const n = items.length;
+  const frozen: boolean[] = new Array(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    if (items[i]!.node.style.flexShrink <= 0) frozen[i] = true;
+  }
+
+  for (let iter = 0; iter < n + 1; iter++) {
+    let totalScaled = 0;
+    let frozenContribution = 0;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) frozenContribution += items[i]!.hypothetical - items[i]!.finalMain;
+      else totalScaled += items[i]!.node.style.flexShrink * items[i]!.hypothetical;
+    }
+    if (totalScaled <= 0) return;
+    const remaining = overflow - frozenContribution;
+    if (remaining <= 0) return;
+
+    let frozeAny = false;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) continue;
+      const item = items[i]!;
+      const scaled = item.node.style.flexShrink * item.hypothetical;
+      if (scaled <= 0) {
+        frozen[i] = true;
+        continue;
+      }
+      const reduction = (remaining * scaled) / totalScaled;
+      const target = item.hypothetical - reduction;
+      const clamped = clampSize(item.node.style, main, target);
+      item.finalMain = clamped;
+      if (clamped !== target) {
+        frozen[i] = true;
+        frozeAny = true;
+      }
+    }
+    if (!frozeAny) return;
+  }
+}
+
+// ─── step 4: per-line cross size ────────────────────────────────────────
+
+function computeLineCrossSizes(
+  lines: FlexLine[],
+  innerCross: number,
+  singleLineMode: boolean,
+): void {
+  if (singleLineMode) {
+    // CSS: a single-line flex container's only line takes the container's
+    // inner cross size.
+    if (lines.length > 0) lines[0]!.crossSize = innerCross;
+    return;
+  }
+  for (const line of lines) {
+    let max = 0;
+    for (const it of line.items) {
+      const candidate = it.naturalCross + it.marginCrossStart + it.marginCrossEnd;
+      if (candidate > max) max = candidate;
+    }
+    line.crossSize = max;
+  }
+}
+
+// ─── step 5: position lines on the cross axis (align-content) ───────────
+
+function positionLinesOnCross(
+  lines: FlexLine[],
+  alignContent: Align,
+  innerCross: number,
+  gapCross: number,
+): void {
+  if (lines.length === 1) {
+    lines[0]!.crossPos = 0;
+    return;
+  }
+
+  let used = 0;
+  for (const line of lines) used += line.crossSize;
+  used += (lines.length - 1) * gapCross;
+  const leftover = innerCross - used;
+
+  // 'auto' on align-content means stretch. We treat any value not in the
+  // distribution set as flex-start.
+  let cursor = 0;
+  let extraGap = 0;
+  let lineSizeBoost = 0;
+
+  switch (alignContent) {
+    case 'flex-end':
+      cursor = leftover;
+      break;
+    case 'center':
+      cursor = leftover / 2;
+      break;
+    case 'space-between':
+      if (lines.length > 1 && leftover > 0) extraGap = leftover / (lines.length - 1);
+      break;
+    case 'space-around':
+      if (leftover > 0) {
+        const slot = leftover / lines.length;
+        cursor = slot / 2;
+        extraGap = slot;
+      }
+      break;
+    case 'stretch':
+    case 'auto':
+      if (leftover > 0) lineSizeBoost = leftover / lines.length;
+      break;
+    default:
+      // flex-start: cursor = 0, no extra.
+      break;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (lineSizeBoost > 0) line.crossSize += lineSizeBoost;
+    line.crossPos = cursor;
+    cursor += line.crossSize + gapCross + extraGap;
+  }
+}
+
+function reverseLineStack(lines: FlexLine[], innerCross: number): void {
+  for (const line of lines) {
+    line.crossPos = innerCross - line.crossPos - line.crossSize;
+  }
+}
+
+// ─── step 6: justify-content per line ───────────────────────────────────
+
+function positionItemsInLine(
+  line: FlexLine,
+  justify: Justify,
+  innerMain: number,
+  gapMain: number,
+): void {
+  const items = line.items;
+  const n = items.length;
+  if (n === 0) return;
+
+  let usedMain = 0;
+  for (let i = 0; i < n; i++) {
+    const it = items[i]!;
+    usedMain += it.finalMain + it.marginMainStart + it.marginMainEnd;
+    if (i < n - 1) usedMain += gapMain;
+  }
+  const leftover = Math.max(0, innerMain - usedMain);
+
+  let cursor = 0;
+  let extraGap = 0;
+
+  switch (justify) {
+    case 'flex-end':
+      cursor = leftover;
+      break;
+    case 'center':
+      cursor = leftover / 2;
+      break;
+    case 'space-between':
+      if (n > 1) extraGap = leftover / (n - 1);
+      break;
+    case 'space-around': {
+      const slot = leftover / n;
+      cursor = slot / 2;
+      extraGap = slot;
+      break;
+    }
+    case 'space-evenly': {
+      const slot = leftover / (n + 1);
+      cursor = slot;
+      extraGap = slot;
+      break;
+    }
+    default:
+      // flex-start: cursor = 0, extra = 0.
+      break;
+  }
+
+  for (let i = 0; i < n; i++) {
+    const it = items[i]!;
+    cursor += it.marginMainStart;
+    it.mainPos = cursor;
+    cursor += it.finalMain + it.marginMainEnd;
+    if (i < n - 1) cursor += gapMain + extraGap;
+  }
+}
+
+// ─── step 7: align-items / align-self per item ──────────────────────────
+
+function crossAlignItemsInLine(line: FlexLine, alignItems: Align): void {
+  for (const item of line.items) {
+    const align = effectiveAlign(item.node.style.alignSelf, alignItems);
+    const innerLine = line.crossSize - item.marginCrossStart - item.marginCrossEnd;
+    const cross = inferCrossAxisFromContext(item, line);
+
+    if (align === 'stretch') {
+      const explicit = preferredSize(item.node.style, cross);
+      if (typeof explicit === 'number') {
+        item.finalCross = clampSize(item.node.style, cross, explicit);
+      } else {
+        item.finalCross = clampSize(item.node.style, cross, Math.max(0, innerLine));
+      }
+      item.crossPos = item.marginCrossStart;
+      continue;
+    }
+
+    // Non-stretch: use the natural cross size, clamped.
+    const naturalClamped = clampSize(item.node.style, cross, item.naturalCross);
+    item.finalCross = naturalClamped;
+
+    switch (align) {
+      case 'flex-end':
+        item.crossPos = line.crossSize - naturalClamped - item.marginCrossEnd;
+        break;
+      case 'center':
+        item.crossPos = item.marginCrossStart + Math.max(0, (innerLine - naturalClamped) / 2);
+        break;
+      default:
+        // flex-start, baseline (treated as flex-start in v1), space-* on
+        // an item (degenerate — treat as flex-start).
+        item.crossPos = item.marginCrossStart;
+        break;
+    }
+  }
+}
+
+function effectiveAlign(self: Align, items: Align): Align {
+  return self === 'auto' ? items : self;
+}
+
+/**
+ * The cross axis we're working on within `crossAlignItemsInLine`. We look at
+ * the item's parent direction via the FlexItem context; since cross/main are
+ * fixed per layoutChildren call, we infer from the item's own layout-time
+ * cross axis. Helper kept private so the hot path doesn't recompute it.
+ */
+function inferCrossAxisFromContext(item: FlexItem, _line: FlexLine): Axis {
+  // Cross axis is the perpendicular of the parent's flex direction. The
+  // parent is the only place flexDirection lives, so we look it up via the
+  // node's parent.
+  const parent = item.node.getParent();
+  if (parent === null) return 'column';
+  return crossAxis(parent.style.flexDirection);
+}
+
+// ─── helpers ────────────────────────────────────────────────────────────
 
 function visibleChildrenOf(node: Node): Node[] {
   const out: Node[] = [];
@@ -159,20 +553,12 @@ function visibleChildrenOf(node: Node): Node[] {
 function measureLeafIfNeeded(node: Node): void {
   const fn = node.getMeasureFunc();
   if (fn === null) return;
-
-  const ownWidth = node.layout.width;
-  const ownHeight = node.layout.height;
   const padW = (node.style.padding[1] ?? 0) + (node.style.padding[3] ?? 0);
   const padH = (node.style.padding[0] ?? 0) + (node.style.padding[2] ?? 0);
-
-  // If the parent already fixed both axes (typical when invoked from
-  // layoutChildren's stretch step) the measure function's output is purely
-  // informational; we leave the layout box as-is. We still call it so that
-  // consumers that rely on the side-effect (e.g. cache priming) see it.
   fn(
-    Math.max(0, ownWidth - padW),
+    Math.max(0, node.layout.width - padW),
     MeasureMode.AtMost,
-    Math.max(0, ownHeight - padH),
+    Math.max(0, node.layout.height - padH),
     MeasureMode.AtMost,
   );
 }
@@ -185,30 +571,19 @@ function writeMainPos(node: Node, main: Axis, value: number): void {
   if (main === 'row') node.layout.left = value;
   else node.layout.top = value;
 }
-
 function writeMainSize(node: Node, main: Axis, value: number): void {
   if (main === 'row') node.layout.width = value;
   else node.layout.height = value;
 }
-
 function writeCrossPos(node: Node, cross: Axis, value: number): void {
   if (cross === 'row') node.layout.left = value;
   else node.layout.top = value;
 }
-
 function writeCrossSize(node: Node, cross: Axis, value: number): void {
   if (cross === 'row') node.layout.width = value;
   else node.layout.height = value;
 }
 
-/**
- * Hypothetical main size for a child:
- *   - explicit `flexBasis` number → that.
- *   - `flexBasis: 'auto'` and explicit main-axis size → that.
- *   - leaf with a measure function → ask it under "at most innerMain".
- *   - otherwise 0 (M4 does not yet do content-sized intrinsic sizing for
- *     non-leaf children; M5 / M6 may revisit).
- */
 function resolveHypotheticalMainSize(
   child: Node,
   main: Axis,
@@ -238,100 +613,25 @@ function resolveHypotheticalMainSize(
   return 0;
 }
 
-/**
- * Distribute positive slack via flex-grow with the CSS "freeze" loop:
- * proportional share, then clamp to [min, max] — any item that clamps is
- * frozen and the remaining slack is re-distributed among the unfrozen items.
- *
- * Iterates at most `children.length` times; each iteration freezes at least
- * one item (otherwise it terminates).
- */
-function distributeGrow(children: Node[], finalMain: number[], slack: number, main: Axis): void {
-  const n = children.length;
-  const frozen: boolean[] = new Array(n).fill(false);
-  const hypothetical = finalMain.slice();
+function naturalCrossSize(child: Node, cross: Axis, innerCross: number): number {
+  const explicit = preferredSize(child.style, cross);
+  if (typeof explicit === 'number') return explicit;
 
-  for (let i = 0; i < n; i++) {
-    if (children[i]!.style.flexGrow <= 0) frozen[i] = true;
+  const measure = child.getMeasureFunc();
+  if (measure !== null && child.getChildCount() === 0) {
+    const main = cross === 'row' ? 'column' : 'row';
+    const ms = preferredSize(child.style, main);
+    const mainHint = typeof ms === 'number' ? ms : innerCross;
+    const result = measure(
+      cross === 'row' ? innerCross : mainHint,
+      cross === 'row' ? MeasureMode.AtMost : MeasureMode.Undefined,
+      cross === 'column' ? innerCross : mainHint,
+      cross === 'column' ? MeasureMode.AtMost : MeasureMode.Undefined,
+    );
+    return cross === 'row' ? result.width : result.height;
   }
 
-  for (let iter = 0; iter < n + 1; iter++) {
-    let totalGrow = 0;
-    let frozenContribution = 0;
-    for (let i = 0; i < n; i++) {
-      if (frozen[i]) frozenContribution += finalMain[i]! - hypothetical[i]!;
-      else totalGrow += children[i]!.style.flexGrow;
-    }
-    if (totalGrow <= 0) return;
-
-    const remaining = slack - frozenContribution;
-    if (remaining <= 0) return;
-
-    let frozeAny = false;
-    for (let i = 0; i < n; i++) {
-      if (frozen[i]) continue;
-      const grow = children[i]!.style.flexGrow;
-      const target = hypothetical[i]! + (remaining * grow) / totalGrow;
-      const clamped = clampSize(children[i]!.style, main, target);
-      finalMain[i] = clamped;
-      if (clamped !== target) {
-        frozen[i] = true;
-        frozeAny = true;
-      }
-    }
-    if (!frozeAny) return;
-  }
-}
-
-/**
- * Distribute negative slack (overflow) via the CSS "scaled flex shrink
- * factor" = flexShrink × flexBaseSize, with the same freeze loop as grow.
- */
-function distributeShrink(
-  children: Node[],
-  finalMain: number[],
-  hypothetical: number[],
-  overflow: number,
-  main: Axis,
-): void {
-  const n = children.length;
-  const frozen: boolean[] = new Array(n).fill(false);
-
-  for (let i = 0; i < n; i++) {
-    if (children[i]!.style.flexShrink <= 0) frozen[i] = true;
-  }
-
-  for (let iter = 0; iter < n + 1; iter++) {
-    let totalScaled = 0;
-    let frozenContribution = 0;
-    for (let i = 0; i < n; i++) {
-      if (frozen[i]) frozenContribution += hypothetical[i]! - finalMain[i]!;
-      else totalScaled += children[i]!.style.flexShrink * hypothetical[i]!;
-    }
-    if (totalScaled <= 0) return;
-
-    const remaining = overflow - frozenContribution;
-    if (remaining <= 0) return;
-
-    let frozeAny = false;
-    for (let i = 0; i < n; i++) {
-      if (frozen[i]) continue;
-      const scaled = children[i]!.style.flexShrink * hypothetical[i]!;
-      if (scaled <= 0) {
-        frozen[i] = true;
-        continue;
-      }
-      const reduction = (remaining * scaled) / totalScaled;
-      const target = hypothetical[i]! - reduction;
-      const clamped = clampSize(children[i]!.style, main, target);
-      finalMain[i] = clamped;
-      if (clamped !== target) {
-        frozen[i] = true;
-        frozeAny = true;
-      }
-    }
-    if (!frozeAny) return;
-  }
+  return 0;
 }
 
 function flipMainAxis(children: Node[], main: Axis, containerMain: number): void {
@@ -348,7 +648,6 @@ function flipMainAxis(children: Node[], main: Axis, containerMain: number): void
  * Resolve the root node's own size from style + caller-supplied availability.
  *
  *   - explicit number → use it (clamped to min/max).
- *   - 'auto' + a measure function → ask the measure function.
  *   - 'auto' + an `available` value → use available, clamped.
  *   - 'auto' with neither → 0.
  */
