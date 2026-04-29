@@ -18,7 +18,7 @@
     "format": "biome format --write .",
     "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck",
     "gen:unicode": "tsx tools/generate-unicode-tables.ts",
-    "ci": "pnpm lint && pnpm typecheck && pnpm build && pnpm test",
+    "ci": "pnpm lint && pnpm build && pnpm typecheck && pnpm test",
     "release:dry": "pnpm -r --filter \"./packages/*\" exec pnpm publish --dry-run --access=public --no-git-checks",
     "release": "pnpm ci && pnpm -r --filter \"./packages/*\" exec pnpm publish --access=public --no-git-checks"
   },
