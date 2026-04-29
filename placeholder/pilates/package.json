@@ -1,0 +1,16 @@
+{
+  "name": "pilates",
+  "version": "0.0.1",
+  "description": "Placeholder. The real packages are @pilates/core and @pilates/render.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pilates/pilates.git"
+  },
+  "homepage": "https://github.com/pilates/pilates#readme",
+  "bugs": {
+    "url": "https://github.com/pilates/pilates/issues"
+  },
+  "keywords": ["pilates", "terminal", "tui", "cli", "layout", "flexbox", "yoga"],
+  "files": ["README.md"]
+}
