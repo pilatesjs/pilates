@@ -21,12 +21,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pilates/pilates.git",
+    "url": "git+https://github.com/pilatesjs/pilates.git",
     "directory": "packages/core"
   },
-  "homepage": "https://github.com/pilates/pilates#readme",
+  "homepage": "https://github.com/pilatesjs/pilates#readme",
   "bugs": {
-    "url": "https://github.com/pilates/pilates/issues"
+    "url": "https://github.com/pilatesjs/pilates/issues"
   },
   "keywords": ["terminal", "tui", "cli", "layout", "flexbox", "yoga", "headless"],
   "engines": {

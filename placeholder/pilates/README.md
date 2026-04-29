@@ -20,7 +20,7 @@ npm install @pilates/render
 
 ## Project home
 
-https://github.com/pilates/pilates
+https://github.com/pilatesjs/pilates
 
 ## License
 

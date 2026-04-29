@@ -5,11 +5,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pilates/pilates.git"
+    "url": "git+https://github.com/pilatesjs/pilates.git"
   },
-  "homepage": "https://github.com/pilates/pilates#readme",
+  "homepage": "https://github.com/pilatesjs/pilates#readme",
   "bugs": {
-    "url": "https://github.com/pilates/pilates/issues"
+    "url": "https://github.com/pilatesjs/pilates/issues"
   },
   "keywords": ["pilates", "terminal", "tui", "cli", "layout", "flexbox", "yoga"],
   "files": ["README.md"]
