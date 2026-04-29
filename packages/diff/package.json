@@ -1,0 +1,38 @@
+{
+  "name": "@pilates/diff",
+  "version": "0.1.0",
+  "description": "Cell-level frame diffing + minimal ANSI redraw sequences for live Pilates TUIs.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@pilates/render": "workspace:*"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pilates/pilates.git",
+    "directory": "packages/diff"
+  },
+  "homepage": "https://github.com/pilates/pilates#readme",
+  "bugs": {
+    "url": "https://github.com/pilates/pilates/issues"
+  },
+  "keywords": ["terminal", "tui", "cli", "diff", "redraw", "ansi", "pilates"],
+  "engines": {
+    "node": ">=20"
+  }
+}
