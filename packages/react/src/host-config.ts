@@ -58,10 +58,10 @@ export function buildHostConfig(): HostConfig<
     },
     appendChild: (parent, child) => appendChildImpl(parent, child),
     appendChildToContainer: (container, child) => appendChildToContainer(container, child),
-    insertBefore: TODO('insertBefore') as never,
-    insertInContainerBefore: TODO('insertInContainerBefore') as never,
-    removeChild: TODO('removeChild') as never,
-    removeChildFromContainer: TODO('removeChildFromContainer') as never,
+    insertBefore: (parent, child, before) => insertBeforeImpl(parent, child, before),
+    insertInContainerBefore: (container, child, before) => insertBeforeContainerImpl(container, child, before),
+    removeChild: (parent, child) => removeChildImpl(parent, child),
+    removeChildFromContainer: (container, child) => removeChildFromContainerImpl(container, child),
     prepareUpdate: TODO('prepareUpdate') as never,
     commitUpdate: TODO('commitUpdate') as never,
     commitTextUpdate: TODO('commitTextUpdate') as never,
@@ -129,4 +129,64 @@ function appendChildToContainer(container: RootContainer, child: AnyInstance): v
   }
   container.root.children = container.root.children ?? [];
   (container.root.children as RenderNode[]).push(child.node);
+}
+
+function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyInstance): void {
+  if (parent.kind === 'text') {
+    if (child.kind === 'fragment' || child.kind === 'text') {
+      if (child.kind === 'fragment') child.parent = parent;
+      const beforeIdx = parent.fragments.indexOf(before as TextFragment | TextInstance);
+      if (beforeIdx === -1) parent.fragments.push(child);
+      else parent.fragments.splice(beforeIdx, 0, child);
+      parent.node.text = flattenText(parent);
+      return;
+    }
+    throw new Error(
+      `Pilates: <Text> children must be string, number, <Text>, or <Newline>. Got: ${(child as { kind?: string }).kind}`,
+    );
+  }
+  if (child.kind === 'fragment') {
+    throw new Error('Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.');
+  }
+  if (before.kind === 'fragment') {
+    throw new Error('Pilates: invariant — Box children should never be string fragments.');
+  }
+  const arr = (parent.node.children ??= []) as RenderNode[];
+  const idx = arr.indexOf(before.node);
+  if (idx === -1) arr.push(child.node);
+  else arr.splice(idx, 0, child.node);
+}
+
+function insertBeforeContainerImpl(container: RootContainer, child: AnyInstance, before: AnyInstance): void {
+  if (child.kind === 'fragment') {
+    throw new Error('Pilates: bare strings are not allowed at the root. Wrap them in <Text>.');
+  }
+  if (before.kind === 'fragment') {
+    throw new Error('Pilates: invariant — root children should never be string fragments.');
+  }
+  const arr = (container.root.children ??= []) as RenderNode[];
+  const idx = arr.indexOf(before.node);
+  if (idx === -1) arr.push(child.node);
+  else arr.splice(idx, 0, child.node);
+}
+
+function removeChildImpl(parent: HostInstance, child: AnyInstance): void {
+  if (parent.kind === 'text') {
+    if (child.kind === 'fragment' || child.kind === 'text') {
+      parent.fragments = parent.fragments.filter((f) => f !== child);
+      parent.node.text = flattenText(parent);
+    }
+    return;
+  }
+  if (child.kind === 'fragment') return;
+  const arr = (parent.node.children ?? []) as RenderNode[];
+  const idx = arr.indexOf(child.node);
+  if (idx >= 0) arr.splice(idx, 1);
+}
+
+function removeChildFromContainerImpl(container: RootContainer, child: AnyInstance): void {
+  if (child.kind === 'fragment') return;
+  const arr = (container.root.children ?? []) as RenderNode[];
+  const idx = arr.indexOf(child.node);
+  if (idx >= 0) arr.splice(idx, 1);
 }
