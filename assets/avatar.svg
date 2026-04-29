@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="pilates">
+  <rect width="1024" height="1024" fill="#0d1117"/>
+  <g fill="none" stroke="#c9d1d9" stroke-width="40" stroke-linecap="square" stroke-linejoin="miter">
+    <rect x="192" y="192" width="640" height="640"/>
+    <line x1="637" y1="192" x2="637" y2="832"/>
+  </g>
+</svg>

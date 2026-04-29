@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/pilatesjs/pilates/main/assets/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/pilatesjs/pilates/main/assets/logo.svg" alt="pilates" width="48">
+</picture>
+
 # @pilates/render
 
 Out-of-box renderer for [`@pilates/core`](../core). Takes a declarative tree, returns
@@ -19,4 +24,4 @@ const out = render({
 process.stdout.write(out);
 ```
 
-Status: pre-release. API subject to change.
+Status: release candidate.

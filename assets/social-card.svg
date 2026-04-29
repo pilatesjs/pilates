@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Pilates — headless flex layout engine for terminal UIs">
+  <rect width="1200" height="630" fill="#0d1117"/>
+  <g fill="none" stroke="#c9d1d9" stroke-width="10" stroke-linecap="square" stroke-linejoin="miter">
+    <rect x="460" y="120" width="280" height="280"/>
+    <line x1="655" y1="120" x2="655" y2="400"/>
+  </g>
+  <text x="600" y="510" text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
+        font-size="120"
+        font-weight="500"
+        fill="#c9d1d9">pilates</text>
+  <text x="600" y="565" text-anchor="middle"
+        font-family="ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace"
+        font-size="26"
+        fill="#8b949e">Headless flex layout engine for terminal UIs</text>
+</svg>

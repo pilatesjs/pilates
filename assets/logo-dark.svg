@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="pilates">
+  <g stroke="#c9d1d9" stroke-width="4" stroke-linecap="square" stroke-linejoin="miter">
+    <rect x="4" y="4" width="56" height="56"/>
+    <line x1="43" y1="4" x2="43" y2="60"/>
+  </g>
+</svg>
