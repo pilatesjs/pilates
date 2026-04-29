@@ -3,6 +3,7 @@
   "version": "1.0.0-rc.1",
   "description": "Headless flex layout engine for terminal UIs. Pure TypeScript, zero dependencies.",
   "license": "MIT",
+  "author": "Zhijie Wang",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -28,7 +29,7 @@
   "bugs": {
     "url": "https://github.com/pilatesjs/pilates/issues"
   },
-  "keywords": ["terminal", "tui", "cli", "layout", "flexbox", "yoga", "headless"],
+  "keywords": ["terminal", "tui", "cli", "layout", "flexbox", "headless"],
   "engines": {
     "node": ">=20"
   }

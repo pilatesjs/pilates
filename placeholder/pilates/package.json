@@ -11,6 +11,6 @@
   "bugs": {
     "url": "https://github.com/pilatesjs/pilates/issues"
   },
-  "keywords": ["pilates", "terminal", "tui", "cli", "layout", "flexbox", "yoga"],
+  "keywords": ["pilates", "terminal", "tui", "cli", "layout", "flexbox"],
   "files": ["README.md"]
 }

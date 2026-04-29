@@ -3,6 +3,7 @@
   "version": "1.0.0-rc.2",
   "description": "Out-of-box renderer for @pilates/core. Declarative tree to ANSI-styled string.",
   "license": "MIT",
+  "author": "Zhijie Wang",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
