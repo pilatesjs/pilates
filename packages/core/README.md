@@ -1,13 +1,18 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/pilatesjs/pilates/main/assets/logo-dark.svg">
+  <img src="https://raw.githubusercontent.com/pilatesjs/pilates/main/assets/logo.svg" alt="pilates" width="48">
+</picture>
+
 # @pilates/core
 
 > Headless flex layout engine for terminal UIs. Imperative `Node` API, integer cell
 > coordinates, terminal-correct text measurement. **Pure TypeScript, zero runtime
 > dependencies.**
 
-`@pilates/core` is the engine of **Pilates** — what you get when you take Yoga's flex algorithm, rebuild it for
-the terminal (integer cells, CJK / emoji / wide-char awareness, ANSI escape
-passthrough), and *unbundle* it from any UI framework. Use it directly, or wrap it
-in React, Vue, Svelte, or anything else.
+`@pilates/core` is the engine of **Pilates** — a flex layout algorithm built
+for the terminal (integer cells, CJK / emoji / wide-char awareness, ANSI
+escape passthrough), unbundled from any UI framework. Use it directly, or wrap
+it in React, Vue, Svelte, or anything else.
 
 ## Install
 
@@ -42,7 +47,7 @@ sidebar.getComputedLayout(); // { left:58, top:1, width:20, height:22 }
 
 ## Style API
 
-Setters mirror Yoga / CSS Flexbox semantics. All values are in terminal cells.
+Setters mirror CSS Flexbox semantics. All values are in terminal cells.
 
 | Category | Setters |
 |---|---|
@@ -88,7 +93,8 @@ text.setMeasureFunc((width, widthMode, height, heightMode) => {
 ## Status
 
 Release candidate (`1.0.0-rc.1`). The full v1 surface is implemented and
-verified cell-for-cell against `yoga-layout` (Meta's reference WASM build).
+validated cell-for-cell against a reference WASM flexbox implementation
+across 30 oracle fixtures.
 
 **Out of v1:** `aspectRatio`, RTL/LTR direction inheritance, baseline alignment.
 

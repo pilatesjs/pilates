@@ -12,8 +12,8 @@ First public release candidate. Both packages published to npm under the
 
 ### Added — `@pilates/core`
 
-- Imperative `Node` API mirroring Yoga's surface (create, insertChild,
-  removeChild, calculate layout, getComputedLayout, etc.).
+- Imperative `Node` API (create, insertChild, removeChild, calculateLayout,
+  getComputedLayout, etc.).
 - Full v1 flex algorithm: `flexDirection` (row, column, both reverses),
   `flex` / `flexGrow` / `flexShrink` / `flexBasis` with the CSS freeze loop,
   `width` / `height` / `minWidth` / `minHeight` / `maxWidth` / `maxHeight`,
@@ -23,8 +23,8 @@ First public release candidate. Both packages published to npm under the
   `alignSelf` / `alignContent` (auto, flex-start, flex-end, center, stretch,
   space-between, space-around).
 - Absolute positioning via `positionType: 'absolute'` and `position` per
-  edge — Yoga semantics (offsets relative to parent's outer box, not its
-  content edge).
+  edge — React Native semantics (offsets relative to parent's outer box,
+  not its content edge).
 - Terminal-correct text measurement: `cellWidth(cp)` / `stringWidth(s)` /
   `graphemes(s)` / `stripAnsi(s)`, driven by Unicode UCD tables generated
   at build time (East Asian Width, Emoji Presentation, Grapheme Break
@@ -55,8 +55,8 @@ First public release candidate. Both packages published to npm under the
 
 - 200 tests across unit, algorithm, render-snapshot, and Unicode-fuzzer
   layers.
-- 30 cell-for-cell oracle fixtures matched against Meta's `yoga-layout`
-  WASM build.
+- 30 cell-for-cell oracle fixtures matched against a reference WASM
+  flexbox implementation.
 - 200 randomized strings per CI run validated against `@xterm/headless`
   for cell-width correctness.
 

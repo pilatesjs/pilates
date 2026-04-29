@@ -1,6 +1,6 @@
 # Pilates
 
-> Headless flex layout engine for terminal UIs. Yoga's cousin, for the terminal.
+> Headless flex layout engine for terminal UIs.
 
 This `pilates` package on npm is the brand-name placeholder. The actual code
 is published under the **`@pilates`** scope:

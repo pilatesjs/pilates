@@ -1,17 +1,33 @@
-# Pilates
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/logo-wordmark-dark.svg">
+    <img src="./assets/logo-wordmark.svg" alt="Pilates" width="320">
+  </picture>
+</p>
 
-[![npm @pilates/core](https://img.shields.io/npm/v/@pilates/core?label=%40pilates%2Fcore&color=cb3837)](https://www.npmjs.com/package/@pilates/core)
-[![npm @pilates/render](https://img.shields.io/npm/v/@pilates/render?label=%40pilates%2Frender&color=cb3837)](https://www.npmjs.com/package/@pilates/render)
-[![bundle size @pilates/core](https://img.shields.io/bundlephobia/minzip/@pilates/core?label=%40pilates%2Fcore%20size)](https://bundlephobia.com/package/@pilates/core)
-[![license MIT](https://img.shields.io/npm/l/@pilates/core?color=blue)](./LICENSE)
+<p align="center">
+  <a href="https://www.npmjs.com/package/@pilates/core"><img src="https://img.shields.io/npm/v/@pilates/core?label=%40pilates%2Fcore&color=cb3837" alt="npm @pilates/core"></a>
+  <a href="https://www.npmjs.com/package/@pilates/render"><img src="https://img.shields.io/npm/v/@pilates/render?label=%40pilates%2Frender&color=cb3837" alt="npm @pilates/render"></a>
+  <a href="https://bundlephobia.com/package/@pilates/core"><img src="https://img.shields.io/bundlephobia/minzip/@pilates/core?label=%40pilates%2Fcore%20size" alt="bundle size @pilates/core"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@pilates/core?color=blue" alt="license MIT"></a>
+</p>
+
+<!-- Demo: once recorded, drop assets/demo.gif into ./assets/ and uncomment.
+     Suggested: `asciinema rec` while running
+     `pnpm --filter @pilates-examples/progress-table dev`,
+     then convert with `agg demo.cast assets/demo.gif`.
+<p align="center">
+  <img src="./assets/demo.gif" alt="Pilates demo — progress-table example" width="720">
+</p>
+-->
 
 > Headless flex layout engine for terminal UIs. Pure TypeScript, zero runtime
 > dependencies.
 
-**Pilates** is what you get when you take Yoga's flex algorithm, rebuild it for the
-terminal (integer cell coordinates, CJK / emoji / wide-char awareness, ANSI
-escape passthrough), and *unbundle* it from any UI framework. Use it directly
-to compute layouts, or wrap the included renderer to produce styled strings.
+**Pilates** is a flex layout engine designed for the terminal: integer cell
+coordinates, CJK / emoji / wide-char awareness, ANSI escape passthrough, and
+unbundled from any UI framework. Use it directly to compute layouts, or wrap
+the included renderer to produce styled strings.
 
 ```ts
 import { render } from '@pilates/render';
@@ -37,15 +53,15 @@ process.stdout.write(
 ## Why
 
 Terminal UIs in JavaScript are dominated by [Ink](https://github.com/vadimdemedes/ink),
-which couples two distinct concerns into one package: the Yoga flex layout
-engine (via WASM) and a React reconciler. If you want the layout half, you have
-to take all of React. **Pilates** separates them:
+which couples two distinct concerns into one package: a WASM flex layout
+engine and a React reconciler. If you want the layout half, you have to take
+all of React. **Pilates** separates them:
 
 - **`@pilates/core`** — the engine. Imperative `Node` API, returns integer cell
   coordinates. Pure TypeScript, **zero runtime dependencies**. Handles
   CJK / emoji / wide-char widths, integer-cell rounding, the CSS Flexbox
-  freeze loop, and absolute positioning. Verified cell-for-cell against
-  Meta's `yoga-layout` (WASM) on 30 fixtures.
+  freeze loop, and absolute positioning. Validated cell-for-cell against a
+  reference WASM flexbox implementation across 30 oracle fixtures.
 - **`@pilates/render`** — the out-of-box renderer. Declarative POJO tree →
   painted ANSI string with borders, titles, colors, and text wrap. Uses core
   internally; depends only on it.
@@ -58,7 +74,8 @@ without touching either.
 | Package | Status | What |
 |---|---|---|
 | [`@pilates/core`](./packages/core)     | `1.0.0-rc.1` | Engine: imperative Node API, returns layout boxes. |
-| [`@pilates/render`](./packages/render) | `1.0.0-rc.1` | Out-of-box: declarative tree → painted string. |
+| [`@pilates/render`](./packages/render) | `1.0.0-rc.2` | Out-of-box: declarative tree → painted string. |
+| [`@pilates/diff`](./packages/diff)     | `0.1.0`      | Cell-level frame diff + minimal ANSI redraw. |
 
 ## Examples
 
@@ -136,10 +153,11 @@ input handling, animations, scroll containers, style inheritance.
 
 ## Validation
 
-Every flex feature is verified cell-for-cell against `yoga-layout`'s WASM build:
+Every flex feature is verified cell-for-cell against a reference WASM
+flexbox implementation:
 
-- 30 yoga-layout oracle fixtures (fixed widths, flex distributions, padding,
-  margin, gap, min/max, all `justifyContent` / `alignItems` / `alignSelf` /
+- 30 oracle fixtures (fixed widths, flex distributions, padding, margin,
+  gap, min/max, all `justifyContent` / `alignItems` / `alignSelf` /
   `alignContent` values, `flexWrap`, `flexWrap: wrap-reverse`, every absolute
   positioning anchor)
 - 200+ unit + algorithm + render tests
@@ -148,12 +166,12 @@ Every flex feature is verified cell-for-cell against `yoga-layout`'s WASM build:
 
 ## Notable design choices
 
-- **Default `flexShrink: 0` in core** (Yoga / RN convention, not CSS's 1) —
-  declared widths stay declared. The render layer flips this to 1 for text
+- **Default `flexShrink: 0` in core** (React Native convention, not CSS's 1)
+  — declared widths stay declared. The render layer flips this to 1 for text
   leaves so wrapped text fits its container.
 - **Absolute offsets are relative to the parent's outer box, not its
-  content (post-padding) box** — Yoga semantics, not CSS. Keeps consumers
-  porting from Ink / RN consistent.
+  content (post-padding) box** — React Native semantics, not CSS. Keeps
+  consumers porting from Ink / RN consistent.
 - **Integer cell rounding rounds absolute corners and derives size from
   rounded edges** — sibling boxes butt cleanly across uneven splits
   (`[100, flex:1, flex:1, flex:1]` → `[34, 33, 33]`).
