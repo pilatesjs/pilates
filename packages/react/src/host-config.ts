@@ -52,7 +52,10 @@ export function buildHostConfig(): HostConfig<
     createInstance: (type, props) => createInstance(type, props),
     createTextInstance: (text) => ({ kind: 'fragment', text, parent: null }),
     appendInitialChild: (parent, child) => appendChildImpl(parent, child),
-    finalizeInitialChildren: TODO('finalizeInitialChildren') as never,
+    finalizeInitialChildren: (instance) => {
+      finalizeText(instance);
+      return false; // don't request commitMount
+    },
     appendChild: (parent, child) => appendChildImpl(parent, child),
     appendChildToContainer: (container, child) => appendChildToContainer(container, child),
     insertBefore: TODO('insertBefore') as never,
@@ -113,6 +116,11 @@ function appendChildImpl(parent: HostInstance, child: AnyInstance): void {
   }
   parent.node.children = parent.node.children ?? [];
   (parent.node.children as RenderNode[]).push(child.node);
+}
+
+function finalizeText(instance: HostInstance): void {
+  if (instance.kind !== 'text') return;
+  instance.node.text = flattenText(instance);
 }
 
 function appendChildToContainer(container: RootContainer, child: AnyInstance): void {
