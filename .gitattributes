@@ -1,0 +1,15 @@
+# Normalize all text to LF in the repo, regardless of OS checkout settings.
+# Avoids "LF will be replaced by CRLF" warnings on Windows and keeps diffs
+# stable across contributors.
+* text=auto eol=lf
+
+# Lockfiles and generated tables are noisy in diffs and reviews.
+pnpm-lock.yaml linguist-generated
+packages/core/src/measure/tables.ts linguist-generated
+
+# Binary asset hints (none today, future-proofing).
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
