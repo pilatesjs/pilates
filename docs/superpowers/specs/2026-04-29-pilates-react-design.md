@@ -90,7 +90,7 @@ const { stdout, write, columns, rows }         = useStdout();
 const { stderr, write }                        = useStderr();
 ```
 
-- `useApp().exit(error?: Error)` — unmounts; resolves (or rejects) `render()`'s `waitUntilExit` promise
+- `useApp().exit(error?: Error)` — unmounts; resolves (or rejects with `error`) the promise returned by `waitUntilExit()`
 - `useStdout()` and `useStderr()` — stream + passthrough write + current `columns`/`rows`
   - dimensions update via SIGWINCH through React context; consumers re-render on resize
 
@@ -128,11 +128,11 @@ render(<App/>) called
   ├─ if stdout.isTTY: subscribe to SIGWINCH via `process.stdout.on('resize', …)`
   ├─ react-reconciler.createContainer + updateContainer(<App/>)
   │     └─ HostConfig methods fire as React mounts:
-  │          createInstance('pilates-box', props)   → new ContainerNode { children: [] }
-  │          createInstance('pilates-text', props)  → new TextNode { text: '' }
-  │          createTextInstance(text)               → string fragment
+  │          createInstance('pilates-box', props)   → POJO matching ContainerNode: { ...props, children: [] }
+  │          createInstance('pilates-text', props)  → POJO matching TextNode: { ...props, text: '' }
+  │          createTextInstance(text)               → string fragment (parent <Text> consumes on flatten)
   │          appendChild / insertBefore / removeChild → splice parent.children[]
-  │          finalizeInitialChildren(node)          → flatten string children to TextNode.text
+  │          finalizeInitialChildren(node)          → flatten string-fragment children into TextNode.text
   ├─ resetAfterCommit(root) fires once per commit
   │     └─ flushFrame(root):
   │           1. const next  = renderToFrame(root)         // @pilates/render
@@ -163,7 +163,7 @@ render(<App/>) called
 - `react-reconciler.updateContainer(null, root)` — runs unmount lifecycles
 - Detach SIGWINCH listener
 - Write SGR reset + final newline so cursor lands on a fresh scrollback line
-- Resolve `waitUntilExit` (or reject if `exit(error)` was called)
+- Resolve the promise returned by `waitUntilExit()` (or reject it if `exit(error)` was called)
 - Idempotent — second call is a no-op via a flag
 
 ### Initial paint
@@ -190,7 +190,7 @@ render(<App/>) called
 
 - React's commit phase throws into HostConfig methods; we let it propagate to react-reconciler's built-in error handling
 - Error Boundaries catch them; otherwise bubble to `onUncaughtError` HostConfig hook
-- Our root `onUncaughtError` writes a clean error frame to stderr (red "Pilates render error:" + message + short stack), then rejects `waitUntilExit`
+- Our root `onUncaughtError` writes a clean error frame to stderr (red "Pilates render error:" + message + short stack), then rejects the `waitUntilExit()` promise
 - **No automatic recovery / re-render.** A render error means the app exits. Same posture as Ink. Users wanting recovery wrap in their own Error Boundary.
 
 **2. Validation errors at the engine boundary**
@@ -204,7 +204,7 @@ render(<App/>) called
 
 - `process.stdout` can emit `'error'` (closed pipe, EPIPE on broken pipe to head/less)
 - We attach a listener once at `render()` start; sets a flag and triggers `unmount()`
-- We do NOT swallow — `unmount()` resolves `waitUntilExit` with the stream's error so the calling process exits non-zero
+- We do NOT swallow — `unmount()` rejects the `waitUntilExit()` promise with the stream's error so the calling process exits non-zero
 - EPIPE is the only real-world case (CLI tools piping to `less`/`head`)
 
 ### Operational details
