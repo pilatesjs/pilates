@@ -5,6 +5,37 @@ All notable changes to Pilates are documented here. The format roughly follows
 follows [Semantic Versioning](https://semver.org/) once it leaves the `1.0.0`
 release-candidate train.
 
+## 2026-04-29 — `@pilates/render@1.0.0-rc.2` + `@pilates/diff@0.1.0`
+
+### Added — `@pilates/render` 1.0.0-rc.2
+
+Additive — no breaking changes. Re-exports the low-level cell + SGR
+primitives from the public surface so downstream packages (e.g.
+`@pilates/diff`) can produce byte-for-byte matching ANSI without
+reimplementing them:
+
+- Types: `Cell`, `CellStyle`, `Rect`, `Attr`
+- SGR helpers: `SGR_RESET`, `attrsSgr`, `bgSgr`, `fgSgr`, `packAttrs`,
+  `sgr`
+
+### Added — `@pilates/diff` 0.1.0 (initial release)
+
+Cell-level frame diffing + minimal ANSI redraw sequences for live
+Pilates TUIs. Pair with `renderToFrame()` from `@pilates/render` to
+drive incremental redraws.
+
+- `diff(prev, next)` — minimal set of cell-level updates between two
+  `Frame`s. Full repaint when `prev` is `null` or dimensions differ;
+  cell-level otherwise. Wide-character continuation slots (width 0)
+  are never emitted directly — the leader handles them.
+- `applyDiff(changes)` — encode a `CellChange[]` as one ANSI escape
+  string ready for stdout: CSI cursor-position (1-indexed) + SGR + char
+  per change. Style state tracked across the run; styles re-emit only
+  when they change. Trailing reset emitted only when needed.
+- 29 unit tests across `diff` (13) and `applyDiff` (16).
+
+---
+
 ## [1.0.0-rc.1] — 2026-04-29
 
 First public release candidate. Both packages published to npm under the
