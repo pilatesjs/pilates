@@ -7,11 +7,11 @@
  *   │ Deploy          ░░░░░░░░░░░░░░░░░░░░    0%  pending         │
  *   ╰─────────────────────────────────────────────────────────────╯
  *
- * Run with `pnpm --filter @tercli-examples/progress-table dev`.
+ * Run with `pnpm --filter @pilates-examples/progress-table dev`.
  */
 
-import { type RenderNode, render } from '@tercli/render';
-import type { Color } from '@tercli/render';
+import { type RenderNode, render } from '@pilates/render';
+import type { Color } from '@pilates/render';
 
 const cols = process.stdout.columns ?? 80;
 

@@ -1,5 +1,5 @@
 {
-  "name": "@tercli-examples/split-pane",
+  "name": "@pilates-examples/split-pane",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     "dev": "tsx index.ts"
   },
   "dependencies": {
-    "@tercli/render": "workspace:*"
+    "@pilates/render": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.2"

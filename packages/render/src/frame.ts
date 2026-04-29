@@ -13,11 +13,16 @@
  * sequences are emitted only when the style changes.
  */
 
-import { graphemes, stringWidth } from '@tercli/core';
+import { graphemes, stringWidth } from '@pilates/core';
 import { Attr, SGR_RESET, attrsSgr, bgSgr, fgSgr, packAttrs, sgr } from './ansi.js';
 import type { Color, TextStyle } from './types.js';
 
-interface Cell {
+/**
+ * One cell of a {@link Frame}. `width` is `0` for the continuation slot of a
+ * 2-cell wide character (the slot to the right of the wide grapheme), `1`
+ * for a normal cell, `2` for the leading slot of a wide grapheme.
+ */
+export interface Cell {
   char: string;
   width: 0 | 1 | 2;
   fg: Color | undefined;

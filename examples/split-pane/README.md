@@ -6,7 +6,7 @@ editor / outline in the body, and a status strip at the bottom.
 ## Run
 
 ```bash
-pnpm --filter @tercli-examples/split-pane dev
+pnpm --filter @pilates-examples/split-pane dev
 ```
 
 ## What it shows

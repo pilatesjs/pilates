@@ -3,7 +3,7 @@
  *
  * A `RenderNode` is either a *container* (with optional children) or a *text*
  * leaf (with a `text` property). Both share the layout property surface that
- * mirrors `@tercli/core`'s setters, expressed as plain object fields.
+ * mirrors `@pilates/core`'s setters, expressed as plain object fields.
  *
  * Styling is NOT inherited in v1: every text leaf carries its own color /
  * attrs. Future versions may add inheritance via context.

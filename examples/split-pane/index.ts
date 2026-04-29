@@ -1,7 +1,7 @@
 /**
  * split-pane — header + 3-pane body + status footer.
  *
- *   ┌─ tercli ─────────────────────────────────────────────────────────────────┐
+ *   ┌─ Pilates ─────────────────────────────────────────────────────────────────┐
  *   │ Headless layout engine for terminal UIs                                  │
  *   └──────────────────────────────────────────────────────────────────────────┘
  *   ┌─ Files ──────────┐╭─ Editor ───────────────────────────────────╮┌─ Outline ─────┐
@@ -16,10 +16,10 @@
  *   └──────────────────┘╰────────────────────────────────────────────╯└───────────────┘
  *    STATUS: ready    main • TypeScript • LF • UTF-8 • 7:9
  *
- * Run with `pnpm --filter @tercli-examples/split-pane dev`.
+ * Run with `pnpm --filter @pilates-examples/split-pane dev`.
  */
 
-import { type RenderNode, render } from '@tercli/render';
+import { type RenderNode, render } from '@pilates/render';
 
 const cols = process.stdout.columns ?? 80;
 const rows = process.stdout.rows ?? 24;
@@ -78,7 +78,7 @@ const tree: RenderNode = {
     {
       height: 3,
       border: 'single',
-      title: 'tercli',
+      title: 'Pilates',
       children: [{ text: 'Headless layout engine for terminal UIs', color: 'cyan' }],
     },
     {

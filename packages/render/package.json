@@ -1,7 +1,7 @@
 {
-  "name": "@tercli/render",
-  "version": "1.0.0-rc.1",
-  "description": "Out-of-box renderer for @tercli/core. Declarative tree to ANSI-styled string.",
+  "name": "@pilates/render",
+  "version": "1.0.0-rc.2",
+  "description": "Out-of-box renderer for @pilates/core. Declarative tree to ANSI-styled string.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,7 +12,7 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": ["dist", "README.md"],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -b",
@@ -20,9 +20,18 @@
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "dependencies": {
-    "@tercli/core": "workspace:*"
+    "@pilates/core": "workspace:*"
   },
-  "keywords": ["terminal", "tui", "cli", "render", "ansi", "tercli"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pilates/pilates.git",
+    "directory": "packages/render"
+  },
+  "homepage": "https://github.com/pilates/pilates#readme",
+  "bugs": {
+    "url": "https://github.com/pilates/pilates/issues"
+  },
+  "keywords": ["terminal", "tui", "cli", "render", "ansi", "pilates"],
   "engines": {
     "node": ">=20"
   }

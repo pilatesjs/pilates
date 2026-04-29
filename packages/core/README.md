@@ -1,10 +1,10 @@
-# @tercli/core
+# @pilates/core
 
 > Headless flex layout engine for terminal UIs. Imperative `Node` API, integer cell
 > coordinates, terminal-correct text measurement. **Pure TypeScript, zero runtime
 > dependencies.**
 
-`@tercli/core` is what you get when you take Yoga's flex algorithm, rebuild it for
+`@pilates/core` is the engine of **Pilates** — what you get when you take Yoga's flex algorithm, rebuild it for
 the terminal (integer cells, CJK / emoji / wide-char awareness, ANSI escape
 passthrough), and *unbundle* it from any UI framework. Use it directly, or wrap it
 in React, Vue, Svelte, or anything else.
@@ -12,13 +12,13 @@ in React, Vue, Svelte, or anything else.
 ## Install
 
 ```bash
-npm install @tercli/core
+npm install @pilates/core
 ```
 
 ## Quick start
 
 ```ts
-import { Node, Edge } from '@tercli/core';
+import { Node, Edge } from '@pilates/core';
 
 const root = Node.create();
 root.setFlexDirection('row');
@@ -59,7 +59,7 @@ Setters mirror Yoga / CSS Flexbox semantics. All values are in terminal cells.
 ## Text measurement
 
 ```ts
-import { stringWidth, cellWidth, graphemes, stripAnsi } from '@tercli/core';
+import { stringWidth, cellWidth, graphemes, stripAnsi } from '@pilates/core';
 
 stringWidth('hello');      // 5
 stringWidth('你好');        // 4 (each CJK char is 2 cells)
@@ -76,7 +76,7 @@ generated at build time and shipped with the package.
 ## Custom text measurement (measure functions)
 
 ```ts
-import { Node, MeasureMode } from '@tercli/core';
+import { Node, MeasureMode } from '@pilates/core';
 
 const text = Node.create();
 text.setMeasureFunc((width, widthMode, height, heightMode) => {

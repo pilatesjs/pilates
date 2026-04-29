@@ -1,15 +1,20 @@
-# tercli
+# Pilates
+
+[![npm @pilates/core](https://img.shields.io/npm/v/@pilates/core?label=%40pilates%2Fcore&color=cb3837)](https://www.npmjs.com/package/@pilates/core)
+[![npm @pilates/render](https://img.shields.io/npm/v/@pilates/render?label=%40pilates%2Frender&color=cb3837)](https://www.npmjs.com/package/@pilates/render)
+[![bundle size @pilates/core](https://img.shields.io/bundlephobia/minzip/@pilates/core?label=%40pilates%2Fcore%20size)](https://bundlephobia.com/package/@pilates/core)
+[![license MIT](https://img.shields.io/npm/l/@pilates/core?color=blue)](./LICENSE)
 
 > Headless flex layout engine for terminal UIs. Pure TypeScript, zero runtime
 > dependencies.
 
-`tercli` is what you get when you take Yoga's flex algorithm, rebuild it for the
+**Pilates** is what you get when you take Yoga's flex algorithm, rebuild it for the
 terminal (integer cell coordinates, CJK / emoji / wide-char awareness, ANSI
 escape passthrough), and *unbundle* it from any UI framework. Use it directly
 to compute layouts, or wrap the included renderer to produce styled strings.
 
 ```ts
-import { render } from '@tercli/render';
+import { render } from '@pilates/render';
 
 process.stdout.write(
   render({
@@ -34,26 +39,26 @@ process.stdout.write(
 Terminal UIs in JavaScript are dominated by [Ink](https://github.com/vadimdemedes/ink),
 which couples two distinct concerns into one package: the Yoga flex layout
 engine (via WASM) and a React reconciler. If you want the layout half, you have
-to take all of React. `tercli` separates them:
+to take all of React. **Pilates** separates them:
 
-- **`@tercli/core`** — the engine. Imperative `Node` API, returns integer cell
+- **`@pilates/core`** — the engine. Imperative `Node` API, returns integer cell
   coordinates. Pure TypeScript, **zero runtime dependencies**. Handles
   CJK / emoji / wide-char widths, integer-cell rounding, the CSS Flexbox
   freeze loop, and absolute positioning. Verified cell-for-cell against
   Meta's `yoga-layout` (WASM) on 30 fixtures.
-- **`@tercli/render`** — the out-of-box renderer. Declarative POJO tree →
+- **`@pilates/render`** — the out-of-box renderer. Declarative POJO tree →
   painted ANSI string with borders, titles, colors, and text wrap. Uses core
   internally; depends only on it.
 
-A future `@tercli/react` reconciler can sit alongside `@tercli/render`
+A future `@pilates/react` reconciler can sit alongside `@pilates/render`
 without touching either.
 
 ## Packages
 
 | Package | Status | What |
 |---|---|---|
-| [`@tercli/core`](./packages/core)     | `1.0.0-rc.1` | Engine: imperative Node API, returns layout boxes. |
-| [`@tercli/render`](./packages/render) | `1.0.0-rc.1` | Out-of-box: declarative tree → painted string. |
+| [`@pilates/core`](./packages/core)     | `1.0.0-rc.1` | Engine: imperative Node API, returns layout boxes. |
+| [`@pilates/render`](./packages/render) | `1.0.0-rc.1` | Out-of-box: declarative tree → painted string. |
 
 ## Examples
 
@@ -67,15 +72,15 @@ Three runnable examples live under [`examples/`](./examples/):
 
 ```bash
 pnpm install
-pnpm --filter @tercli-examples/chat-log dev
-pnpm --filter @tercli-examples/progress-table dev
-pnpm --filter @tercli-examples/split-pane dev
+pnpm --filter @pilates-examples/chat-log dev
+pnpm --filter @pilates-examples/progress-table dev
+pnpm --filter @pilates-examples/split-pane dev
 ```
 
 ## Quick start (using just the engine)
 
 ```ts
-import { Node, Edge } from '@tercli/core';
+import { Node, Edge } from '@pilates/core';
 
 const root = Node.create();
 root.setFlexDirection('row');
@@ -97,10 +102,10 @@ sidebar.getComputedLayout(); // { left:58, top:1, width:20, height:22 }
 ```
 
 You'd then paint to the terminal yourself — or pass the same shape via the
-declarative API to `@tercli/render` to skip the painting:
+declarative API to `@pilates/render` to skip the painting:
 
 ```ts
-import { render } from '@tercli/render';
+import { render } from '@pilates/render';
 
 process.stdout.write(
   render({

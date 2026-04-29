@@ -8,10 +8,10 @@
  *   ╰───────────────────────────────────────╯└────────────────────┘
  *
  * Static demo: builds the tree, calls render(), writes the result.
- * Run with `pnpm --filter @tercli-examples/chat-log dev`.
+ * Run with `pnpm --filter @pilates-examples/chat-log dev`.
  */
 
-import { type RenderNode, render } from '@tercli/render';
+import { type RenderNode, render } from '@pilates/render';
 
 const cols = process.stdout.columns ?? 80;
 const rows = process.stdout.rows ?? 24;

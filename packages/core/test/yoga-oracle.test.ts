@@ -1,5 +1,5 @@
 /**
- * Yoga oracle: build the same tree in @tercli/core and yoga-layout (Meta's
+ * Yoga oracle: build the same tree in @pilates/core and yoga-layout (Meta's
  * reference WASM build), call calculateLayout in both, and assert that the
  * computed layouts match cell-for-cell.
  *

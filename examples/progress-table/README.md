@@ -6,7 +6,7 @@ status.
 ## Run
 
 ```bash
-pnpm --filter @tercli-examples/progress-table dev
+pnpm --filter @pilates-examples/progress-table dev
 ```
 
 ## What it shows

@@ -1,6 +1,6 @@
 /**
  * Translate the declarative `RenderNode` tree into a tree of imperative
- * `@tercli/core` `Node`s, ready for `calculateLayout()`.
+ * `@pilates/core` `Node`s, ready for `calculateLayout()`.
  *
  * The translation also handles:
  *   - Border-as-padding: a node with a border consumes 1 cell on each edge,
@@ -12,7 +12,7 @@
  * RenderNode so the painter can look up styling without re-walking.
  */
 
-import { Edge, type MeasureFunc, MeasureMode, Node, stringWidth } from '@tercli/core';
+import { Edge, type MeasureFunc, MeasureMode, Node, stringWidth } from '@pilates/core';
 import { hasBorder } from './borders.js';
 import type { ContainerNode, EdgeValue, RenderNode, TextNode } from './types.js';
 import { isTextNode } from './types.js';

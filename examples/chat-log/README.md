@@ -6,7 +6,7 @@ the right.
 ## Run
 
 ```bash
-pnpm --filter @tercli-examples/chat-log dev
+pnpm --filter @pilates-examples/chat-log dev
 ```
 
 ## What it shows

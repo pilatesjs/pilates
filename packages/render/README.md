@@ -1,10 +1,10 @@
-# @tercli/render
+# @pilates/render
 
-Out-of-box renderer for [`@tercli/core`](../core). Takes a declarative tree, returns
+Out-of-box renderer for [`@pilates/core`](../core). Takes a declarative tree, returns
 a painted string with ANSI styling and box-drawing borders.
 
 ```ts
-import { render } from '@tercli/render';
+import { render } from '@pilates/render';
 
 const out = render({
   width: 80,

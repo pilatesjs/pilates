@@ -1,5 +1,5 @@
 {
-  "name": "@tercli/core",
+  "name": "@pilates/core",
   "version": "1.0.0-rc.1",
   "description": "Headless flex layout engine for terminal UIs. Pure TypeScript, zero dependencies.",
   "license": "MIT",
@@ -12,12 +12,21 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "src", "README.md"],
+  "files": ["dist", "README.md"],
   "sideEffects": false,
   "scripts": {
     "build": "tsc -b",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pilates/pilates.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/pilates/pilates#readme",
+  "bugs": {
+    "url": "https://github.com/pilates/pilates/issues"
   },
   "keywords": ["terminal", "tui", "cli", "layout", "flexbox", "yoga", "headless"],
   "engines": {

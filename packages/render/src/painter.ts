@@ -14,8 +14,8 @@
  * relative `layout.left/top` as we descend.
  */
 
-import { stringWidth } from '@tercli/core';
-import type { Node } from '@tercli/core';
+import { stringWidth } from '@pilates/core';
+import type { Node } from '@pilates/core';
 import { borderChars, hasBorder } from './borders.js';
 import type { Bridge } from './build.js';
 import { type CellStyle, type Frame, type Rect, styleToCellStyle } from './frame.js';

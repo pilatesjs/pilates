@@ -12,7 +12,7 @@
  * Hard `\n` always forces a break.
  */
 
-import { graphemes, stringWidth } from '@tercli/core';
+import { graphemes, stringWidth } from '@pilates/core';
 
 const ELLIPSIS = '…';
 

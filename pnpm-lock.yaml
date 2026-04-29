@@ -35,7 +35,37 @@ importers:
 
   examples/chat-log:
     dependencies:
-      '@tercli/render':
+      '@pilates/render':
+        specifier: workspace:*
+        version: link:../../packages/render
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+
+  examples/dashboard:
+    dependencies:
+      '@pilates/render':
+        specifier: workspace:*
+        version: link:../../packages/render
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+
+  examples/gallery:
+    dependencies:
+      '@pilates/render':
+        specifier: workspace:*
+        version: link:../../packages/render
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+
+  examples/modal:
+    dependencies:
+      '@pilates/render':
         specifier: workspace:*
         version: link:../../packages/render
     devDependencies:
@@ -45,7 +75,7 @@ importers:
 
   examples/progress-table:
     dependencies:
-      '@tercli/render':
+      '@pilates/render':
         specifier: workspace:*
         version: link:../../packages/render
     devDependencies:
@@ -55,7 +85,7 @@ importers:
 
   examples/split-pane:
     dependencies:
-      '@tercli/render':
+      '@pilates/render':
         specifier: workspace:*
         version: link:../../packages/render
     devDependencies:
@@ -65,9 +95,15 @@ importers:
 
   packages/core: {}
 
+  packages/diff:
+    dependencies:
+      '@pilates/render':
+        specifier: workspace:*
+        version: link:../render
+
   packages/render:
     dependencies:
-      '@tercli/core':
+      '@pilates/core':
         specifier: workspace:*
         version: link:../core
 
