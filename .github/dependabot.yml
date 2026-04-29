@@ -12,6 +12,15 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Biome v2 ships a different config schema; major bumps need manual
+      # migration of biome.json and re-running the formatter.
+      - dependency-name: "@biomejs/biome"
+        update-types: ["version-update:semver-major"]
+      # TypeScript majors regularly change strictness defaults and emit
+      # behavior; coordinate with the rest of the toolchain manually.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: chore
       include: scope
