@@ -23,7 +23,7 @@
     "release": "pnpm ci && pnpm -r --filter \"./packages/*\" exec pnpm publish --access=public --no-git-checks"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.4",
+    "@biomejs/biome": "^2.4.13",
     "@types/node": "^22.10.0",
     "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/headless": "^5.5.0",
