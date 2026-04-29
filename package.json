@@ -28,7 +28,7 @@
     "@xterm/addon-unicode11": "^0.8.0",
     "@xterm/headless": "^5.5.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
+    "typescript": "^6.0.3",
     "vitest": "^2.1.8",
     "yoga-layout": "^3.2.1"
   },
