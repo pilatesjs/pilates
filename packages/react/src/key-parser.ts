@@ -21,6 +21,27 @@ export function parse(input: string): ParseResult {
     const ch = String.fromCodePoint(cp);
     const advance = ch.length;
 
+    if (ch === '\r' || ch === '\n') {
+      events.push({ name: 'enter', ctrl: false, alt: false, shift: false, sequence: ch });
+      i += advance;
+      continue;
+    }
+    if (ch === '\t') {
+      events.push({ name: 'tab', ctrl: false, alt: false, shift: false, sequence: ch });
+      i += advance;
+      continue;
+    }
+    if (ch === '\x7f' || ch === '\x08') {
+      events.push({ name: 'backspace', ctrl: false, alt: false, shift: false, sequence: ch });
+      i += advance;
+      continue;
+    }
+    if (ch === ' ') {
+      events.push({ name: 'space', ctrl: false, alt: false, shift: false, sequence: ch });
+      i += advance;
+      continue;
+    }
+
     if (cp === 0x00) {
       events.push({
         ch: ' ',

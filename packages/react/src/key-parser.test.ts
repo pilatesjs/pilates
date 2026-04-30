@@ -47,3 +47,19 @@ describe('key-parser control bytes', () => {
     ]);
   });
 });
+
+describe('key-parser named specials', () => {
+  it.each([
+    ['\r', 'enter'],
+    ['\n', 'enter'],
+    ['\t', 'tab'],
+    ['\x7f', 'backspace'],
+    ['\x08', 'backspace'],
+    [' ', 'space'],
+  ] as const)('decodes %j as { name: %j }', (bytes, name) => {
+    const { events } = parse(bytes);
+    expect(events).toEqual([
+      { name, ctrl: false, alt: false, shift: false, sequence: bytes },
+    ]);
+  });
+});
