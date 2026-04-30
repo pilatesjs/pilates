@@ -16,7 +16,7 @@ function defined<T extends object>(props: T): Partial<T> {
   return out;
 }
 
-export function buildHostConfig(): HostConfig<
+type PilatesHostConfig = HostConfig<
   /* Type */ string,
   /* Props */ Record<string, unknown>,
   /* Container */ RootContainer,
@@ -30,8 +30,15 @@ export function buildHostConfig(): HostConfig<
   /* ChildSet */ never,
   /* TimeoutHandle */ ReturnType<typeof setTimeout>,
   /* NoTimeout */ -1
-> {
-  return {
+>;
+
+export function buildHostConfig(): PilatesHostConfig {
+  // react-reconciler@0.31 routes update priority through three host
+  // methods (resolveUpdatePriority / getCurrentUpdatePriority /
+  // setCurrentUpdatePriority). They aren't in the @types/react-reconciler
+  // @0.28.9 HostConfig surface yet, so we attach them via cast below.
+  let currentUpdatePriority = DefaultEventPriority;
+  const base: PilatesHostConfig = {
     supportsMutation: true,
     supportsPersistence: false,
     supportsHydration: false,
@@ -116,6 +123,17 @@ export function buildHostConfig(): HostConfig<
     prepareScopeUpdate: () => {},
     getInstanceFromScope: () => null,
   };
+  // The 0.31 runtime expects these four extra methods. Cast through
+  // `unknown` because the older @types/react-reconciler doesn't list them.
+  return {
+    ...base,
+    resolveUpdatePriority: () => DefaultEventPriority,
+    getCurrentUpdatePriority: () => currentUpdatePriority,
+    setCurrentUpdatePriority: (priority: number) => {
+      currentUpdatePriority = priority;
+    },
+    maySuspendCommit: () => false,
+  } as unknown as PilatesHostConfig;
 }
 
 function createInstance(type: string, props: Record<string, unknown>): HostInstance {
