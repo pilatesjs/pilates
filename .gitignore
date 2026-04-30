@@ -9,3 +9,8 @@ coverage/
 .vscode/
 *.tgz
 .worktrees/
+
+# Python build artefacts (placeholder/pilates-py/)
+__pycache__/
+*.egg-info/
+.venv/
