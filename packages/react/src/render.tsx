@@ -31,6 +31,7 @@ export interface RenderOptions {
   height?: number;
   stdout?: NodeJS.WriteStream;
   stderr?: NodeJS.WriteStream;
+  stdin?: NodeJS.ReadStream;
 }
 
 export interface RenderInstance {
@@ -228,6 +229,7 @@ function releaseRawMode(
 export function render(element: ReactElement, options: RenderOptions = {}): RenderInstance {
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
+  const stdin = options.stdin ?? process.stdin;
   const width = options.width ?? stdout.columns ?? 80;
   const height = options.height ?? stdout.rows ?? 24;
 
@@ -298,7 +300,11 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
       createElement(
         ResizeBridge,
         { rootNode, container },
-        createElement(StderrContext.Provider, { value: stderrValue }, element),
+        createElement(
+          StdinProvider,
+          { stdin },
+          createElement(StderrContext.Provider, { value: stderrValue }, element),
+        ),
       ),
     ),
   );
