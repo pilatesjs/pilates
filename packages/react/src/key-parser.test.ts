@@ -97,3 +97,27 @@ describe('key-parser SS3 function keys', () => {
     expect(remainder).toBe('');
   });
 });
+
+describe('key-parser alt and lone-escape', () => {
+  it('decodes lone ESC as { name: "escape" }', () => {
+    const { events, remainder } = parse('\x1b');
+    expect(events).toEqual([
+      { name: 'escape', ctrl: false, alt: false, shift: false, sequence: '\x1b' },
+    ]);
+    expect(remainder).toBe('');
+  });
+
+  it('decodes ESC + lowercase letter as alt+letter', () => {
+    const { events } = parse('\x1ba');
+    expect(events).toEqual([
+      { ch: 'a', ctrl: false, alt: true, shift: false, sequence: '\x1ba' },
+    ]);
+  });
+
+  it('decodes ESC + uppercase letter as alt+letter with shift=true', () => {
+    const { events } = parse('\x1bA');
+    expect(events).toEqual([
+      { ch: 'A', ctrl: false, alt: true, shift: true, sequence: '\x1bA' },
+    ]);
+  });
+});

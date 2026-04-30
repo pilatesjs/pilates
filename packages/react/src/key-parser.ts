@@ -59,6 +59,36 @@ export function parse(input: string): ParseResult {
       continue;
     }
 
+    if (cp === 0x1b) {
+      if (i + 1 >= input.length) {
+        events.push({ name: 'escape', ctrl: false, alt: false, shift: false, sequence: '\x1b' });
+        i += 1;
+        continue;
+      }
+      const next = input.codePointAt(i + 1);
+      if (next === undefined) {
+        events.push({ name: 'escape', ctrl: false, alt: false, shift: false, sequence: '\x1b' });
+        i += 1;
+        continue;
+      }
+      const nextCh = String.fromCodePoint(next);
+      const sequence = '\x1b' + nextCh;
+      if (next >= ASCII_PRINTABLE_MIN && next <= ASCII_PRINTABLE_MAX) {
+        events.push({
+          ch: nextCh,
+          ctrl: false,
+          alt: true,
+          shift: isAsciiUppercase(nextCh),
+          sequence,
+        });
+        i += 1 + nextCh.length;
+        continue;
+      }
+      events.push({ ctrl: false, alt: false, shift: false, sequence });
+      i += 1 + nextCh.length;
+      continue;
+    }
+
     if (ch === '\r' || ch === '\n') {
       events.push({ name: 'enter', ctrl: false, alt: false, shift: false, sequence: ch });
       i += advance;
