@@ -323,3 +323,34 @@ describe('hooks', () => {
     await expect(instance.waitUntilExit()).rejects.toThrow('EPIPE');
   });
 });
+
+describe('validation', () => {
+  it('throws when <Text> contains a <Box>', () => {
+    expect(() =>
+      renderToString(
+        <Text>
+          <Box width={1} height={1} />
+        </Text>,
+        { width: 5, height: 1 },
+      ),
+    ).toThrow(/<Text> children must be string, number, <Text>, or <Newline>/);
+  });
+
+  it('throws when bare strings appear at the root', () => {
+    expect(() => renderToString(<>{'bare'}</>, { width: 5, height: 1 })).toThrow(
+      /bare strings are not allowed/,
+    );
+  });
+
+  it('component-thrown render error rejects waitUntilExit and writes to stderr', async () => {
+    function Boom(): never {
+      throw new Error('kaboom');
+    }
+    const stdout = makeFakeStdout(20, 5);
+    const stderr = makeFakeStdout(20, 5);
+    const stderrBuf = (stderr as unknown as { __buf: string[] }).__buf;
+    const instance = render(<Boom />, { stdout, stderr });
+    await expect(instance.waitUntilExit()).rejects.toThrow('kaboom');
+    expect(stderrBuf.join('')).toContain('Pilates render error');
+  });
+});

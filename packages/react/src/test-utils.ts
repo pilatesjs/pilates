@@ -54,6 +54,11 @@ export function renderToString(element: ReactElement, options: RenderToStringOpt
       /* drop ANSI deltas — tests read frames, not bytes. */
     },
   };
+  // Capture commit-phase errors (host-config validation throws) so the
+  // caller sees them as a thrown exception, not a silently-dropped log.
+  // Production render() routes the same callback through finishUnmount;
+  // tests want the error to be observable synchronously.
+  let captured: unknown = null;
   const reconciler = ReactReconciler(buildHostConfig());
   const containerHandle = reconciler.createContainer(
     container,
@@ -62,12 +67,15 @@ export function renderToString(element: ReactElement, options: RenderToStringOpt
     false,
     null,
     'pilates',
-    () => {},
+    (err: Error) => {
+      captured = err;
+    },
     null,
   );
   const sync = asSync(reconciler);
   sync.updateContainerSync(element, containerHandle, null, null);
   sync.flushSyncWork();
+  if (captured) throw captured;
   // Frame.toString() joins rows with `\n` but omits the trailing newline.
   // Tests treat rows as newline-terminated, so append one here.
   const out = container.prevFrame?.toString() ?? '';
