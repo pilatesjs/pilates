@@ -354,6 +354,19 @@ describe('examples smoke', () => {
     const out = stripAnsi(buf.join(''));
     expect(out).toContain('Pilates Dashboard');
   });
+
+  it('react-modal App renders without throwing', async () => {
+    const { App } = await import('../../../examples/react-modal/index.tsx');
+    const { render: pkgRender } = await import('@pilates/react');
+    const stdout = makeFakeStdout(60, 16);
+    const stderr = makeFakeStdout(60, 16);
+    const buf = (stdout as unknown as { __buf: string[] }).__buf;
+    const instance = pkgRender(<App />, { stdout, stderr });
+    instance.unmount();
+    await instance.waitUntilExit();
+    const out = stripAnsi(buf.join(''));
+    expect(out).toContain('Confirm action');
+  });
 });
 
 describe('validation', () => {
