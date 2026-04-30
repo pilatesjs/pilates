@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { useState } from 'react';
+import { describe, expect, it } from 'vitest';
 import { Box, Newline, Spacer, Text } from './components.js';
 import { useApp, useInput, useStdout } from './hooks.js';
 import { render } from './render.js';
@@ -500,7 +500,9 @@ describe('useInput', () => {
     const handle = mountWithInput<boolean>(
       true,
       (visible) => (
-        <Box width={1} height={1}>{visible && <Listener />}</Box>
+        <Box width={1} height={1}>
+          {visible && <Listener />}
+        </Box>
       ),
       { width: 1, height: 1 },
     );
@@ -519,11 +521,7 @@ describe('useInput lifecycle', () => {
       useInput(() => {});
       return <Text>x</Text>;
     }
-    const handle = mountWithInput(
-      0,
-      () => <App />,
-      { width: 1, height: 1 },
-    );
+    const handle = mountWithInput(0, () => <App />, { width: 1, height: 1 });
     expect(handle.fakeStdin.rawModeCalls).toEqual([true]);
     handle.unmount();
   });
@@ -533,21 +531,13 @@ describe('useInput lifecycle', () => {
       useInput(() => {});
       return <Text>x</Text>;
     }
-    const handle = mountWithInput(
-      0,
-      () => <App />,
-      { width: 1, height: 1 },
-    );
+    const handle = mountWithInput(0, () => <App />, { width: 1, height: 1 });
     handle.unmount();
     expect(handle.fakeStdin.rawModeCalls).toEqual([true, false]);
   });
 
   it('does not enter raw mode when no useInput is mounted', () => {
-    const handle = mountWithInput(
-      0,
-      () => <Text>x</Text>,
-      { width: 1, height: 1 },
-    );
+    const handle = mountWithInput(0, () => <Text>x</Text>, { width: 1, height: 1 });
     expect(handle.fakeStdin.rawModeCalls).toEqual([]);
     handle.unmount();
   });
@@ -557,11 +547,7 @@ describe('useInput lifecycle', () => {
       useInput(() => {});
       return <Text>x</Text>;
     }
-    const handle = mountWithInput(
-      0,
-      () => <App />,
-      { width: 1, height: 1 },
-    );
+    const handle = mountWithInput(0, () => <App />, { width: 1, height: 1 });
     handle.fakeStdin.setRawMode = () => {
       throw new Error('boom');
     };
@@ -611,11 +597,7 @@ describe('useInput end-to-end', () => {
       });
       return <Text>n={n}</Text>;
     }
-    const handle = mountWithInput(
-      0,
-      () => <App />,
-      { width: 5, height: 1 },
-    );
+    const handle = mountWithInput(0, () => <App />, { width: 5, height: 1 });
     expect(stripAnsi(handle.allWrites())).toContain('n=0');
     handle.pressKey('up');
     handle.pressKey('up');

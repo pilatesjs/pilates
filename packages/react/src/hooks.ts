@@ -102,10 +102,7 @@ export function useStderr(): StderrHookValue {
   return v;
 }
 
-export function useInput(
-  handler: (event: KeyEvent) => void,
-  options: UseInputOptions = {},
-): void {
+export function useInput(handler: (event: KeyEvent) => void, options: UseInputOptions = {}): void {
   const v = useContext(StdinContext);
   if (!v) throw new Error('Pilates: useInput() must be used inside <render>.');
   const isActive = options.isActive ?? true;

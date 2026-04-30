@@ -13,17 +13,17 @@ import { LegacyRoot } from 'react-reconciler/constants.js';
 import {
   AppContext,
   type AppHookValue,
+  type KeyEvent,
   StderrContext,
   type StderrHookValue,
   StdinContext,
-  type KeyEvent,
   type StdinHookValue,
   StdoutContext,
   type StdoutHookValue,
   useStdout,
 } from './hooks.js';
-import { parse as parseKeys } from './key-parser.js';
 import { buildHostConfig } from './host-config.js';
+import { parse as parseKeys } from './key-parser.js';
 import type { RootContainer } from './reconciler.js';
 
 export interface RenderOptions {
@@ -207,7 +207,11 @@ function ensureRawMode(
       );
     }
   } else if (!isRawModeSupported) {
-    try { stdin.resume(); } catch { /* ignore */ }
+    try {
+      stdin.resume();
+    } catch {
+      /* ignore */
+    }
   }
 }
 

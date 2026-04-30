@@ -1,11 +1,11 @@
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
 import type { ContainerNode } from '@pilates/render';
 import { type ReactElement, act, createElement, useState } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
+import type { KeyEvent, KeyName } from './hooks.js';
 import { buildHostConfig } from './host-config.js';
 import type { RootContainer } from './reconciler.js';
-import type { KeyEvent, KeyName } from './hooks.js';
 import { StdinProvider } from './render.js';
 
 export interface RenderToStringOptions {
@@ -225,36 +225,82 @@ function eventToBytes(event: Partial<KeyEvent>): string {
   if (event.sequence) return event.sequence;
   if (event.name) {
     switch (event.name) {
-      case 'enter': return '\r';
-      case 'tab': return '\t';
-      case 'backspace': return '\x7f';
-      case 'escape': return '\x1b';
-      case 'space': return ' ';
+      case 'enter':
+        return '\r';
+      case 'tab':
+        return '\t';
+      case 'backspace':
+        return '\x7f';
+      case 'escape':
+        return '\x1b';
+      case 'space':
+        return ' ';
       case 'up':
-        return event.ctrl ? '\x1b[1;5A' : event.alt ? '\x1b[1;3A' : event.shift ? '\x1b[1;2A' : '\x1b[A';
+        return event.ctrl
+          ? '\x1b[1;5A'
+          : event.alt
+            ? '\x1b[1;3A'
+            : event.shift
+              ? '\x1b[1;2A'
+              : '\x1b[A';
       case 'down':
-        return event.ctrl ? '\x1b[1;5B' : event.alt ? '\x1b[1;3B' : event.shift ? '\x1b[1;2B' : '\x1b[B';
+        return event.ctrl
+          ? '\x1b[1;5B'
+          : event.alt
+            ? '\x1b[1;3B'
+            : event.shift
+              ? '\x1b[1;2B'
+              : '\x1b[B';
       case 'right':
-        return event.ctrl ? '\x1b[1;5C' : event.alt ? '\x1b[1;3C' : event.shift ? '\x1b[1;2C' : '\x1b[C';
+        return event.ctrl
+          ? '\x1b[1;5C'
+          : event.alt
+            ? '\x1b[1;3C'
+            : event.shift
+              ? '\x1b[1;2C'
+              : '\x1b[C';
       case 'left':
-        return event.ctrl ? '\x1b[1;5D' : event.alt ? '\x1b[1;3D' : event.shift ? '\x1b[1;2D' : '\x1b[D';
-      case 'home': return '\x1b[H';
-      case 'end': return '\x1b[F';
-      case 'pageUp': return '\x1b[5~';
-      case 'pageDown': return '\x1b[6~';
-      case 'delete': return '\x1b[3~';
-      case 'f1': return '\x1bOP';
-      case 'f2': return '\x1bOQ';
-      case 'f3': return '\x1bOR';
-      case 'f4': return '\x1bOS';
-      case 'f5': return '\x1b[15~';
-      case 'f6': return '\x1b[17~';
-      case 'f7': return '\x1b[18~';
-      case 'f8': return '\x1b[19~';
-      case 'f9': return '\x1b[20~';
-      case 'f10': return '\x1b[21~';
-      case 'f11': return '\x1b[23~';
-      case 'f12': return '\x1b[24~';
+        return event.ctrl
+          ? '\x1b[1;5D'
+          : event.alt
+            ? '\x1b[1;3D'
+            : event.shift
+              ? '\x1b[1;2D'
+              : '\x1b[D';
+      case 'home':
+        return '\x1b[H';
+      case 'end':
+        return '\x1b[F';
+      case 'pageUp':
+        return '\x1b[5~';
+      case 'pageDown':
+        return '\x1b[6~';
+      case 'delete':
+        return '\x1b[3~';
+      case 'f1':
+        return '\x1bOP';
+      case 'f2':
+        return '\x1bOQ';
+      case 'f3':
+        return '\x1bOR';
+      case 'f4':
+        return '\x1bOS';
+      case 'f5':
+        return '\x1b[15~';
+      case 'f6':
+        return '\x1b[17~';
+      case 'f7':
+        return '\x1b[18~';
+      case 'f8':
+        return '\x1b[19~';
+      case 'f9':
+        return '\x1b[20~';
+      case 'f10':
+        return '\x1b[21~';
+      case 'f11':
+        return '\x1b[23~';
+      case 'f12':
+        return '\x1b[24~';
     }
   }
   if (event.ch !== undefined) {
@@ -262,7 +308,7 @@ function eventToBytes(event: Partial<KeyEvent>): string {
       return String.fromCharCode(event.ch.charCodeAt(0) - 0x60);
     }
     if (event.alt) {
-      return '\x1b' + event.ch;
+      return `\x1b${event.ch}`;
     }
     return event.ch;
   }

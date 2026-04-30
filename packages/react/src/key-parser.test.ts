@@ -4,17 +4,13 @@ import { parse } from './key-parser.js';
 describe('key-parser plain ASCII', () => {
   it('decodes single printable lowercase letter', () => {
     const { events, remainder } = parse('a');
-    expect(events).toEqual([
-      { ch: 'a', ctrl: false, alt: false, shift: false, sequence: 'a' },
-    ]);
+    expect(events).toEqual([{ ch: 'a', ctrl: false, alt: false, shift: false, sequence: 'a' }]);
     expect(remainder).toBe('');
   });
 
   it('decodes single printable uppercase letter with shift=true', () => {
     const { events, remainder } = parse('A');
-    expect(events).toEqual([
-      { ch: 'A', ctrl: false, alt: false, shift: true, sequence: 'A' },
-    ]);
+    expect(events).toEqual([{ ch: 'A', ctrl: false, alt: false, shift: true, sequence: 'A' }]);
     expect(remainder).toBe('');
   });
 
@@ -28,23 +24,17 @@ describe('key-parser plain ASCII', () => {
 describe('key-parser control bytes', () => {
   it('decodes ctrl+a as { ch: "a", ctrl: true }', () => {
     const { events } = parse('\x01');
-    expect(events).toEqual([
-      { ch: 'a', ctrl: true, alt: false, shift: false, sequence: '\x01' },
-    ]);
+    expect(events).toEqual([{ ch: 'a', ctrl: true, alt: false, shift: false, sequence: '\x01' }]);
   });
 
   it('decodes ctrl+z as { ch: "z", ctrl: true }', () => {
     const { events } = parse('\x1a');
-    expect(events).toEqual([
-      { ch: 'z', ctrl: true, alt: false, shift: false, sequence: '\x1a' },
-    ]);
+    expect(events).toEqual([{ ch: 'z', ctrl: true, alt: false, shift: false, sequence: '\x1a' }]);
   });
 
   it('decodes ctrl+space (NUL byte) as { ch: " ", ctrl: true }', () => {
     const { events } = parse('\x00');
-    expect(events).toEqual([
-      { ch: ' ', ctrl: true, alt: false, shift: false, sequence: '\x00' },
-    ]);
+    expect(events).toEqual([{ ch: ' ', ctrl: true, alt: false, shift: false, sequence: '\x00' }]);
   });
 });
 
@@ -58,9 +48,7 @@ describe('key-parser named specials', () => {
     [' ', 'space'],
   ] as const)('decodes %j as { name: %j }', (bytes, name) => {
     const { events } = parse(bytes);
-    expect(events).toEqual([
-      { name, ctrl: false, alt: false, shift: false, sequence: bytes },
-    ]);
+    expect(events).toEqual([{ name, ctrl: false, alt: false, shift: false, sequence: bytes }]);
   });
 });
 
@@ -91,9 +79,7 @@ describe('key-parser SS3 function keys', () => {
     ['\x1bOS', 'f4'],
   ] as const)('decodes %j as { name: %j }', (bytes, name) => {
     const { events, remainder } = parse(bytes);
-    expect(events).toEqual([
-      { name, ctrl: false, alt: false, shift: false, sequence: bytes },
-    ]);
+    expect(events).toEqual([{ name, ctrl: false, alt: false, shift: false, sequence: bytes }]);
     expect(remainder).toBe('');
   });
 });
@@ -109,16 +95,12 @@ describe('key-parser alt and lone-escape', () => {
 
   it('decodes ESC + lowercase letter as alt+letter', () => {
     const { events } = parse('\x1ba');
-    expect(events).toEqual([
-      { ch: 'a', ctrl: false, alt: true, shift: false, sequence: '\x1ba' },
-    ]);
+    expect(events).toEqual([{ ch: 'a', ctrl: false, alt: true, shift: false, sequence: '\x1ba' }]);
   });
 
   it('decodes ESC + uppercase letter as alt+letter with shift=true', () => {
     const { events } = parse('\x1bA');
-    expect(events).toEqual([
-      { ch: 'A', ctrl: false, alt: true, shift: true, sequence: '\x1bA' },
-    ]);
+    expect(events).toEqual([{ ch: 'A', ctrl: false, alt: true, shift: true, sequence: '\x1bA' }]);
   });
 });
 
@@ -181,7 +163,7 @@ describe('key-parser edge cases', () => {
   it('rejoins partial CSI across chunks', () => {
     const first = parse('\x1b[');
     expect(first.remainder).toBe('\x1b[');
-    const second = parse(first.remainder + 'A');
+    const second = parse(`${first.remainder}A`);
     expect(second.events).toEqual([
       { name: 'up', ctrl: false, alt: false, shift: false, sequence: '\x1b[A' },
     ]);
@@ -190,8 +172,6 @@ describe('key-parser edge cases', () => {
 
   it('emits unrecognized CSI as a raw sequence event', () => {
     const { events } = parse('\x1b[99q');
-    expect(events).toEqual([
-      { ctrl: false, alt: false, shift: false, sequence: '\x1b[99q' },
-    ]);
+    expect(events).toEqual([{ ctrl: false, alt: false, shift: false, sequence: '\x1b[99q' }]);
   });
 });
