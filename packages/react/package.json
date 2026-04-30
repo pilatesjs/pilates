@@ -1,0 +1,50 @@
+{
+  "name": "@pilates/react",
+  "version": "0.1.0-rc.1",
+  "description": "React reconciler for @pilates/core. Author terminal UIs with JSX and hooks.",
+  "license": "MIT",
+  "author": "Zhijie Wang",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@pilates/core": "workspace:*",
+    "@pilates/render": "workspace:*",
+    "@pilates/diff": "workspace:*",
+    "react-reconciler": "^0.31.0"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-reconciler": "^0.28.9",
+    "react": "^19.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pilatesjs/pilates.git",
+    "directory": "packages/react"
+  },
+  "homepage": "https://github.com/pilatesjs/pilates#readme",
+  "bugs": {
+    "url": "https://github.com/pilatesjs/pilates/issues"
+  },
+  "keywords": ["terminal", "tui", "cli", "react", "reconciler", "ink", "pilates"],
+  "engines": {
+    "node": ">=20"
+  }
+}
