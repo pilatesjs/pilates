@@ -108,6 +108,38 @@ importers:
         specifier: ^4.19.2
         version: 4.21.0
 
+  examples/react-dashboard:
+    dependencies:
+      '@pilates/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+
+  examples/react-modal:
+    dependencies:
+      '@pilates/react':
+        specifier: workspace:*
+        version: link:../../packages/react
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
+
   examples/split-pane:
     dependencies:
       '@pilates/render':

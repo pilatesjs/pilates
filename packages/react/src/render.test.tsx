@@ -341,6 +341,19 @@ describe('examples smoke', () => {
     expect(out).toContain('counter');
     expect(out).toContain('n = 0');
   });
+
+  it('react-dashboard App renders without throwing', async () => {
+    const { App } = await import('../../../examples/react-dashboard/index.tsx');
+    const { render: pkgRender } = await import('@pilates/react');
+    const stdout = makeFakeStdout(60, 12);
+    const stderr = makeFakeStdout(60, 12);
+    const buf = (stdout as unknown as { __buf: string[] }).__buf;
+    const instance = pkgRender(<App />, { stdout, stderr });
+    instance.unmount();
+    await instance.waitUntilExit();
+    const out = stripAnsi(buf.join(''));
+    expect(out).toContain('Pilates Dashboard');
+  });
 });
 
 describe('validation', () => {

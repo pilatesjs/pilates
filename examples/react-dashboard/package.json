@@ -1,0 +1,18 @@
+{
+  "name": "@pilates-examples/react-dashboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.tsx",
+  "scripts": {
+    "dev": "tsx index.tsx"
+  },
+  "dependencies": {
+    "@pilates/react": "workspace:*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "tsx": "^4.19.2"
+  }
+}
