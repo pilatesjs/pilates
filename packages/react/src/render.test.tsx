@@ -568,3 +568,58 @@ describe('useInput lifecycle', () => {
     expect(() => handle.unmount()).not.toThrow();
   });
 });
+
+describe('useInput composition', () => {
+  it('mounts/unmounts cleanly under conditional rendering', () => {
+    const seen: string[] = [];
+    function Listener() {
+      useInput((event) => {
+        if (event.ch) seen.push(event.ch);
+      });
+      return null;
+    }
+    const handle = mountWithInput<{ which: 'a' | 'b' | 'none' }>(
+      { which: 'a' },
+      (state) => (
+        <Box width={1} height={1}>
+          {state.which === 'a' && <Listener />}
+          {state.which === 'b' && <Listener />}
+        </Box>
+      ),
+      { width: 1, height: 1 },
+    );
+    handle.pressChar('1');
+    expect(seen).toEqual(['1']);
+
+    handle.setState({ which: 'b' });
+    handle.pressChar('2');
+    expect(seen).toEqual(['1', '2']);
+
+    handle.setState({ which: 'none' });
+    handle.pressChar('3');
+    expect(seen).toEqual(['1', '2']);
+    handle.unmount();
+  });
+});
+
+describe('useInput end-to-end', () => {
+  it('keypress drives setState and re-renders', () => {
+    function App() {
+      const [n, setN] = useState(0);
+      useInput((event) => {
+        if (event.name === 'up') setN((x) => x + 1);
+      });
+      return <Text>n={n}</Text>;
+    }
+    const handle = mountWithInput(
+      0,
+      () => <App />,
+      { width: 5, height: 1 },
+    );
+    expect(stripAnsi(handle.allWrites())).toContain('n=0');
+    handle.pressKey('up');
+    handle.pressKey('up');
+    expect(stripAnsi(handle.lastWrite())).toContain('2');
+    handle.unmount();
+  });
+});
