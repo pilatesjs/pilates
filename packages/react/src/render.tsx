@@ -5,6 +5,7 @@ import {
   type ReactNode,
   createElement,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import ReactReconciler from 'react-reconciler';
@@ -14,10 +15,14 @@ import {
   type AppHookValue,
   StderrContext,
   type StderrHookValue,
+  StdinContext,
+  type KeyEvent,
+  type StdinHookValue,
   StdoutContext,
   type StdoutHookValue,
   useStdout,
 } from './hooks.js';
+import { parse as parseKeys } from './key-parser.js';
 import { buildHostConfig } from './host-config.js';
 import type { RootContainer } from './reconciler.js';
 
@@ -92,6 +97,132 @@ function ResizeBridge({
     force((n) => n + 1);
   }, [columns, rows, rootNode, container]);
   return createElement(Fragment, null, children);
+}
+
+function StdinProvider({
+  stdin,
+  children,
+}: {
+  stdin: NodeJS.ReadStream;
+  children?: ReactNode;
+}) {
+  const stateRef = useRef({
+    subscribers: new Map<(event: KeyEvent) => void, boolean>(),
+    refcount: 0,
+    remainder: '',
+    rawModeOn: false,
+  });
+  const isRawModeSupported = stdin.isTTY === true;
+
+  useEffect(() => {
+    const state = stateRef.current;
+    const onData = (chunk: Buffer | string) => {
+      const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
+      const combined = state.remainder + text;
+      const { events, remainder } = parseKeys(combined);
+      state.remainder = remainder;
+      for (const event of events) {
+        for (const [handler, active] of state.subscribers) {
+          if (!active) continue;
+          try {
+            handler(event);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            process.stderr.write(`Pilates: useInput handler threw: ${msg}\n`);
+          }
+        }
+      }
+    };
+    stdin.on('data', onData);
+    return () => {
+      stdin.off('data', onData);
+      if (state.rawModeOn && isRawModeSupported) {
+        try {
+          stdin.setRawMode(false);
+          state.rawModeOn = false;
+        } catch {
+          /* swallow on teardown */
+        }
+      }
+    };
+  }, [stdin, isRawModeSupported]);
+
+  const value: StdinHookValue = {
+    stdin,
+    isRawModeSupported,
+    subscribe: (handler) => {
+      const state = stateRef.current;
+      state.subscribers.set(handler, true);
+      state.refcount += 1;
+      ensureRawMode(stdin, state, isRawModeSupported);
+      return () => {
+        const wasActive = state.subscribers.get(handler) === true;
+        state.subscribers.delete(handler);
+        if (wasActive) {
+          state.refcount -= 1;
+          if (state.refcount === 0) releaseRawMode(stdin, state, isRawModeSupported);
+        }
+      };
+    },
+    setActive: (handler, active) => {
+      const state = stateRef.current;
+      const current = state.subscribers.get(handler);
+      if (current === undefined) return;
+      if (current === active) return;
+      state.subscribers.set(handler, active);
+      if (active) {
+        state.refcount += 1;
+        ensureRawMode(stdin, state, isRawModeSupported);
+      } else {
+        state.refcount -= 1;
+        if (state.refcount === 0) releaseRawMode(stdin, state, isRawModeSupported);
+      }
+    },
+  };
+  return createElement(StdinContext.Provider, { value }, children);
+}
+
+interface StdinProviderState {
+  subscribers: Map<(event: KeyEvent) => void, boolean>;
+  refcount: number;
+  remainder: string;
+  rawModeOn: boolean;
+}
+
+function ensureRawMode(
+  stdin: NodeJS.ReadStream,
+  state: StdinProviderState,
+  isRawModeSupported: boolean,
+): void {
+  if (!state.rawModeOn && isRawModeSupported) {
+    try {
+      stdin.setRawMode(true);
+      stdin.resume();
+      state.rawModeOn = true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(
+        `Pilates: raw stdin mode not available; keystroke dispatch may be line-buffered (${msg})\n`,
+      );
+    }
+  } else if (!isRawModeSupported) {
+    try { stdin.resume(); } catch { /* ignore */ }
+  }
+}
+
+function releaseRawMode(
+  stdin: NodeJS.ReadStream,
+  state: StdinProviderState,
+  isRawModeSupported: boolean,
+): void {
+  if (state.rawModeOn && isRawModeSupported) {
+    try {
+      stdin.setRawMode(false);
+      state.rawModeOn = false;
+    } catch {
+      /* swallow */
+    }
+  }
 }
 
 export function render(element: ReactElement, options: RenderOptions = {}): RenderInstance {
@@ -184,3 +315,5 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
 
   return instance;
 }
+
+export { StdinProvider };
