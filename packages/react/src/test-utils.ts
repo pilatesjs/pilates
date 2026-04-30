@@ -44,7 +44,8 @@ function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler 
  * strip, and matches `@pilates/render`'s own test conventions
  * (`toPlainString()`).
  *
- * Public — exported from `@pilates/react/test-utils`.
+ * Public — exported from `@pilates/react/test-utils`. Intended for use in
+ * test environments only.
  */
 export function renderToString(element: ReactElement, options: RenderToStringOptions): string {
   const rootNode: ContainerNode = {
@@ -102,7 +103,8 @@ export interface MountHandle<T> {
  * test can read the resulting ANSI delta from `lastWrite()` /
  * `allWrites()`.
  *
- * Public — exported from `@pilates/react/test-utils`.
+ * Public — exported from `@pilates/react/test-utils`. Intended for use in
+ * test environments only.
  */
 export function mount<T>(
   initial: T,
@@ -162,6 +164,10 @@ export function mount<T>(
 // FakeStdin — EventEmitter-backed stdin double for input testing
 // ---------------------------------------------------------------------------
 
+/**
+ * EventEmitter-backed stdin double for use with {@link mountWithInput}.
+ * Records `setRawMode` calls in `rawModeCalls` for lifecycle assertions.
+ */
 export interface FakeStdin {
   readonly isTTY: true;
   /** History of setRawMode calls: true = enabled, false = disabled. */
@@ -176,6 +182,12 @@ export interface FakeStdin {
   emit(event: string, ...args: unknown[]): boolean;
 }
 
+/**
+ * Create a fake stdin double for use with {@link mountWithInput}.
+ *
+ * Public — exported from `@pilates/react/test-utils`. Intended for use in
+ * test environments only.
+ */
 export function makeFakeStdin(): FakeStdin {
   const emitter = new EventEmitter();
   const rawModeCalls: boolean[] = [];
@@ -337,7 +349,8 @@ export interface InputMountHandle<T> extends MountHandle<T> {
  * stdin so that `press*` helpers can dispatch synthetic keystrokes through
  * the real parser chain.
  *
- * Public — exported from `@pilates/react/test-utils`.
+ * Public — exported from `@pilates/react/test-utils`. Intended for use in
+ * test environments only.
  */
 export function mountWithInput<T>(
   initial: T,
