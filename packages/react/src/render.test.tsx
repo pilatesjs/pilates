@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderToString } from './test-utils.js';
+import { mount, renderToString } from './test-utils.js';
 import { Box, Newline, Spacer, Text } from './components.js';
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[Hf]/g, '');
@@ -85,3 +85,47 @@ describe('static rendering', () => {
 // component round-trips through JSX type-checking; the test uses an
 // inline `{'\n'}` literal because that's the more common idiom.
 void Newline;
+
+describe('re-render diff', () => {
+  it('re-render after setState emits only changed cells', () => {
+    const handle = mount(
+      0,
+      (n) => (
+        <Box width={5} height={1}>
+          <Text>n={String(n)}</Text>
+        </Box>
+      ),
+      { width: 5, height: 1 },
+    );
+    const initial = handle.allWrites();
+    // applyDiff interleaves a cursor code before every cell, so the
+    // characters 'n', '=', '0' never appear contiguously in the raw
+    // bytes — strip cursor codes first.
+    expect(stripAnsi(initial)).toContain('n=0');
+
+    handle.setState(7);
+
+    const last = handle.lastWrite();
+    expect(last).toContain('7');
+    // The substring 'n=' would only appear in the raw ANSI if both
+    // characters were emitted without a cursor code between them, which
+    // implies a full repaint.
+    expect(last).not.toContain('n=');
+  });
+
+  it('re-render with no changes emits zero ANSI writes', () => {
+    const handle = mount(
+      'static',
+      () => (
+        <Box width={6} height={1}>
+          <Text>same</Text>
+        </Box>
+      ),
+      { width: 6, height: 1 },
+    );
+    const writeCountBefore = handle.allWrites().length;
+    handle.setState('static-but-key-unused-by-render');
+    const writeCountAfter = handle.allWrites().length;
+    expect(writeCountAfter).toBe(writeCountBefore);
+  });
+});
