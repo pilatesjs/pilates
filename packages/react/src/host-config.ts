@@ -1,5 +1,5 @@
 import type { HostConfig } from 'react-reconciler';
-import { DefaultEventPriority } from 'react-reconciler/constants.js';
+import { DefaultEventPriority, DiscreteEventPriority } from 'react-reconciler/constants.js';
 import type { RenderNode } from '@pilates/render';
 import type { AnyInstance, BoxInstance, HostInstance, RootContainer, TextFragment, TextInstance } from './reconciler.js';
 import { flattenText } from './text-flatten.js';
@@ -72,22 +72,22 @@ export function buildHostConfig(): PilatesHostConfig {
     insertInContainerBefore: (container, child, before) => insertBeforeContainerImpl(container, child, before),
     removeChild: (parent, child) => removeChildImpl(parent, child),
     removeChildFromContainer: (container, child) => removeChildFromContainerImpl(container, child),
-    prepareUpdate: (_instance, _type, oldProps, newProps) => {
-      // Always return a payload — react-reconciler skips commitUpdate
-      // when this is null. Cheap shallow-compare keeps tests honest.
-      let changed = false;
-      const out: Record<string, unknown> = {};
-      const keys = new Set([...Object.keys(oldProps), ...Object.keys(newProps)]);
-      for (const k of keys) {
-        if (k === 'children') continue;
-        if (oldProps[k] !== newProps[k]) {
-          out[k] = newProps[k];
-          changed = true;
-        }
-      }
-      return changed ? out : null;
-    },
-    commitUpdate: (instance, _payload, _type, _oldProps, newProps) => {
+    // react-reconciler@0.31 dropped prepareUpdate entirely — props comparison
+    // moved into the reconciler core, and commitUpdate runs unconditionally
+    // when props change. The @types/react-reconciler@0.28.9 surface still
+    // requires this slot, so we keep a no-op stub for type compat. The 0.31
+    // runtime never invokes it.
+    prepareUpdate: () => null,
+    // react-reconciler@0.31 also changed commitUpdate's argument layout,
+    // dropping `updatePayload` and adding the source Fiber:
+    //   0.28: (instance, payload, type, oldProps, newProps, fiber)
+    //   0.31: (instance, type, oldProps, newProps, fiber)
+    // Parameters are positional, so the @0.28 type signature lands the
+    // 0.31 newProps in the slot the type calls `Type` (a string). Cast
+    // through `unknown` to recover its actual Record shape, then mutate
+    // instance.node in place.
+    commitUpdate: (instance, _typeArg, runtimeNewProps) => {
+      const newProps = runtimeNewProps as unknown as Record<string, unknown>;
       // Mutate `instance.node` IN PLACE — the parent's children array
       // holds a reference to this exact object, so reassigning
       // instance.node would orphan the new value.
@@ -125,9 +125,14 @@ export function buildHostConfig(): PilatesHostConfig {
   };
   // The 0.31 runtime expects these four extra methods. Cast through
   // `unknown` because the older @types/react-reconciler doesn't list them.
+  //
+  // resolveUpdatePriority returns DiscreteEventPriority (sync lane) so
+  // that setState calls outside any React event still schedule work at
+  // sync priority — drained synchronously by flushSyncWork(). This
+  // matches the v0.1 LegacyRoot model: every commit is sync.
   return {
     ...base,
-    resolveUpdatePriority: () => DefaultEventPriority,
+    resolveUpdatePriority: () => DiscreteEventPriority,
     getCurrentUpdatePriority: () => currentUpdatePriority,
     setCurrentUpdatePriority: (priority: number) => {
       currentUpdatePriority = priority;
