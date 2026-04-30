@@ -44,7 +44,7 @@ function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler 
  * strip, and matches `@pilates/render`'s own test conventions
  * (`toPlainString()`).
  *
- * Test-only — NOT in the public package barrel.
+ * Public — exported from `@pilates/react/test-utils`.
  */
 export function renderToString(element: ReactElement, options: RenderToStringOptions): string {
   const rootNode: ContainerNode = {
@@ -102,7 +102,7 @@ export interface MountHandle<T> {
  * test can read the resulting ANSI delta from `lastWrite()` /
  * `allWrites()`.
  *
- * Test-only — NOT in the public package barrel.
+ * Public — exported from `@pilates/react/test-utils`.
  */
 export function mount<T>(
   initial: T,
@@ -337,7 +337,7 @@ export interface InputMountHandle<T> extends MountHandle<T> {
  * stdin so that `press*` helpers can dispatch synthetic keystrokes through
  * the real parser chain.
  *
- * Test-only — NOT in the public package barrel.
+ * Public — exported from `@pilates/react/test-utils`.
  */
 export function mountWithInput<T>(
   initial: T,

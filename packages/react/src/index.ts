@@ -1,4 +1,4 @@
-export const VERSION = '0.1.0-rc.1';
+export const VERSION = '0.2.1';
 
 // Public components
 export { Box, Newline, Spacer, Text } from './components.js';

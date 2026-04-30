@@ -8,6 +8,6 @@
     "jsx": "react-jsx"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test-utils.ts", "dist", "node_modules"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "dist", "node_modules"],
   "references": [{ "path": "../core" }, { "path": "../render" }, { "path": "../diff" }]
 }
