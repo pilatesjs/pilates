@@ -62,9 +62,46 @@ export function buildHostConfig(): HostConfig<
     insertInContainerBefore: (container, child, before) => insertBeforeContainerImpl(container, child, before),
     removeChild: (parent, child) => removeChildImpl(parent, child),
     removeChildFromContainer: (container, child) => removeChildFromContainerImpl(container, child),
-    prepareUpdate: TODO('prepareUpdate') as never,
-    commitUpdate: TODO('commitUpdate') as never,
-    commitTextUpdate: TODO('commitTextUpdate') as never,
+    prepareUpdate: (_instance, _type, oldProps, newProps) => {
+      // Always return a payload — react-reconciler skips commitUpdate
+      // when this is null. Cheap shallow-compare keeps tests honest.
+      let changed = false;
+      const out: Record<string, unknown> = {};
+      const keys = new Set([...Object.keys(oldProps), ...Object.keys(newProps)]);
+      for (const k of keys) {
+        if (k === 'children') continue;
+        if (oldProps[k] !== newProps[k]) {
+          out[k] = newProps[k];
+          changed = true;
+        }
+      }
+      return changed ? out : null;
+    },
+    commitUpdate: (instance, _payload, _type, _oldProps, newProps) => {
+      // Mutate `instance.node` IN PLACE — the parent's children array
+      // holds a reference to this exact object, so reassigning
+      // instance.node would orphan the new value.
+      const cleaned = defined(newProps);
+      const { children: _ignored, ...rest } = cleaned;
+      const target = instance.node as Record<string, unknown>;
+      const preserved = instance.kind === 'box' ? 'children' : 'text';
+      // Clear all old props except the structural field.
+      for (const k of Object.keys(target)) {
+        if (k !== preserved) delete target[k];
+      }
+      // Apply the cleaned new prop set.
+      for (const k of Object.keys(rest)) {
+        target[k] = rest[k];
+      }
+    },
+    commitTextUpdate: (instance, _oldText, newText) => {
+      // `instance` is a TextFragment (from createTextInstance). Mutate
+      // the fragment's text and re-flatten its parent <Text> so the
+      // RenderNode's node.text reflects the new content. The parent
+      // back-pointer was set in appendChildImpl / insertBeforeImpl.
+      instance.text = newText;
+      if (instance.parent) instance.parent.node.text = flattenText(instance.parent);
+    },
     clearContainer: (container) => {
       container.root.children = [];
     },
