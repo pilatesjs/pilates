@@ -42,6 +42,23 @@ export function parse(input: string): ParseResult {
       continue;
     }
 
+    if (cp === 0x1b && input[i + 1] === 'O') {
+      if (i + 2 >= input.length) {
+        return { events, remainder: input.slice(i) };
+      }
+      const f = input[i + 2]!;
+      const sequence = input.slice(i, i + 3);
+      const map: Record<string, KeyEvent['name']> = { P: 'f1', Q: 'f2', R: 'f3', S: 'f4' };
+      const name = map[f];
+      if (name) {
+        events.push({ name, ctrl: false, alt: false, shift: false, sequence });
+      } else {
+        events.push({ ctrl: false, alt: false, shift: false, sequence });
+      }
+      i += 3;
+      continue;
+    }
+
     if (ch === '\r' || ch === '\n') {
       events.push({ name: 'enter', ctrl: false, alt: false, shift: false, sequence: ch });
       i += advance;

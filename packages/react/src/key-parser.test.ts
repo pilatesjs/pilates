@@ -82,3 +82,18 @@ describe('key-parser CSI navigation', () => {
     expect(remainder).toBe('');
   });
 });
+
+describe('key-parser SS3 function keys', () => {
+  it.each([
+    ['\x1bOP', 'f1'],
+    ['\x1bOQ', 'f2'],
+    ['\x1bOR', 'f3'],
+    ['\x1bOS', 'f4'],
+  ] as const)('decodes %j as { name: %j }', (bytes, name) => {
+    const { events, remainder } = parse(bytes);
+    expect(events).toEqual([
+      { name, ctrl: false, alt: false, shift: false, sequence: bytes },
+    ]);
+    expect(remainder).toBe('');
+  });
+});
