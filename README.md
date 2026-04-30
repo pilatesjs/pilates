@@ -66,16 +66,14 @@ all of React. **Pilates** separates them:
   painted ANSI string with borders, titles, colors, and text wrap. Uses core
   internally; depends only on it.
 
-A future `@pilates/react` reconciler can sit alongside `@pilates/render`
-without touching either.
-
 ## Packages
 
 | Package | Status | What |
 |---|---|---|
-| [`@pilates/core`](./packages/core)     | `1.0.0-rc.1` | Engine: imperative Node API, returns layout boxes. |
-| [`@pilates/render`](./packages/render) | `1.0.0-rc.2` | Out-of-box: declarative tree → painted string. |
-| [`@pilates/diff`](./packages/diff)     | `0.1.0`      | Cell-level frame diff + minimal ANSI redraw. |
+| [`@pilates/core`](./packages/core)     | `1.0.0-rc.1`              | Engine: imperative Node API, returns layout boxes. |
+| [`@pilates/render`](./packages/render) | `1.0.0-rc.2`              | Out-of-box: declarative tree → painted string. |
+| [`@pilates/diff`](./packages/diff)     | `0.1.0`                   | Cell-level frame diff + minimal ANSI redraw. |
+| [`@pilates/react`](./packages/react)   | `0.1.0-rc.1` (pre-release)| React reconciler — author terminal UIs with JSX and hooks. |
 
 ## Examples
 

@@ -5,6 +5,18 @@ All notable changes to Pilates are documented here. The format roughly follows
 follows [Semantic Versioning](https://semver.org/) once it leaves the `1.0.0`
 release-candidate train.
 
+## 2026-04-30 — `@pilates/react@0.1.0-rc.1`
+
+Initial pre-release of the React reconciler. Published with the `next`
+dist-tag — `npm install @pilates/react@next`.
+
+- React reconciler driving `@pilates/core` + `@pilates/render` + `@pilates/diff`
+- Components: `Box`, `Text`, `Spacer`, `Newline`
+- Hooks: `useApp`, `useStdout`, `useStderr` (read-only, `exit()` on `useApp`)
+- `render(<App />, options?)` returns `{ unmount, waitUntilExit }`
+- Auto-resize via SIGWINCH; full repaint on resize, incremental redraws otherwise
+- `react@^19` peer; `react-reconciler@^0.31`
+
 ## 2026-04-29 — `@pilates/render@1.0.0-rc.2` + `@pilates/diff@0.1.0`
 
 ### Added — `@pilates/render` 1.0.0-rc.2
