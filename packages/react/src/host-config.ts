@@ -3,6 +3,8 @@ import { DefaultEventPriority } from 'react-reconciler/constants.js';
 import type { RenderNode } from '@pilates/render';
 import type { AnyInstance, BoxInstance, HostInstance, RootContainer, TextFragment, TextInstance } from './reconciler.js';
 import { flattenText } from './text-flatten.js';
+import { renderToFrame } from '@pilates/render';
+import { applyDiff, diff } from '@pilates/diff';
 
 /** Strip undefined values from an object so JSX `prop={undefined}` doesn't override real defaults. */
 function defined<T extends object>(props: T): Partial<T> {
@@ -46,7 +48,13 @@ export function buildHostConfig(): HostConfig<
     getChildHostContext: (parent) => parent,
     getPublicInstance: (instance) => instance as HostInstance,
     prepareForCommit: () => null,
-    resetAfterCommit: TODO('resetAfterCommit'),
+    resetAfterCommit: (container) => {
+      const next = renderToFrame(container.root);
+      const changes = diff(container.prevFrame, next);
+      const ansi = applyDiff(changes);
+      container.prevFrame = next;
+      if (ansi.length > 0) container.onFlush(ansi);
+    },
     preparePortalMount: () => {},
     shouldSetTextContent: () => false,
     createInstance: (type, props) => createInstance(type, props),
