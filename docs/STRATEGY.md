@@ -7,10 +7,10 @@ older roadmap-ish content elsewhere.
 ## What Pilates is
 
 A flex layout engine purpose-built for the terminal — pure TypeScript,
-zero runtime dependencies, validated cell-for-cell against Yoga —
-packaged so consumers can take just the engine, just the painter, the
-diff loop, the React reconciler, or any combination, **without dragging
-in the rest**.
+zero runtime dependencies, validated cell-for-cell against a reference
+WASM flexbox implementation — packaged so consumers can take just the
+engine, just the painter, the diff loop, the React reconciler, or any
+combination, **without dragging in the rest**.
 
 The split into four focused packages is the product. Each can be used
 standalone:
