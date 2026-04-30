@@ -133,6 +133,18 @@ export function parse(input: string): ParseResult {
       continue;
     }
 
+    if (cp >= 0x80) {
+      events.push({
+        ch,
+        ctrl: false,
+        alt: false,
+        shift: false,
+        sequence: ch,
+      });
+      i += advance;
+      continue;
+    }
+
     if (cp >= ASCII_PRINTABLE_MIN && cp <= ASCII_PRINTABLE_MAX) {
       events.push({
         ch,

@@ -158,3 +158,40 @@ describe('key-parser CSI modifier params', () => {
     ]);
   });
 });
+
+describe('key-parser edge cases', () => {
+  it('passes multi-byte UTF-8 (CJK) through ch unchanged', () => {
+    const { events } = parse('日');
+    expect(events).toHaveLength(1);
+    expect(events[0]?.ch).toBe('日');
+  });
+
+  it('passes emoji through ch unchanged', () => {
+    const { events } = parse('🎉');
+    expect(events).toHaveLength(1);
+    expect(events[0]?.ch).toBe('🎉');
+  });
+
+  it('returns partial CSI as remainder for the next chunk', () => {
+    const { events, remainder } = parse('\x1b[');
+    expect(events).toEqual([]);
+    expect(remainder).toBe('\x1b[');
+  });
+
+  it('rejoins partial CSI across chunks', () => {
+    const first = parse('\x1b[');
+    expect(first.remainder).toBe('\x1b[');
+    const second = parse(first.remainder + 'A');
+    expect(second.events).toEqual([
+      { name: 'up', ctrl: false, alt: false, shift: false, sequence: '\x1b[A' },
+    ]);
+    expect(second.remainder).toBe('');
+  });
+
+  it('emits unrecognized CSI as a raw sequence event', () => {
+    const { events } = parse('\x1b[99q');
+    expect(events).toEqual([
+      { ctrl: false, alt: false, shift: false, sequence: '\x1b[99q' },
+    ]);
+  });
+});
