@@ -63,3 +63,22 @@ describe('key-parser named specials', () => {
     ]);
   });
 });
+
+describe('key-parser CSI navigation', () => {
+  it.each([
+    ['\x1b[A', 'up'],
+    ['\x1b[B', 'down'],
+    ['\x1b[C', 'right'],
+    ['\x1b[D', 'left'],
+    ['\x1b[H', 'home'],
+    ['\x1b[F', 'end'],
+    ['\x1b[5~', 'pageUp'],
+    ['\x1b[6~', 'pageDown'],
+    ['\x1b[3~', 'delete'],
+  ] as const)('decodes %j as { name: %j }', (bytes, name) => {
+    const { events, remainder } = parse(bytes);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ name, ctrl: false, alt: false, shift: false });
+    expect(remainder).toBe('');
+  });
+});

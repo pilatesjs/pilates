@@ -21,6 +21,27 @@ export function parse(input: string): ParseResult {
     const ch = String.fromCodePoint(cp);
     const advance = ch.length;
 
+    if (cp === 0x1b && input[i + 1] === '[') {
+      const csiStart = i + 2;
+      let csiEnd = csiStart;
+      while (csiEnd < input.length) {
+        const code = input.charCodeAt(csiEnd);
+        if (code >= 0x40 && code <= 0x7e) break;
+        csiEnd++;
+      }
+      if (csiEnd >= input.length) {
+        return { events, remainder: input.slice(i) };
+      }
+      const params = input.slice(csiStart, csiEnd);
+      const final = input[csiEnd]!;
+      const sequence = input.slice(i, csiEnd + 1);
+      const ev = decodeCsi(params, final, sequence);
+      if (ev) events.push(ev);
+      else events.push({ ctrl: false, alt: false, shift: false, sequence });
+      i = csiEnd + 1;
+      continue;
+    }
+
     if (ch === '\r' || ch === '\n') {
       events.push({ name: 'enter', ctrl: false, alt: false, shift: false, sequence: ch });
       i += advance;
@@ -86,4 +107,40 @@ export function parse(input: string): ParseResult {
     i += advance;
   }
   return { events, remainder: '' };
+}
+
+function decodeCsi(params: string, final: string, sequence: string): KeyEvent | null {
+  const base: Pick<KeyEvent, 'ctrl' | 'alt' | 'shift' | 'sequence'> = {
+    ctrl: false,
+    alt: false,
+    shift: false,
+    sequence,
+  };
+
+  if (final === 'A') return { ...base, name: 'up' };
+  if (final === 'B') return { ...base, name: 'down' };
+  if (final === 'C') return { ...base, name: 'right' };
+  if (final === 'D') return { ...base, name: 'left' };
+  if (final === 'H') return { ...base, name: 'home' };
+  if (final === 'F') return { ...base, name: 'end' };
+
+  if (final === '~') {
+    const num = parseInt(params, 10);
+    switch (num) {
+      case 3: return { ...base, name: 'delete' };
+      case 5: return { ...base, name: 'pageUp' };
+      case 6: return { ...base, name: 'pageDown' };
+      case 15: return { ...base, name: 'f5' };
+      case 17: return { ...base, name: 'f6' };
+      case 18: return { ...base, name: 'f7' };
+      case 19: return { ...base, name: 'f8' };
+      case 20: return { ...base, name: 'f9' };
+      case 21: return { ...base, name: 'f10' };
+      case 23: return { ...base, name: 'f11' };
+      case 24: return { ...base, name: 'f12' };
+      default: return null;
+    }
+  }
+
+  return null;
 }
