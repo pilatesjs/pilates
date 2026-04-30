@@ -1,8 +1,14 @@
-import { createElement, Fragment, useEffect, useState, type ReactNode, type ReactElement } from 'react';
+import type { ContainerNode } from '@pilates/render';
+import {
+  Fragment,
+  type ReactElement,
+  type ReactNode,
+  createElement,
+  useEffect,
+  useState,
+} from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
-import type { ContainerNode } from '@pilates/render';
-import { buildHostConfig } from './host-config.js';
 import {
   AppContext,
   type AppHookValue,
@@ -12,6 +18,7 @@ import {
   type StdoutHookValue,
   useStdout,
 } from './hooks.js';
+import { buildHostConfig } from './host-config.js';
 import type { RootContainer } from './reconciler.js';
 
 export interface RenderOptions {
@@ -45,7 +52,10 @@ function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler 
   return reconciler as unknown as SyncReconciler;
 }
 
-function StdoutProvider({ stdout, children }: { stdout: NodeJS.WriteStream; children?: ReactNode }) {
+function StdoutProvider({
+  stdout,
+  children,
+}: { stdout: NodeJS.WriteStream; children?: ReactNode }) {
   const [dims, setDims] = useState({ columns: stdout.columns ?? 80, rows: stdout.rows ?? 24 });
   useEffect(() => {
     if (!stdout.isTTY) return;

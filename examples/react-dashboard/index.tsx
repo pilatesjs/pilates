@@ -1,5 +1,5 @@
+import { Box, Text, render, useApp, useStdout } from '@pilates/react';
 import { useEffect, useState } from 'react';
-import { Box, render, Text, useApp, useStdout } from '@pilates/react';
 
 interface Tile {
   title: string;
@@ -25,7 +25,12 @@ export function App() {
   }, [exit]);
 
   const tiles: Tile[] = [
-    { title: 'CPU', value: `${(40 + (tick % 20)).toFixed(0)}%`, detail: 'load 1.4', color: 'green' },
+    {
+      title: 'CPU',
+      value: `${(40 + (tick % 20)).toFixed(0)}%`,
+      detail: 'load 1.4',
+      color: 'green',
+    },
     { title: 'Memory', value: '8.2 GB', detail: '/ 16 GB', color: 'cyan' },
     { title: 'Disk', value: '124 GB', detail: '/ 500 GB', color: 'cyan' },
     { title: 'Network', value: `${10 + (tick % 5)} MB/s`, detail: '↓ 8  ↑ 4', color: 'magenta' },
@@ -34,16 +39,25 @@ export function App() {
 
   return (
     <Box width={cols} height={rows} flexDirection="column">
-      <Box height={3} border="single" title="Pilates Dashboard"
-           flexDirection="row" justifyContent="space-between" alignItems="center">
-        <Text color="green" bold>● running</Text>
+      <Box
+        height={3}
+        border="single"
+        title="Pilates Dashboard"
+        flexDirection="row"
+        justifyContent="space-between"
+        alignItems="center"
+      >
+        <Text color="green" bold>
+          ● running
+        </Text>
         <Text color="gray">tick {tick}</Text>
       </Box>
-      <Box flex={1} flexDirection="row" alignItems="flex-start"
-           gap={{ column: 2 }} padding={1}>
+      <Box flex={1} flexDirection="row" alignItems="flex-start" gap={{ column: 2 }} padding={1}>
         {tiles.map((t) => (
           <Box key={t.title} width={tileWidth} height={4} border="rounded" title={t.title}>
-            <Text color={t.color} bold>{t.value}</Text>
+            <Text color={t.color} bold>
+              {t.value}
+            </Text>
             <Text color="gray">{t.detail ?? ''}</Text>
           </Box>
         ))}

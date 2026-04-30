@@ -1,8 +1,8 @@
-import { createElement, type JSX, type ReactNode } from 'react';
 import type { BorderProps, LayoutProps, TextStyle, Wrap } from '@pilates/render';
+import { type JSX, type ReactNode, createElement } from 'react';
 
-/* eslint-disable @typescript-eslint/no-namespace */
 declare global {
+  // biome-ignore lint/suspicious/noRedeclare: augmenting the global JSX namespace
   namespace JSX {
     interface IntrinsicElements {
       'pilates-box': BoxProps & { children?: ReactNode };

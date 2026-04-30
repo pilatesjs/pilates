@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { mount, renderToString } from './test-utils.js';
 import { Box, Newline, Spacer, Text } from './components.js';
-import { render } from './render.js';
 import { useApp, useStdout } from './hooks.js';
+import { render } from './render.js';
+import { mount, renderToString } from './test-utils.js';
 
+// biome-ignore lint/suspicious/noControlCharactersInRegex: ESC (0x1b) is exactly what we want to strip
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[Hf]/g, '');
 
 describe('renderToString', () => {
   it('returns empty string when given an empty React element', () => {
+    // biome-ignore lint/complexity/noUselessFragments: testing the empty-fragment input case is the point
     const out = renderToString(<></>, { width: 4, height: 1 });
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC (0x1b) is exactly what we want to strip
     expect(out.replace(/\x1b\[[0-9;]*m/g, '')).toBe('    \n');
   });
 });
@@ -291,7 +294,8 @@ describe('hooks', () => {
     // Make stdout an event-emitter so 'resize' can be simulated.
     const { EventEmitter } = await import('node:events');
     const ee = new EventEmitter();
-    (stdout as unknown as { on: typeof ee.on; off: typeof ee.off; emit: typeof ee.emit }).on = ee.on.bind(ee);
+    (stdout as unknown as { on: typeof ee.on; off: typeof ee.off; emit: typeof ee.emit }).on =
+      ee.on.bind(ee);
     (stdout as unknown as { off: typeof ee.off }).off = ee.off.bind(ee);
     (stdout as unknown as { emit: typeof ee.emit }).emit = ee.emit.bind(ee);
     const writes = (stdout as unknown as { __buf: string[] }).__buf;
@@ -314,7 +318,8 @@ describe('hooks', () => {
     const { EventEmitter } = await import('node:events');
     const ee = new EventEmitter();
     const stdout = makeFakeStdout(20, 5);
-    (stdout as unknown as { on: typeof ee.on; off: typeof ee.off; emit: typeof ee.emit }).on = ee.on.bind(ee);
+    (stdout as unknown as { on: typeof ee.on; off: typeof ee.off; emit: typeof ee.emit }).on =
+      ee.on.bind(ee);
     (stdout as unknown as { off: typeof ee.off }).off = ee.off.bind(ee);
     (stdout as unknown as { emit: typeof ee.emit }).emit = ee.emit.bind(ee);
 
@@ -382,6 +387,7 @@ describe('validation', () => {
   });
 
   it('throws when bare strings appear at the root', () => {
+    // biome-ignore lint/complexity/noUselessFragments: a bare-string root is exactly what we're validating against
     expect(() => renderToString(<>{'bare'}</>, { width: 5, height: 1 })).toThrow(
       /bare strings are not allowed/,
     );

@@ -1,10 +1,17 @@
+import { applyDiff, diff } from '@pilates/diff';
+import type { RenderNode } from '@pilates/render';
+import { renderToFrame } from '@pilates/render';
 import type { HostConfig } from 'react-reconciler';
 import { DefaultEventPriority, DiscreteEventPriority } from 'react-reconciler/constants.js';
-import type { RenderNode } from '@pilates/render';
-import type { AnyInstance, BoxInstance, HostInstance, RootContainer, TextFragment, TextInstance } from './reconciler.js';
+import type {
+  AnyInstance,
+  BoxInstance,
+  HostInstance,
+  RootContainer,
+  TextFragment,
+  TextInstance,
+} from './reconciler.js';
 import { flattenText } from './text-flatten.js';
-import { renderToFrame } from '@pilates/render';
-import { applyDiff, diff } from '@pilates/diff';
 
 /** Strip undefined values from an object so JSX `prop={undefined}` doesn't override real defaults. */
 function defined<T extends object>(props: T): Partial<T> {
@@ -69,7 +76,8 @@ export function buildHostConfig(): PilatesHostConfig {
     appendChild: (parent, child) => appendChildImpl(parent, child),
     appendChildToContainer: (container, child) => appendChildToContainer(container, child),
     insertBefore: (parent, child, before) => insertBeforeImpl(parent, child, before),
-    insertInContainerBefore: (container, child, before) => insertBeforeContainerImpl(container, child, before),
+    insertInContainerBefore: (container, child, before) =>
+      insertBeforeContainerImpl(container, child, before),
     removeChild: (parent, child) => removeChildImpl(parent, child),
     removeChildFromContainer: (container, child) => removeChildFromContainerImpl(container, child),
     // react-reconciler@0.31 dropped prepareUpdate entirely — props comparison
@@ -185,7 +193,9 @@ function appendChildImpl(parent: HostInstance, child: AnyInstance): void {
   }
   // Box parent
   if (child.kind === 'fragment') {
-    throw new Error('Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.');
+    throw new Error(
+      'Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.',
+    );
   }
   parent.node.children = parent.node.children ?? [];
   const arr = parent.node.children as RenderNode[];
@@ -229,12 +239,15 @@ function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyI
     );
   }
   if (child.kind === 'fragment') {
-    throw new Error('Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.');
+    throw new Error(
+      'Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.',
+    );
   }
   if (before.kind === 'fragment') {
     throw new Error('Pilates: invariant — Box children should never be string fragments.');
   }
-  const arr = (parent.node.children ??= []) as RenderNode[];
+  parent.node.children ??= [];
+  const arr = parent.node.children as RenderNode[];
   const oldIdx = arr.indexOf(child.node);
   if (oldIdx !== -1) arr.splice(oldIdx, 1);
   const idx = arr.indexOf(before.node);
@@ -242,14 +255,19 @@ function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyI
   else arr.splice(idx, 0, child.node);
 }
 
-function insertBeforeContainerImpl(container: RootContainer, child: AnyInstance, before: AnyInstance): void {
+function insertBeforeContainerImpl(
+  container: RootContainer,
+  child: AnyInstance,
+  before: AnyInstance,
+): void {
   if (child.kind === 'fragment') {
     throw new Error('Pilates: bare strings are not allowed at the root. Wrap them in <Text>.');
   }
   if (before.kind === 'fragment') {
     throw new Error('Pilates: invariant — root children should never be string fragments.');
   }
-  const arr = (container.root.children ??= []) as RenderNode[];
+  container.root.children ??= [];
+  const arr = container.root.children as RenderNode[];
   const oldIdx = arr.indexOf(child.node);
   if (oldIdx !== -1) arr.splice(oldIdx, 1);
   const idx = arr.indexOf(before.node);

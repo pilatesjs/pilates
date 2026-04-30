@@ -1,5 +1,5 @@
+import { Box, Text, render, useApp, useStdout } from '@pilates/react';
 import { useEffect, useState } from 'react';
-import { Box, render, Text, useApp, useStdout } from '@pilates/react';
 
 export function App() {
   const { columns: cols, rows } = useStdout();
@@ -24,7 +24,9 @@ export function App() {
   return (
     <Box width={cols} height={rows} flexDirection="column">
       <Box flex={1} border="single" title="App">
-        <Text color="cyan" bold>users:</Text>
+        <Text color="cyan" bold>
+          users:
+        </Text>
         {users.map((u) => (
           <Text key={u}>{` ├ ${u}`}</Text>
         ))}
@@ -46,7 +48,9 @@ export function App() {
           <Text bold>Delete user "carol"?</Text>
           <Box height={1} flexDirection="row" justifyContent="space-around">
             <Text color="gray">[ cancel ]</Text>
-            <Text color="red" bold>[ delete ]</Text>
+            <Text color="red" bold>
+              [ delete ]
+            </Text>
           </Box>
         </Box>
       )}

@@ -1,7 +1,7 @@
-import { createElement, useState, type ReactElement } from 'react';
+import type { ContainerNode } from '@pilates/render';
+import { type ReactElement, createElement, useState } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
-import type { ContainerNode } from '@pilates/render';
 import { buildHostConfig } from './host-config.js';
 import type { RootContainer } from './reconciler.js';
 

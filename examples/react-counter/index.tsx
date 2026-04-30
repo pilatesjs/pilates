@@ -1,5 +1,5 @@
+import { Box, Text, render, useApp } from '@pilates/react';
 import { useEffect, useState } from 'react';
-import { Box, render, Text, useApp } from '@pilates/react';
 
 export function App() {
   const [n, setN] = useState(0);
