@@ -21,6 +21,29 @@ export function parse(input: string): ParseResult {
     const ch = String.fromCodePoint(cp);
     const advance = ch.length;
 
+    if (cp === 0x00) {
+      events.push({
+        ch: ' ',
+        ctrl: true,
+        alt: false,
+        shift: false,
+        sequence: ch,
+      });
+      i += advance;
+      continue;
+    }
+    if (cp >= 0x01 && cp <= 0x1a) {
+      events.push({
+        ch: String.fromCharCode(0x60 + cp),
+        ctrl: true,
+        alt: false,
+        shift: false,
+        sequence: ch,
+      });
+      i += advance;
+      continue;
+    }
+
     if (cp >= ASCII_PRINTABLE_MIN && cp <= ASCII_PRINTABLE_MAX) {
       events.push({
         ch,

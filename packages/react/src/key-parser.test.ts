@@ -24,3 +24,26 @@ describe('key-parser plain ASCII', () => {
     expect(remainder).toBe('');
   });
 });
+
+describe('key-parser control bytes', () => {
+  it('decodes ctrl+a as { ch: "a", ctrl: true }', () => {
+    const { events } = parse('\x01');
+    expect(events).toEqual([
+      { ch: 'a', ctrl: true, alt: false, shift: false, sequence: '\x01' },
+    ]);
+  });
+
+  it('decodes ctrl+z as { ch: "z", ctrl: true }', () => {
+    const { events } = parse('\x1a');
+    expect(events).toEqual([
+      { ch: 'z', ctrl: true, alt: false, shift: false, sequence: '\x1a' },
+    ]);
+  });
+
+  it('decodes ctrl+space (NUL byte) as { ch: " ", ctrl: true }', () => {
+    const { events } = parse('\x00');
+    expect(events).toEqual([
+      { ch: ' ', ctrl: true, alt: false, shift: false, sequence: '\x00' },
+    ]);
+  });
+});
