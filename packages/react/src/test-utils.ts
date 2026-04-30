@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import type { ContainerNode } from '@pilates/render';
-import { type ReactElement, createElement, useState } from 'react';
+import { type ReactElement, act, createElement, useState } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
 import { buildHostConfig } from './host-config.js';
@@ -26,6 +26,8 @@ interface SyncReconciler {
     callback: (() => void) | null,
   ): void;
   flushSyncWork(): void;
+  /** Flush deferred passive effects (useEffect callbacks). */
+  flushPassiveEffects(): boolean;
 }
 
 function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler {
@@ -298,21 +300,27 @@ export function mountWithInput<T>(
 ): InputMountHandle<T> {
   const fakeStdin = makeFakeStdin();
 
-  // Wrap the user's element in StdinProvider backed by the fake stdin.
-  const wrappedRenderFn = (state: T): ReactElement =>
-    createElement(StdinProvider, { stdin: fakeStdin as unknown as NodeJS.ReadStream },
-      renderFn(state),
-    );
-
   // We need access to flushSyncWork to flush after emitting data.
   // Re-implement mount's reconciler bootstrap inline so we can capture sync.
   let setter: ((next: T) => void) | null = null;
   const writes: string[] = [];
 
+  // Inner must be a proper React *component* (not a plain function call) so
+  // that hooks inside renderFn run within StdinProvider's context subtree.
+  // Calling renderFn(state) directly during Wrapper's render would execute
+  // hooks before StdinProvider has committed its context value.
+  function Inner(props: { state: T }) {
+    return renderFn(props.state);
+  }
+
   function Wrapper(props: { initial: T }) {
     const [state, setState] = useState(props.initial);
     setter = setState;
-    return wrappedRenderFn(state);
+    return createElement(
+      StdinProvider,
+      { stdin: fakeStdin as unknown as NodeJS.ReadStream },
+      createElement(Inner, { state }),
+    );
   }
 
   const rootNode: ContainerNode = {
@@ -337,26 +345,53 @@ export function mountWithInput<T>(
     null,
   );
   const sync = asSync(reconciler);
-  sync.updateContainerSync(createElement(Wrapper, { initial }), handle, null, null);
-  sync.flushSyncWork();
+  // Wrap each reconciler operation in act() so that passive effects (useEffect
+  // callbacks for StdinProvider's onData wiring and useInput's subscribe call)
+  // fire synchronously via React's actQueue drain, rather than being deferred
+  // to the event loop via the Scheduler's MessageChannel.
+  //
+  // IS_REACT_ACT_ENVIRONMENT is set for the duration of each act() call to
+  // suppress React's "not configured to support act" warning without enabling
+  // it globally (which would warn for all the other tests that don't use act).
+  const withAct = (fn: () => void): void => {
+    const g = globalThis as Record<string, unknown>;
+    const prev = g.IS_REACT_ACT_ENVIRONMENT;
+    g.IS_REACT_ACT_ENVIRONMENT = true;
+    try {
+      act(fn);
+    } finally {
+      g.IS_REACT_ACT_ENVIRONMENT = prev;
+    }
+  };
+
+  withAct(() => {
+    sync.updateContainerSync(createElement(Wrapper, { initial }), handle, null, null);
+    sync.flushSyncWork();
+  });
 
   const press = (event: Partial<KeyEvent>): void => {
-    const bytes = eventToBytes(event);
-    fakeStdin.emit('data', bytes);
-    sync.flushSyncWork();
+    withAct(() => {
+      const bytes = eventToBytes(event);
+      fakeStdin.emit('data', bytes);
+      sync.flushSyncWork();
+    });
   };
 
   return {
     lastWrite: () => writes[writes.length - 1] ?? '',
     allWrites: () => writes.join(''),
     setState: (value) => {
-      if (!setter) throw new Error('setter not captured');
-      setter(value);
-      sync.flushSyncWork();
+      withAct(() => {
+        if (!setter) throw new Error('setter not captured');
+        setter(value);
+        sync.flushSyncWork();
+      });
     },
     unmount: () => {
-      sync.updateContainerSync(null, handle, null, null);
-      sync.flushSyncWork();
+      withAct(() => {
+        sync.updateContainerSync(null, handle, null, null);
+        sync.flushSyncWork();
+      });
     },
     press,
     pressKey: (name: KeyName) => press({ name }),

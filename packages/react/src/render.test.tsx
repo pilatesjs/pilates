@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { useState } from 'react';
 import { Box, Newline, Spacer, Text } from './components.js';
-import { useApp, useStdout } from './hooks.js';
+import { useApp, useInput, useStdout } from './hooks.js';
 import { render } from './render.js';
-import { mount, renderToString } from './test-utils.js';
+import { mount, mountWithInput, renderToString } from './test-utils.js';
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC (0x1b) is exactly what we want to strip
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[Hf]/g, '');
@@ -403,5 +404,111 @@ describe('validation', () => {
     const instance = render(<Boom />, { stdout, stderr });
     await expect(instance.waitUntilExit()).rejects.toThrow('kaboom');
     expect(stderrBuf.join('')).toContain('Pilates render error');
+  });
+});
+
+describe('useInput', () => {
+  it('receives a single keypress', () => {
+    const seen: string[] = [];
+    const handle = mountWithInput(
+      0,
+      () => {
+        useInput((event) => {
+          if (event.ch) seen.push(event.ch);
+        });
+        return <Text>x</Text>;
+      },
+      { width: 5, height: 1 },
+    );
+    handle.pressChar('a');
+    expect(seen).toEqual(['a']);
+    handle.unmount();
+  });
+
+  it('decodes named keys via the parser path', () => {
+    const seen: string[] = [];
+    const handle = mountWithInput(
+      0,
+      () => {
+        useInput((event) => {
+          if (event.name) seen.push(event.name);
+        });
+        return <Text>x</Text>;
+      },
+      { width: 5, height: 1 },
+    );
+    handle.pressKey('up');
+    handle.pressKey('escape');
+    expect(seen).toEqual(['up', 'escape']);
+    handle.unmount();
+  });
+
+  it('isActive: false suppresses delivery', () => {
+    const seen: string[] = [];
+    const handle = mountWithInput<{ active: boolean }>(
+      { active: false },
+      (state) => {
+        useInput(
+          (event) => {
+            if (event.ch) seen.push(event.ch);
+          },
+          { isActive: state.active },
+        );
+        return <Text>x</Text>;
+      },
+      { width: 5, height: 1 },
+    );
+    handle.pressChar('a');
+    expect(seen).toEqual([]);
+    handle.setState({ active: true });
+    handle.pressChar('b');
+    expect(seen).toEqual(['b']);
+    handle.unmount();
+  });
+
+  it('multiple subscribers all fire in mount order', () => {
+    const seen: string[] = [];
+    function Listener({ id }: { id: string }) {
+      useInput((event) => {
+        if (event.ch) seen.push(`${id}:${event.ch}`);
+      });
+      return null;
+    }
+    const handle = mountWithInput(
+      0,
+      () => (
+        <Box width={1} height={1}>
+          <Listener id="a" />
+          <Listener id="b" />
+        </Box>
+      ),
+      { width: 1, height: 1 },
+    );
+    handle.pressChar('q');
+    expect(seen).toEqual(['a:q', 'b:q']);
+    handle.unmount();
+  });
+
+  it('unmount removes subscriber', () => {
+    const seen: string[] = [];
+    function Listener() {
+      useInput((event) => {
+        if (event.ch) seen.push(event.ch);
+      });
+      return null;
+    }
+    const handle = mountWithInput<boolean>(
+      true,
+      (visible) => (
+        <Box width={1} height={1}>{visible && <Listener />}</Box>
+      ),
+      { width: 1, height: 1 },
+    );
+    handle.pressChar('a');
+    expect(seen).toEqual(['a']);
+    handle.setState(false);
+    handle.pressChar('b');
+    expect(seen).toEqual(['a']);
+    handle.unmount();
   });
 });
