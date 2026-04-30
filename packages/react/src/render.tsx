@@ -68,14 +68,23 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   const reconciler = ReactReconciler(buildHostConfig());
   const sync = asSync(reconciler);
 
-  const onUncaughtError = (err: Error) => {
+  // Centralised teardown so resolve/reject is decided exactly once, no
+  // matter which entry point initiated the exit (direct unmount call,
+  // useApp().exit(), useApp().exit(error), or an uncaught render error).
+  const finishUnmount = (err?: Error, writeBanner = false): void => {
     if (unmounted) return;
     unmounted = true;
-    stderr.write(`\x1b[31mPilates render error:\x1b[0m ${err.message}\n${err.stack ?? ''}\n`);
+    if (writeBanner && err) {
+      stderr.write(`\x1b[31mPilates render error:\x1b[0m ${err.message}\n${err.stack ?? ''}\n`);
+    }
     sync.updateContainerSync(null, handle, null, null);
     sync.flushSyncWork();
-    rejectExit(err);
+    stdout.write('\x1b[0m\n');
+    if (err) rejectExit(err);
+    else resolveExit();
   };
+
+  const onUncaughtError = (err: Error) => finishUnmount(err, true);
 
   const handle = reconciler.createContainer(
     container,
@@ -89,15 +98,7 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   );
 
   const appValue: AppHookValue = {
-    exit: (err) => {
-      if (err) {
-        instance.unmount();
-        rejectExit(err);
-      } else {
-        instance.unmount();
-        resolveExit();
-      }
-    },
+    exit: (err) => finishUnmount(err),
   };
   const stdoutValue: StdoutHookValue = {
     stdout,
@@ -124,14 +125,7 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   sync.flushSyncWork();
 
   const instance: RenderInstance = {
-    unmount: () => {
-      if (unmounted) return;
-      unmounted = true;
-      sync.updateContainerSync(null, handle, null, null);
-      sync.flushSyncWork();
-      stdout.write('\x1b[0m\n');
-      resolveExit();
-    },
+    unmount: () => finishUnmount(),
     waitUntilExit: () => exitPromise,
   };
 
