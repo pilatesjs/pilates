@@ -31,11 +31,6 @@ export function buildHostConfig(): HostConfig<
   /* TimeoutHandle */ ReturnType<typeof setTimeout>,
   /* NoTimeout */ -1
 > {
-  // Filled in across subsequent tasks. For now, throw on every method
-  // so a consumer trying to mount gets a clear error.
-  const TODO = (name: string) => () => {
-    throw new Error(`HostConfig.${name} not implemented`);
-  };
   return {
     supportsMutation: true,
     supportsPersistence: false,
