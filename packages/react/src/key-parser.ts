@@ -157,12 +157,21 @@ export function parse(input: string): ParseResult {
 }
 
 function decodeCsi(params: string, final: string, sequence: string): KeyEvent | null {
-  const base: Pick<KeyEvent, 'ctrl' | 'alt' | 'shift' | 'sequence'> = {
-    ctrl: false,
-    alt: false,
-    shift: false,
-    sequence,
-  };
+  const parts = params.split(';');
+  const baseStr = parts[0] ?? '';
+  const modStr = parts[1] ?? '';
+  let ctrl = false;
+  let alt = false;
+  let shift = false;
+  if (modStr) {
+    const mod = parseInt(modStr, 10) - 1;
+    if (!Number.isNaN(mod)) {
+      shift = (mod & 0b001) !== 0;
+      alt = (mod & 0b010) !== 0;
+      ctrl = (mod & 0b100) !== 0;
+    }
+  }
+  const base = { ctrl, alt, shift, sequence };
 
   if (final === 'A') return { ...base, name: 'up' };
   if (final === 'B') return { ...base, name: 'down' };
@@ -172,7 +181,7 @@ function decodeCsi(params: string, final: string, sequence: string): KeyEvent | 
   if (final === 'F') return { ...base, name: 'end' };
 
   if (final === '~') {
-    const num = parseInt(params, 10);
+    const num = parseInt(baseStr, 10);
     switch (num) {
       case 3: return { ...base, name: 'delete' };
       case 5: return { ...base, name: 'pageUp' };

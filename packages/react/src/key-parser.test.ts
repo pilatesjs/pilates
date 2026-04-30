@@ -121,3 +121,40 @@ describe('key-parser alt and lone-escape', () => {
     ]);
   });
 });
+
+describe('key-parser CSI modifier params', () => {
+  it('decodes \x1b[1;5A as ctrl+up', () => {
+    const { events } = parse('\x1b[1;5A');
+    expect(events).toEqual([
+      { name: 'up', ctrl: true, alt: false, shift: false, sequence: '\x1b[1;5A' },
+    ]);
+  });
+
+  it('decodes \x1b[1;3D as alt+left', () => {
+    const { events } = parse('\x1b[1;3D');
+    expect(events).toEqual([
+      { name: 'left', ctrl: false, alt: true, shift: false, sequence: '\x1b[1;3D' },
+    ]);
+  });
+
+  it('decodes \x1b[1;2C as shift+right', () => {
+    const { events } = parse('\x1b[1;2C');
+    expect(events).toEqual([
+      { name: 'right', ctrl: false, alt: false, shift: true, sequence: '\x1b[1;2C' },
+    ]);
+  });
+
+  it('decodes \x1b[1;7B as ctrl+alt+down', () => {
+    const { events } = parse('\x1b[1;7B');
+    expect(events).toEqual([
+      { name: 'down', ctrl: true, alt: true, shift: false, sequence: '\x1b[1;7B' },
+    ]);
+  });
+
+  it('decodes \x1b[3;5~ as ctrl+delete', () => {
+    const { events } = parse('\x1b[3;5~');
+    expect(events).toEqual([
+      { name: 'delete', ctrl: true, alt: false, shift: false, sequence: '\x1b[3;5~' },
+    ]);
+  });
+});
