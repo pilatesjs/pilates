@@ -1,4 +1,4 @@
-import { createElement, type ReactElement } from 'react';
+import { createElement, Fragment, useEffect, useState, type ReactNode, type ReactElement } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
 import type { ContainerNode } from '@pilates/render';
@@ -10,6 +10,7 @@ import {
   type StderrHookValue,
   StdoutContext,
   type StdoutHookValue,
+  useStdout,
 } from './hooks.js';
 import type { RootContainer } from './reconciler.js';
 
@@ -42,6 +43,45 @@ interface SyncReconciler {
 
 function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler {
   return reconciler as unknown as SyncReconciler;
+}
+
+function StdoutProvider({ stdout, children }: { stdout: NodeJS.WriteStream; children?: ReactNode }) {
+  const [dims, setDims] = useState({ columns: stdout.columns ?? 80, rows: stdout.rows ?? 24 });
+  useEffect(() => {
+    if (!stdout.isTTY) return;
+    const handler = () => setDims({ columns: stdout.columns ?? 80, rows: stdout.rows ?? 24 });
+    stdout.on('resize', handler);
+    return () => {
+      stdout.off('resize', handler);
+    };
+  }, [stdout]);
+  const value: StdoutHookValue = {
+    stdout,
+    write: (s) => stdout.write(s),
+    columns: dims.columns,
+    rows: dims.rows,
+  };
+  return createElement(StdoutContext.Provider, { value }, children);
+}
+
+function ResizeBridge({
+  rootNode,
+  container,
+  children,
+}: {
+  rootNode: ContainerNode;
+  container: RootContainer;
+  children?: ReactNode;
+}) {
+  const { columns, rows } = useStdout();
+  const [, force] = useState(0);
+  useEffect(() => {
+    rootNode.width = columns;
+    rootNode.height = rows;
+    container.prevFrame = null; // force full repaint on next commit
+    force((n) => n + 1);
+  }, [columns, rows, rootNode, container]);
+  return createElement(Fragment, null, children);
 }
 
 export function render(element: ReactElement, options: RenderOptions = {}): RenderInstance {
@@ -100,12 +140,6 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   const appValue: AppHookValue = {
     exit: (err) => finishUnmount(err),
   };
-  const stdoutValue: StdoutHookValue = {
-    stdout,
-    write: (s) => stdout.write(s),
-    columns: width,
-    rows: height,
-  };
   const stderrValue: StderrHookValue = {
     stderr,
     write: (s) => stderr.write(s),
@@ -115,9 +149,13 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
     AppContext.Provider,
     { value: appValue },
     createElement(
-      StdoutContext.Provider,
-      { value: stdoutValue },
-      createElement(StderrContext.Provider, { value: stderrValue }, element),
+      StdoutProvider,
+      { stdout },
+      createElement(
+        ResizeBridge,
+        { rootNode, container },
+        createElement(StderrContext.Provider, { value: stderrValue }, element),
+      ),
     ),
   );
 

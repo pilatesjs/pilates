@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mount, renderToString } from './test-utils.js';
 import { Box, Newline, Spacer, Text } from './components.js';
 import { render } from './render.js';
-import { useApp } from './hooks.js';
+import { useApp, useStdout } from './hooks.js';
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[Hf]/g, '');
 
@@ -280,5 +280,33 @@ describe('hooks', () => {
     const fakeStderr = makeFakeStdout(20, 5);
     const instance = render(<App />, { stdout: fakeStdout, stderr: fakeStderr });
     await expect(instance.waitUntilExit()).rejects.toThrow('boom');
+  });
+
+  it('useStdout reflects resize via stdout.emit("resize")', async () => {
+    function App() {
+      const { columns, rows } = useStdout();
+      return <Text>{`${columns}x${rows}`}</Text>;
+    }
+    const stdout = makeFakeStdout(20, 5);
+    // Make stdout an event-emitter so 'resize' can be simulated.
+    const { EventEmitter } = await import('node:events');
+    const ee = new EventEmitter();
+    (stdout as unknown as { on: typeof ee.on; off: typeof ee.off; emit: typeof ee.emit }).on = ee.on.bind(ee);
+    (stdout as unknown as { off: typeof ee.off }).off = ee.off.bind(ee);
+    (stdout as unknown as { emit: typeof ee.emit }).emit = ee.emit.bind(ee);
+    const writes = (stdout as unknown as { __buf: string[] }).__buf;
+
+    const instance = render(<App />, { stdout, stderr: makeFakeStdout(20, 5) });
+    expect(stripAnsi(writes.join(''))).toContain('20x5');
+
+    // simulate resize
+    (stdout as unknown as { columns: number }).columns = 30;
+    (stdout as unknown as { rows: number }).rows = 8;
+    ee.emit('resize');
+    // give effect time to run
+    await new Promise((r) => setTimeout(r, 0));
+    expect(stripAnsi(writes.join(''))).toContain('30x8');
+
+    instance.unmount();
   });
 });
