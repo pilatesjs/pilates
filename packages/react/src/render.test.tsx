@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { mount, renderToString } from './test-utils.js';
 import { Box, Newline, Spacer, Text } from './components.js';
+import { render } from './render.js';
+import { useApp } from './hooks.js';
 
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[Hf]/g, '');
 
@@ -232,5 +234,51 @@ describe('composition', () => {
       ),
     );
     expect(out).toBe('hi ada   \n');
+  });
+});
+
+function makeFakeStdout(columns: number, rows: number): NodeJS.WriteStream {
+  const buf: string[] = [];
+  const stream = {
+    columns,
+    rows,
+    isTTY: true as const,
+    write: (s: string | Uint8Array) => {
+      buf.push(typeof s === 'string' ? s : Buffer.from(s).toString('utf8'));
+      return true;
+    },
+    on: () => stream,
+    off: () => stream,
+    once: () => stream,
+    removeListener: () => stream,
+  } as unknown as NodeJS.WriteStream;
+  (stream as unknown as { __buf: string[] }).__buf = buf;
+  return stream;
+}
+
+describe('hooks', () => {
+  it('useApp().exit() resolves waitUntilExit', async () => {
+    function App() {
+      const { exit } = useApp();
+      Promise.resolve().then(() => exit());
+      return <Text>hi</Text>;
+    }
+    const fakeStdout = makeFakeStdout(20, 5);
+    const fakeStderr = makeFakeStdout(20, 5);
+    const instance = render(<App />, { stdout: fakeStdout, stderr: fakeStderr });
+    await instance.waitUntilExit();
+    expect(true).toBe(true);
+  });
+
+  it('useApp().exit(error) rejects waitUntilExit', async () => {
+    function App() {
+      const { exit } = useApp();
+      Promise.resolve().then(() => exit(new Error('boom')));
+      return <Text>hi</Text>;
+    }
+    const fakeStdout = makeFakeStdout(20, 5);
+    const fakeStderr = makeFakeStdout(20, 5);
+    const instance = render(<App />, { stdout: fakeStdout, stderr: fakeStderr });
+    await expect(instance.waitUntilExit()).rejects.toThrow('boom');
   });
 });
