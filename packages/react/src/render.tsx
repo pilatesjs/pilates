@@ -110,10 +110,12 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
 
   // Centralised teardown so resolve/reject is decided exactly once, no
   // matter which entry point initiated the exit (direct unmount call,
-  // useApp().exit(), useApp().exit(error), or an uncaught render error).
+  // useApp().exit(), useApp().exit(error), an uncaught render error,
+  // or a stdout stream 'error' event).
   const finishUnmount = (err?: Error, writeBanner = false): void => {
     if (unmounted) return;
     unmounted = true;
+    if (typeof stdout.off === 'function') stdout.off('error', onStreamError);
     if (writeBanner && err) {
       stderr.write(`\x1b[31mPilates render error:\x1b[0m ${err.message}\n${err.stack ?? ''}\n`);
     }
@@ -125,6 +127,7 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   };
 
   const onUncaughtError = (err: Error) => finishUnmount(err, true);
+  const onStreamError = (err: Error) => finishUnmount(err);
 
   const handle = reconciler.createContainer(
     container,
@@ -158,6 +161,8 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
       ),
     ),
   );
+
+  if (typeof stdout.on === 'function') stdout.on('error', onStreamError);
 
   sync.updateContainerSync(wrapped, handle, null, null);
   sync.flushSyncWork();

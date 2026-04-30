@@ -309,4 +309,17 @@ describe('hooks', () => {
 
     instance.unmount();
   });
+
+  it('rejects waitUntilExit when stdout emits an error', async () => {
+    const { EventEmitter } = await import('node:events');
+    const ee = new EventEmitter();
+    const stdout = makeFakeStdout(20, 5);
+    (stdout as unknown as { on: typeof ee.on; off: typeof ee.off; emit: typeof ee.emit }).on = ee.on.bind(ee);
+    (stdout as unknown as { off: typeof ee.off }).off = ee.off.bind(ee);
+    (stdout as unknown as { emit: typeof ee.emit }).emit = ee.emit.bind(ee);
+
+    const instance = render(<Text>x</Text>, { stdout, stderr: makeFakeStdout(20, 5) });
+    ee.emit('error', new Error('EPIPE'));
+    await expect(instance.waitUntilExit()).rejects.toThrow('EPIPE');
+  });
 });
