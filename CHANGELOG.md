@@ -5,6 +5,31 @@ All notable changes to Pilates are documented here. The format roughly follows
 follows [Semantic Versioning](https://semver.org/) once it leaves the `1.0.0`
 release-candidate train.
 
+## 2026-05-01 — `@pilates/react@0.2.0`
+
+### Added
+
+- `useInput` hook for keystroke handling. Discriminated `KeyEvent` shape:
+  `{ name?, ch?, ctrl, alt, shift, sequence }`. Broadcast delivery to
+  every active subscriber; `isActive: false` opts a handler out without
+  affecting the raw-mode lifecycle.
+- `KeyEvent`, `KeyName`, `UseInputOptions` exported types.
+- xterm-compatible key parser (`packages/react/src/key-parser.ts`):
+  arrow keys, F1–F12, page nav, home/end, delete, ctrl+letter,
+  alt+letter, CSI modifier params for arrows and tilde keys, multi-byte
+  UTF-8 passthrough, partial-sequence remainder for chunked stdin.
+- Lazy raw-mode lifecycle: `process.stdin` is untouched unless at least
+  one `useInput` is mounted; raw mode is entered on the first mount,
+  exited on the last unmount, and survives `setRawMode` failures.
+- New `stdin?: NodeJS.ReadStream` option on `render()` for tests + scripted
+  input.
+
+### Deferred
+
+- Bracketed paste mode, Kitty keyboard protocol — v0.3 if requested.
+- `useFocus` / `useFocusManager` — Phase 3 of the post-1.0 roadmap.
+- Mouse events — permanently out of scope per `docs/STRATEGY.md`.
+
 ## 2026-04-30 — `@pilates/react@0.1.0-rc.1`
 
 Initial pre-release of the React reconciler. Published with the `next`

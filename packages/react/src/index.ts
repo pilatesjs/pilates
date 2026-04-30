@@ -5,8 +5,15 @@ export { Box, Newline, Spacer, Text } from './components.js';
 export type { BoxProps, TextProps } from './components.js';
 
 // Hooks
-export { useApp, useStdout, useStderr } from './hooks.js';
-export type { AppHookValue, StdoutHookValue, StderrHookValue } from './hooks.js';
+export { useApp, useInput, useStdout, useStderr } from './hooks.js';
+export type {
+  AppHookValue,
+  KeyEvent,
+  KeyName,
+  StderrHookValue,
+  StdoutHookValue,
+  UseInputOptions,
+} from './hooks.js';
 
 // Render entry
 export { render } from './render.js';

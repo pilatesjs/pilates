@@ -12,7 +12,7 @@
 ## Install
 
 ```bash
-npm install @pilates/react@next react@^19
+npm install @pilates/react react@^19
 ```
 
 `react@^19` is a peer dependency. The reconciler runtime, layout engine,
@@ -67,11 +67,12 @@ mount with a message that points at the offending tree.
 ## Hooks
 
 ```ts
-import { useApp, useStdout, useStderr } from '@pilates/react';
+import { useApp, useInput, useStdout, useStderr } from '@pilates/react';
 
-const { exit } = useApp();          // exit(error?: Error) tears down the render
-const { columns, rows } = useStdout(); // tracks SIGWINCH; re-renders on resize
-const { write }        = useStderr();  // direct stderr access for log-style output
+const { exit } = useApp();              // exit(error?: Error) tears down the render
+const { columns, rows } = useStdout();  // tracks SIGWINCH; re-renders on resize
+const { write }        = useStderr();   // direct stderr access for log-style output
+useInput((event) => { /* ... */ });     // subscribe to keystrokes
 ```
 
 | Hook | Returns | Notes |
@@ -79,8 +80,49 @@ const { write }        = useStderr();  // direct stderr access for log-style out
 | `useApp()` | `{ exit(error?) }` | `exit()` resolves the `waitUntilExit()` promise; `exit(err)` rejects it. |
 | `useStdout()` | `{ stdout, write, columns, rows }` | `columns`/`rows` update on `'resize'`. `write` is a typed shorthand for `stdout.write`. |
 | `useStderr()` | `{ stderr, write }` | Use for log lines that should NOT participate in the diff loop. |
+| `useInput()` | `void` | Subscribe to keystrokes. `event.name` for arrows / specials, `event.ch` for printable, modifiers via `event.ctrl/alt/shift`. Lazy raw-mode lifecycle — stdin is untouched if no useInput is mounted. Pass `{ isActive: false }` to opt a handler out without unsubscribing. |
 
-All three hooks throw if called outside a `<render>` tree.
+All four hooks throw if called outside a `<render>` tree.
+
+### useInput example
+
+```tsx
+import { useState } from 'react';
+import { Box, render, Text, useApp, useInput } from '@pilates/react';
+
+function Wizard() {
+  const [step, setStep] = useState(0);
+  const { exit } = useApp();
+  useInput((event) => {
+    if (event.name === 'right' || event.ch === 'n') setStep((s) => Math.min(s + 1, 2));
+    if (event.name === 'left'  || event.ch === 'p') setStep((s) => Math.max(s - 1, 0));
+    if (event.ch === 'q' || event.name === 'escape') exit();
+    if (event.ctrl && event.ch === 'c') exit();
+  });
+  return (
+    <Box border="single" padding={1}>
+      <Text>step {step + 1}/3 — n/p to navigate, q to quit</Text>
+    </Box>
+  );
+}
+
+await render(<Wizard />).waitUntilExit();
+```
+
+The `KeyEvent` shape:
+
+```ts
+interface KeyEvent {
+  name?: KeyName;   // 'enter' | 'escape' | 'tab' | 'backspace' | 'delete' | 'space'
+                    // | 'up' | 'down' | 'left' | 'right' | 'home' | 'end'
+                    // | 'pageUp' | 'pageDown' | 'f1' | … | 'f12'
+  ch?: string;      // printable Unicode char (multi-byte CJK / emoji passes through)
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  sequence: string; // raw input bytes
+}
+```
 
 ## render() options
 
@@ -90,6 +132,7 @@ render(<App />, {
   height?: number,                 // override stdout.rows
   stdout?: NodeJS.WriteStream,     // defaults to process.stdout
   stderr?: NodeJS.WriteStream,     // defaults to process.stderr
+  stdin?: NodeJS.ReadStream,       // defaults to process.stdin (used when useInput is mounted)
 });
 ```
 
@@ -113,23 +156,28 @@ On SIGWINCH the layout root's dimensions are mutated and `prevFrame` is
 cleared, forcing a full repaint at the new size — anything else would
 leave stale cells past the new viewport.
 
-## What's NOT in v0.1
+## What's NOT in v0.2
 
-This release covers the core rendering loop only. The following are
-intentionally deferred to keep the surface small:
+The following are intentionally deferred. See `docs/STRATEGY.md` for the
+roadmap that maps each item to a specific phase.
 
-- **`useInput()`** — raw stdin parsing for keyboard events.
 - **`useFocus()` / `<FocusManager>`** — focus traversal across components.
+  Phase 3, after a separate `@pilates/widgets` package surfaces real
+  multi-input form requirements.
 - **`<Static>`** — append-only output above the live region.
 - **`<Transform>`** — character-level transforms applied at paint time.
+- **Bracketed paste mode** and **Kitty keyboard protocol** extended
+  encoding — v0.3 if requested. v0.2 reads xterm-compatible CSI only.
+- **Mouse events** — permanently out of scope (see strategy doc).
 - **Nested `<Text>` style inheritance** — child `<Text>` styles are dropped
-  during text flatten in v0.1; only text content propagates upward. Use
-  one `<Text>` per styled run.
+  during text flatten; only text content propagates upward. Use one
+  `<Text>` per styled run.
 - **Concurrent mode** — `render()` uses LegacyRoot so commits flush
   synchronously; `useTransition` and similar concurrent APIs may behave
   unexpectedly.
 
-If you need any of the above, an issue with your use case is welcome.
+If you need any of the deferred items, an issue with your use case is
+welcome — demand drives the roadmap.
 
 ## Examples
 
@@ -147,9 +195,8 @@ pnpm --filter @pilates-examples/react-modal dev
 
 ## Status
 
-Pre-release (`0.1.0-rc.1`). Published with the `next` dist-tag — install
-with `npm install @pilates/react@next` to opt in. Bug reports and API
-feedback go to [the issue tracker](https://github.com/pilatesjs/pilates/issues).
+`0.2.0` — first non-RC release. Bug reports and API feedback go to
+[the issue tracker](https://github.com/pilatesjs/pilates/issues).
 
 ## License
 
