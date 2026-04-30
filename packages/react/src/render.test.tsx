@@ -324,6 +324,25 @@ describe('hooks', () => {
   });
 });
 
+describe('examples smoke', () => {
+  it('react-counter App renders without throwing', async () => {
+    const { App } = await import('../../../examples/react-counter/index.tsx');
+    // Import render from the same package resolution the example uses so
+    // AppContext is the same singleton instance.
+    const { render: pkgRender } = await import('@pilates/react');
+    const stdout = makeFakeStdout(22, 7);
+    const stderr = makeFakeStdout(22, 7);
+    const buf = (stdout as unknown as { __buf: string[] }).__buf;
+    const instance = pkgRender(<App />, { stdout, stderr });
+    // Immediately unmount to clean up setInterval / setTimeout
+    instance.unmount();
+    await instance.waitUntilExit();
+    const out = stripAnsi(buf.join(''));
+    expect(out).toContain('counter');
+    expect(out).toContain('n = 0');
+  });
+});
+
 describe('validation', () => {
   it('throws when <Text> contains a <Box>', () => {
     expect(() =>
