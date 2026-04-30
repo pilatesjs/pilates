@@ -162,11 +162,21 @@ function appendChildImpl(parent: HostInstance, child: AnyInstance): void {
   if (parent.kind === 'text') {
     if (child.kind === 'fragment') {
       child.parent = parent;
+      // Re-append: drop any prior occurrence so a move ends up at the
+      // tail rather than producing a duplicate entry. The DOM does this
+      // for you; an array-backed host has to do it manually.
+      const oldIdx = parent.fragments.indexOf(child);
+      if (oldIdx !== -1) parent.fragments.splice(oldIdx, 1);
       parent.fragments.push(child);
+      // Re-flatten so node.text reflects the new ordering.
+      parent.node.text = flattenText(parent);
       return;
     }
     if (child.kind === 'text') {
+      const oldIdx = parent.fragments.indexOf(child);
+      if (oldIdx !== -1) parent.fragments.splice(oldIdx, 1);
       parent.fragments.push(child);
+      parent.node.text = flattenText(parent);
       return;
     }
     throw new Error(
@@ -178,7 +188,10 @@ function appendChildImpl(parent: HostInstance, child: AnyInstance): void {
     throw new Error('Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.');
   }
   parent.node.children = parent.node.children ?? [];
-  (parent.node.children as RenderNode[]).push(child.node);
+  const arr = parent.node.children as RenderNode[];
+  const oldIdx = arr.indexOf(child.node);
+  if (oldIdx !== -1) arr.splice(oldIdx, 1);
+  arr.push(child.node);
 }
 
 function finalizeText(instance: HostInstance): void {
@@ -191,13 +204,20 @@ function appendChildToContainer(container: RootContainer, child: AnyInstance): v
     throw new Error('Pilates: bare strings are not allowed at the root. Wrap them in <Text>.');
   }
   container.root.children = container.root.children ?? [];
-  (container.root.children as RenderNode[]).push(child.node);
+  const arr = container.root.children as RenderNode[];
+  const oldIdx = arr.indexOf(child.node);
+  if (oldIdx !== -1) arr.splice(oldIdx, 1);
+  arr.push(child.node);
 }
 
 function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyInstance): void {
   if (parent.kind === 'text') {
     if (child.kind === 'fragment' || child.kind === 'text') {
       if (child.kind === 'fragment') child.parent = parent;
+      // Drop any prior occurrence first so a move re-positions the
+      // child rather than duplicating it.
+      const oldIdx = parent.fragments.indexOf(child as TextFragment | TextInstance);
+      if (oldIdx !== -1) parent.fragments.splice(oldIdx, 1);
       const beforeIdx = parent.fragments.indexOf(before as TextFragment | TextInstance);
       if (beforeIdx === -1) parent.fragments.push(child);
       else parent.fragments.splice(beforeIdx, 0, child);
@@ -215,6 +235,8 @@ function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyI
     throw new Error('Pilates: invariant — Box children should never be string fragments.');
   }
   const arr = (parent.node.children ??= []) as RenderNode[];
+  const oldIdx = arr.indexOf(child.node);
+  if (oldIdx !== -1) arr.splice(oldIdx, 1);
   const idx = arr.indexOf(before.node);
   if (idx === -1) arr.push(child.node);
   else arr.splice(idx, 0, child.node);
@@ -228,6 +250,8 @@ function insertBeforeContainerImpl(container: RootContainer, child: AnyInstance,
     throw new Error('Pilates: invariant — root children should never be string fragments.');
   }
   const arr = (container.root.children ??= []) as RenderNode[];
+  const oldIdx = arr.indexOf(child.node);
+  if (oldIdx !== -1) arr.splice(oldIdx, 1);
   const idx = arr.indexOf(before.node);
   if (idx === -1) arr.push(child.node);
   else arr.splice(idx, 0, child.node);
