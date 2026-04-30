@@ -232,7 +232,22 @@ Total frame catalog ~1KB. Users wanting more (e.g. emoji, 3D cube animations) pa
 
 ## Testing
 
-Reuse `@pilates/react`'s render-to-string testing pattern (same approach as `useInput` integration tests in v0.2): mount the widget under a test wrapper, drive synthetic `KeyEvent`s through a fake stdin, assert rendered output and callback invocations.
+Reuse `@pilates/react`'s render-to-string testing harness (the same one driving `useInput` integration tests in v0.2): `mountWithInput` for interactive widgets, `renderToString` for static snapshots, `press*` helpers for synthetic key events.
+
+**Prerequisite — `@pilates/react@0.2.1`** (small additive patch release):
+- Promote `src/test-utils.ts` from internal-only to a public subpath export at `@pilates/react/test-utils`.
+- Add to `package.json` exports map:
+  ```json
+  "./test-utils": {
+    "types": "./dist/test-utils.d.ts",
+    "import": "./dist/test-utils.js"
+  }
+  ```
+- Update `files` to include `dist` (already does) — no other changes.
+- This commits us to maintaining `mountWithInput` / `renderToString` as a public API. The surface is intentionally small and stable; the cost is low.
+- Widgets devDeps `@pilates/react@^0.2.1` (peer-dep stays at `^0.2.0` since runtime widgets don't import test-utils).
+
+Tests in `packages/widgets/src/*.test.tsx` import from `@pilates/react/test-utils`, mount each widget under `mountWithInput`, and assert against rendered output and callback invocations.
 
 **Coverage targets:**
 
@@ -251,6 +266,7 @@ Target: ~38 new tests, bringing the workspace total to ~343.
 - **Per-package tags:** `@pilates/widgets@0.1.0-rc.1` etc., matching the convention.
 - **Publish discipline:** never from repo root (root `package.json` has `private: true`). Always `cd packages/widgets`, `pwd`, then `pnpm publish --access=public --no-git-checks`.
 - **Phase ordering:** ships after Phase A.5 (core/render → 1.0.0), so widgets always builds on a stable foundation. Per STRATEGY.md, that gate opens 2026-05-13.
+- **Sequencing within widgets work:** `@pilates/react@0.2.1` (test-utils subpath export) ships first, then `@pilates/widgets@0.1.0-rc.1`. Two npm publishes, two tags. The 0.2.1 release has no behavioral change — pure additive surface — so it can ship during the bake without disturbing it.
 
 ## Out of scope (explicit)
 
