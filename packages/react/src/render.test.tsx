@@ -129,3 +129,108 @@ describe('re-render diff', () => {
     expect(writeCountAfter).toBe(writeCountBefore);
   });
 });
+
+describe('conditional rendering', () => {
+  it('mounts and unmounts branches cleanly', () => {
+    const handle = mount(
+      true,
+      (visible) => (
+        <Box width={6} height={1}>
+          {visible && <Text>shown</Text>}
+        </Box>
+      ),
+      { width: 6, height: 1 },
+    );
+    expect(stripAnsi(handle.allWrites())).toContain('shown');
+
+    handle.setState(false);
+    expect(handle.lastWrite()).not.toContain('shown');
+  });
+
+  it('switching between two children replaces correctly', () => {
+    const handle = mount(
+      'a',
+      (which) => (
+        <Box width={3} height={1}>
+          {which === 'a' ? <Text>aaa</Text> : <Text>bbb</Text>}
+        </Box>
+      ),
+      { width: 3, height: 1 },
+    );
+    expect(stripAnsi(handle.allWrites())).toContain('aaa');
+    handle.setState('b');
+    expect(stripAnsi(handle.lastWrite())).toContain('bbb');
+  });
+});
+
+describe('composition', () => {
+  it('Fragment children render as siblings', () => {
+    const out = stripAnsi(
+      renderToString(
+        <Box width={6} height={1} flexDirection="row">
+          <>
+            <Text>a</Text>
+            <Text>b</Text>
+            <Text>c</Text>
+          </>
+        </Box>,
+        { width: 6, height: 1 },
+      ),
+    );
+    expect(out).toBe('abc   \n');
+  });
+
+  it('arrays with keys render in order', () => {
+    const items = ['x', 'y', 'z'];
+    const out = stripAnsi(
+      renderToString(
+        <Box width={6} height={1} flexDirection="row">
+          {items.map((s) => (
+            <Text key={s}>{s}</Text>
+          ))}
+        </Box>,
+        { width: 6, height: 1 },
+      ),
+    );
+    expect(out).toBe('xyz   \n');
+  });
+
+  it('reordering keyed children re-renders correctly', () => {
+    const handle = mount<string[]>(
+      ['a', 'b', 'c'],
+      (items) => (
+        <Box width={6} height={1} flexDirection="row">
+          {items.map((s) => (
+            <Text key={s}>{s}</Text>
+          ))}
+        </Box>
+      ),
+      { width: 6, height: 1 },
+    );
+    expect(stripAnsi(handle.allWrites())).toContain('abc');
+    handle.setState(['c', 'b', 'a']);
+    // Reordering ['a','b','c'] → ['c','b','a'] moves 'a' and 'c' but
+    // leaves 'b' in place, so the diff should only re-emit cells 0 and 2.
+    // The middle 'b' must NOT appear in the latest write (it would imply
+    // a full repaint).
+    const last = stripAnsi(handle.lastWrite());
+    expect(last).toContain('c');
+    expect(last).toContain('a');
+    expect(last).not.toContain('b');
+  });
+
+  it('user-defined components compose primitives', () => {
+    function Greeting({ name }: { name: string }) {
+      return <Text>hi {name}</Text>;
+    }
+    const out = stripAnsi(
+      renderToString(
+        <Box width={9} height={1}>
+          <Greeting name="ada" />
+        </Box>,
+        { width: 9, height: 1 },
+      ),
+    );
+    expect(out).toBe('hi ada   \n');
+  });
+});
