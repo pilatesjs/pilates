@@ -512,3 +512,59 @@ describe('useInput', () => {
     handle.unmount();
   });
 });
+
+describe('useInput lifecycle', () => {
+  it('enters raw mode on first mount', () => {
+    function App() {
+      useInput(() => {});
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput(
+      0,
+      () => <App />,
+      { width: 1, height: 1 },
+    );
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true]);
+    handle.unmount();
+  });
+
+  it('exits raw mode on last unmount', () => {
+    function App() {
+      useInput(() => {});
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput(
+      0,
+      () => <App />,
+      { width: 1, height: 1 },
+    );
+    handle.unmount();
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true, false]);
+  });
+
+  it('does not enter raw mode when no useInput is mounted', () => {
+    const handle = mountWithInput(
+      0,
+      () => <Text>x</Text>,
+      { width: 1, height: 1 },
+    );
+    expect(handle.fakeStdin.rawModeCalls).toEqual([]);
+    handle.unmount();
+  });
+
+  it('survives setRawMode throwing', () => {
+    function App() {
+      useInput(() => {});
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput(
+      0,
+      () => <App />,
+      { width: 1, height: 1 },
+    );
+    handle.fakeStdin.setRawMode = () => {
+      throw new Error('boom');
+    };
+    expect(() => handle.unmount()).not.toThrow();
+  });
+});
