@@ -127,3 +127,104 @@ describe('Select rendering', () => {
     handle.unmount();
   });
 });
+
+describe('Select navigation', () => {
+  it('down arrow moves highlight to the next item', () => {
+    const onHighlight = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items: items3, onSelect: () => {}, onHighlight }),
+      opts,
+    );
+    handle.pressKey('down');
+    expect(onHighlight).toHaveBeenLastCalledWith(items3[1]);
+    handle.unmount();
+  });
+
+  it('up arrow at top wraps to the bottom', () => {
+    const onHighlight = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items: items3, onSelect: () => {}, onHighlight }),
+      opts,
+    );
+    handle.pressKey('up');
+    expect(onHighlight).toHaveBeenLastCalledWith(items3[2]);
+    handle.unmount();
+  });
+
+  it('down arrow at bottom wraps to the top', () => {
+    const onHighlight = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items: items3, onSelect: () => {}, onHighlight, initialIndex: 2 }),
+      opts,
+    );
+    handle.pressKey('down');
+    expect(onHighlight).toHaveBeenLastCalledWith(items3[0]);
+    handle.unmount();
+  });
+
+  it('skips disabled items when navigating down', () => {
+    const items = [
+      { label: 'A', value: 'a' },
+      { label: 'B', value: 'b', disabled: true },
+      { label: 'C', value: 'c' },
+    ];
+    const onHighlight = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items, onSelect: () => {}, onHighlight }),
+      opts,
+    );
+    handle.pressKey('down');
+    expect(onHighlight).toHaveBeenLastCalledWith(items[2]);
+    handle.unmount();
+  });
+
+  it('home goes to the first non-disabled item', () => {
+    const items = [
+      { label: 'A', value: 'a', disabled: true },
+      { label: 'B', value: 'b' },
+      { label: 'C', value: 'c' },
+    ];
+    const onHighlight = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items, onSelect: () => {}, onHighlight, initialIndex: 2 }),
+      opts,
+    );
+    handle.pressKey('home');
+    expect(onHighlight).toHaveBeenLastCalledWith(items[1]);
+    handle.unmount();
+  });
+
+  it('end goes to the last non-disabled item', () => {
+    const items = [
+      { label: 'A', value: 'a' },
+      { label: 'B', value: 'b' },
+      { label: 'C', value: 'c', disabled: true },
+    ];
+    const onHighlight = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items, onSelect: () => {}, onHighlight }),
+      opts,
+    );
+    handle.pressKey('end');
+    expect(onHighlight).toHaveBeenLastCalledWith(items[1]);
+    handle.unmount();
+  });
+
+  it('does not consume input when focus=false', () => {
+    const onHighlight = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items: items3, focus: false, onSelect: () => {}, onHighlight }),
+      opts,
+    );
+    handle.pressKey('down');
+    expect(onHighlight).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+});
