@@ -1,6 +1,7 @@
 import { Box, Text, render, useApp } from '@pilates/react';
 import { Select, type SelectItem, Spinner, TextInput } from '@pilates/widgets';
 import { useEffect, useState } from 'react';
+import { pathToFileURL } from 'node:url';
 
 type Step = 'name' | 'size' | 'processing' | 'done';
 
@@ -10,6 +11,8 @@ const sizes: SelectItem<'sm' | 'md' | 'lg'>[] = [
   { label: 'Large', value: 'lg' },
 ];
 
+const finalResult: { current: { name: string; size: string } | null } = { current: null };
+
 export function App() {
   const [step, setStep] = useState<Step>('name');
   const [name, setName] = useState('');
@@ -18,7 +21,7 @@ export function App() {
 
   useEffect(() => {
     if (step !== 'processing') return;
-    const t = setTimeout(() => setStep('done'), 1500);
+    const t = setTimeout(() => setStep('done'), 2500);
     return () => {
       clearTimeout(t);
     };
@@ -26,7 +29,7 @@ export function App() {
 
   useEffect(() => {
     if (step !== 'done') return;
-    const t = setTimeout(() => exit(), 800);
+    const t = setTimeout(() => exit(), 1500);
     return () => {
       clearTimeout(t);
     };
@@ -59,6 +62,7 @@ export function App() {
             items={sizes}
             onSelect={(item) => {
               setSize(item.value);
+              finalResult.current = { name, size: item.value };
               setStep('processing');
             }}
           />
@@ -85,17 +89,16 @@ export function App() {
 }
 
 // Only run when invoked directly (not when imported by tests).
-// Normalise path separators for Windows (Git Bash / MINGW64).
-const importUrl = import.meta.url;
-const argv1 = `file://${(process.argv[1] ?? '').replace(/\\/g, '/')}`;
-process.stderr.write(`[wizard] importUrl=${importUrl}\n[wizard] argv1=${argv1}\n[wizard] match=${importUrl === argv1}\n`);
-if (importUrl === argv1 || importUrl.toLowerCase() === argv1.toLowerCase()) {
-  // Pin stdin into flowing mode synchronously so Node's event loop stays
-  // alive long enough for React's passive effects (which attach the actual
-  // useInput stdin listener) to fire. Without this, the wizard can exit
-  // before its first paint commits on some platforms (notably Windows
-  // MINGW64), since render() returns before useEffect runs.
+// pathToFileURL handles cross-platform quirks (Windows drive letters, the
+// file:/// vs file:// slash count) that hand-built file URLs get wrong.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  // Pin stdin into flowing mode so Node's event loop stays alive long enough
+  // for React's passive effects (which attach useInput's stdin listener) to
+  // fire. Without this the wizard can exit before its first paint commits.
   process.stdin.resume();
   const instance = render(<App />);
   await instance.waitUntilExit();
+  if (finalResult.current) {
+    process.stdout.write(`\nResult: name=${finalResult.current.name}, size=${finalResult.current.size}\n`);
+  }
 }
