@@ -189,6 +189,18 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/widgets:
+    devDependencies:
+      '@pilates/react':
+        specifier: workspace:*
+        version: link:../react
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+
 packages:
 
   '@biomejs/biome@1.9.4':

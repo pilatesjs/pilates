@@ -1,7 +1,7 @@
 {
-  "name": "@pilates/react",
-  "version": "0.2.1",
-  "description": "React reconciler for @pilates/core. Author terminal UIs with JSX and hooks.",
+  "name": "@pilates/widgets",
+  "version": "0.1.0-rc.1",
+  "description": "Interactive widgets for Pilates: TextInput, Select, Spinner. Built on @pilates/react.",
   "license": "MIT",
   "author": "Zhijie Wang",
   "type": "module",
@@ -11,10 +11,6 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./test-utils": {
-      "types": "./dist/test-utils.d.ts",
-      "import": "./dist/test-utils.js"
     }
   },
   "files": ["dist", "README.md"],
@@ -24,30 +20,36 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
-  "dependencies": {
-    "@pilates/core": "workspace:*",
-    "@pilates/render": "workspace:*",
-    "@pilates/diff": "workspace:*",
-    "react-reconciler": "^0.31.0"
-  },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "@pilates/react": "^0.2.0"
   },
   "devDependencies": {
+    "@pilates/react": "workspace:*",
     "@types/react": "^19.0.0",
-    "@types/react-reconciler": "^0.28.9",
     "react": "^19.0.0"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/pilatesjs/pilates.git",
-    "directory": "packages/react"
+    "directory": "packages/widgets"
   },
   "homepage": "https://github.com/pilatesjs/pilates#readme",
   "bugs": {
     "url": "https://github.com/pilatesjs/pilates/issues"
   },
-  "keywords": ["terminal", "tui", "cli", "react", "reconciler", "ink", "pilates"],
+  "keywords": [
+    "terminal",
+    "tui",
+    "cli",
+    "react",
+    "widgets",
+    "ink",
+    "pilates",
+    "text-input",
+    "select",
+    "spinner"
+  ],
   "engines": {
     "node": ">=20"
   }
