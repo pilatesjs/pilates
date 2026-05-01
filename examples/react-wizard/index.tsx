@@ -89,6 +89,12 @@ export function App() {
 const importUrl = import.meta.url;
 const argv1 = `file://${(process.argv[1] ?? '').replace(/\\/g, '/')}`;
 if (importUrl === argv1) {
+  // Pin stdin into flowing mode synchronously so Node's event loop stays
+  // alive long enough for React's passive effects (which attach the actual
+  // useInput stdin listener) to fire. Without this, the wizard can exit
+  // before its first paint commits on some platforms (notably Windows
+  // MINGW64), since render() returns before useEffect runs.
+  process.stdin.resume();
   const instance = render(<App />);
   await instance.waitUntilExit();
 }
