@@ -292,3 +292,81 @@ describe('TextInput cursor navigation', () => {
     handle.unmount();
   });
 });
+
+describe('TextInput line edits', () => {
+  it('ctrl+u deletes from cursor to start', () => {
+    // initial 'hello world'. End. Press left 5 times → cursor at index 6 (after 'hello '). Ctrl+u → 'world'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'hello world', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('left');
+    handle.pressKey('left');
+    handle.pressKey('left');
+    handle.pressKey('left');
+    handle.pressKey('left');
+    handle.pressCtrl('u');
+    expect(onChange).toHaveBeenLastCalledWith('world');
+    handle.unmount();
+  });
+
+  it('ctrl+k deletes from cursor to end', () => {
+    // initial 'hello world'. Cursor at 0 (default). Ctrl+k → ''.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'hello world', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressCtrl('k');
+    expect(onChange).toHaveBeenLastCalledWith('');
+    handle.unmount();
+  });
+
+  it('ctrl+w deletes the previous word (boundary: contiguous whitespace)', () => {
+    // initial 'hello world foo'. End. Ctrl+w → 'hello world '.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () =>
+        createElement(ControlledTextInput, { initial: 'hello world foo', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressCtrl('w');
+    expect(onChange).toHaveBeenLastCalledWith('hello world ');
+    handle.unmount();
+  });
+
+  it('ctrl+w with cursor mid-word deletes only up to cursor', () => {
+    // initial 'hello world'. End. Left twice → cursor at index 9 (between 'l' and 'd'). Ctrl+w → 'hello ld'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'hello world', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('left');
+    handle.pressKey('left');
+    handle.pressCtrl('w');
+    expect(onChange).toHaveBeenLastCalledWith('hello ld');
+    handle.unmount();
+  });
+
+  it('ctrl+w at start is a no-op', () => {
+    // initial 'hello'. Cursor at 0. Ctrl+w → no onChange call.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'hello', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressCtrl('w');
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+});

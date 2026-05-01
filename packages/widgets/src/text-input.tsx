@@ -66,6 +66,35 @@ export function TextInput({
         return;
       }
 
+      // Ctrl shortcuts (line edits).
+      if (event.ctrl && event.ch === 'u') {
+        if (clampedCursor === 0) return;
+        const next = value.slice(clampedCursor);
+        setCursor(0);
+        onChange(next);
+        return;
+      }
+
+      if (event.ctrl && event.ch === 'k') {
+        if (clampedCursor >= value.length) return;
+        const next = value.slice(0, clampedCursor);
+        onChange(next);
+        return;
+      }
+
+      if (event.ctrl && event.ch === 'w') {
+        if (clampedCursor === 0) return;
+        // Find the start of the previous word: scan left over whitespace, then over non-whitespace.
+        let i = clampedCursor;
+        while (i > 0 && /\s/.test(value[i - 1]!)) i--;
+        while (i > 0 && !/\s/.test(value[i - 1]!)) i--;
+        if (i === clampedCursor) return; // cursor was sitting in whitespace with nothing left → no-op
+        const next = value.slice(0, i) + value.slice(clampedCursor);
+        setCursor(i);
+        onChange(next);
+        return;
+      }
+
       // Editing.
       if (event.name === 'backspace') {
         if (clampedCursor === 0) return;
