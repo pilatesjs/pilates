@@ -22,7 +22,7 @@ const ROW: { flexDirection: 'row'; flexGrow: 1 } = { flexDirection: 'row', flexG
 export function TextInput({
   value,
   onChange,
-  onSubmit: _onSubmit,
+  onSubmit,
   placeholder,
   mask,
   focus = true,
@@ -38,6 +38,11 @@ export function TextInput({
 
   useInput(
     (event) => {
+      if (event.name === 'enter') {
+        onSubmit?.(value);
+        return;
+      }
+
       // Movement: named keys (work regardless of modifiers we care about).
       if (event.name === 'left') {
         setCursor((c) => Math.max(0, Math.min(c, value.length) - 1));

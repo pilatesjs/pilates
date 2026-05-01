@@ -94,10 +94,12 @@ describe('TextInput rendering', () => {
 function ControlledTextInput({
   initial,
   onChangeSpy,
+  onSubmitSpy,
   focus,
 }: {
   initial: string;
   onChangeSpy: (v: string) => void;
+  onSubmitSpy?: (v: string) => void;
   focus?: boolean;
 }) {
   const [value, setValue] = useState(initial);
@@ -108,6 +110,7 @@ function ControlledTextInput({
       onChangeSpy(v);
       setValue(v);
     },
+    onSubmit: onSubmitSpy,
   });
 }
 
@@ -366,6 +369,50 @@ describe('TextInput line edits', () => {
       opts,
     );
     handle.pressCtrl('w');
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+});
+
+describe('TextInput submit', () => {
+  it('calls onSubmit with the current value on Enter', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const onSubmit = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () =>
+        createElement(ControlledTextInput, {
+          initial: 'hello',
+          onChangeSpy: onChange,
+          onSubmitSpy: onSubmit,
+        }),
+      opts,
+    );
+    handle.pressKey('enter');
+    expect(onSubmit).toHaveBeenCalledWith('hello');
+    handle.unmount();
+  });
+
+  it('Enter is a no-op when onSubmit is not provided', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'hello', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('enter');
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+
+  it('Enter does not insert a newline into the value', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'a', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('enter');
     expect(onChange).not.toHaveBeenCalled();
     handle.unmount();
   });
