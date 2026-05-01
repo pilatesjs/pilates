@@ -373,6 +373,12 @@ describe('examples smoke', () => {
     const out = stripAnsi(buf.join(''));
     expect(out).toContain('Confirm action');
   });
+
+  // react-wizard exercises @pilates/widgets and is interactive (useInput-driven).
+  // The immediate-unmount smoke pattern used for the static examples above
+  // doesn't paint a frame before teardown, so the wizard intentionally has
+  // no smoke test — it's exercised manually via `pnpm --filter
+  // @pilates-examples/react-wizard dev`.
 });
 
 describe('validation', () => {
