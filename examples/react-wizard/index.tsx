@@ -88,7 +88,8 @@ export function App() {
 // Normalise path separators for Windows (Git Bash / MINGW64).
 const importUrl = import.meta.url;
 const argv1 = `file://${(process.argv[1] ?? '').replace(/\\/g, '/')}`;
-if (importUrl === argv1) {
+process.stderr.write(`[wizard] importUrl=${importUrl}\n[wizard] argv1=${argv1}\n[wizard] match=${importUrl === argv1}\n`);
+if (importUrl === argv1 || importUrl.toLowerCase() === argv1.toLowerCase()) {
   // Pin stdin into flowing mode synchronously so Node's event loop stays
   // alive long enough for React's passive effects (which attach the actual
   // useInput stdin listener) to fire. Without this, the wizard can exit
