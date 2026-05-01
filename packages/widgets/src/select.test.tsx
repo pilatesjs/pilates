@@ -157,7 +157,8 @@ describe('Select navigation', () => {
     const onHighlight = vi.fn();
     const handle = mountWithInput(
       0,
-      () => createElement(Select, { items: items3, onSelect: () => {}, onHighlight, initialIndex: 2 }),
+      () =>
+        createElement(Select, { items: items3, onSelect: () => {}, onHighlight, initialIndex: 2 }),
       opts,
     );
     handle.pressKey('down');
@@ -225,6 +226,41 @@ describe('Select navigation', () => {
     );
     handle.pressKey('down');
     expect(onHighlight).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+});
+
+describe('Select selection', () => {
+  it('Enter calls onSelect with the highlighted item', () => {
+    const onSelect = vi.fn();
+    const handle = mountWithInput(
+      0,
+      () => createElement(Select, { items: items3, onSelect }),
+      opts,
+    );
+    handle.pressKey('down');
+    handle.pressKey('enter');
+    expect(onSelect).toHaveBeenCalledWith(items3[1]);
+    handle.unmount();
+  });
+
+  it('Enter on a disabled item is a no-op', () => {
+    const items = [
+      { label: 'A', value: 'a', disabled: true },
+      { label: 'B', value: 'b', disabled: true },
+    ];
+    const onSelect = vi.fn();
+    const handle = mountWithInput(0, () => createElement(Select, { items, onSelect }), opts);
+    handle.pressKey('enter');
+    expect(onSelect).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+
+  it('Enter is a no-op for an empty items array', () => {
+    const onSelect = vi.fn();
+    const handle = mountWithInput(0, () => createElement(Select, { items: [], onSelect }), opts);
+    handle.pressKey('enter');
+    expect(onSelect).not.toHaveBeenCalled();
     handle.unmount();
   });
 });
