@@ -38,11 +38,35 @@ export function TextInput({
 
   useInput(
     (event) => {
-      // Ctrl-modified printable chars are NOT inserted (reserved for shortcuts).
-      if (event.ctrl) return;
-      // Alt-modified printable chars are NOT inserted.
-      if (event.alt) return;
+      // Movement: named keys (work regardless of modifiers we care about).
+      if (event.name === 'left') {
+        setCursor((c) => Math.max(0, Math.min(c, value.length) - 1));
+        return;
+      }
+      if (event.name === 'right') {
+        setCursor((c) => Math.min(value.length, c + 1));
+        return;
+      }
+      if (event.name === 'home') {
+        setCursor(0);
+        return;
+      }
+      if (event.name === 'end') {
+        setCursor(value.length);
+        return;
+      }
 
+      // Ctrl shortcuts (movement).
+      if (event.ctrl && event.ch === 'a') {
+        setCursor(0);
+        return;
+      }
+      if (event.ctrl && event.ch === 'e') {
+        setCursor(value.length);
+        return;
+      }
+
+      // Editing.
       if (event.name === 'backspace') {
         if (clampedCursor === 0) return;
         const next = value.slice(0, clampedCursor - 1) + value.slice(clampedCursor);
@@ -58,8 +82,11 @@ export function TextInput({
         return;
       }
 
+      // Reject ctrl/alt-modified printables (reserved for shortcuts).
+      if (event.ctrl || event.alt) return;
+
+      // Printable char insertion.
       if (event.ch !== undefined) {
-        // Printable char: insert at cursor.
         const next = value.slice(0, clampedCursor) + event.ch + value.slice(clampedCursor);
         setCursor(clampedCursor + 1);
         onChange(next);

@@ -201,3 +201,94 @@ describe('TextInput editing', () => {
     handle.unmount();
   });
 });
+
+describe('TextInput cursor navigation', () => {
+  it('left arrow moves cursor left and inserts before the moved-past char', () => {
+    // Initial value 'ac'. Press end → cursor 2. Press left → cursor 1. Press 'b' → 'abc'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'ac', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('left');
+    handle.pressChar('b');
+    expect(onChange).toHaveBeenLastCalledWith('abc');
+    handle.unmount();
+  });
+
+  it('right arrow moves cursor right (clamped at end)', () => {
+    // Initial 'ab'. Three rights (clamped at length 2). Press 'c' → 'abc'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'ab', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('right');
+    handle.pressKey('right');
+    handle.pressKey('right');
+    handle.pressChar('c');
+    expect(onChange).toHaveBeenLastCalledWith('abc');
+    handle.unmount();
+  });
+
+  it('home moves cursor to start', () => {
+    // Initial 'bc'. End. Home. Press 'a' → 'abc'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'bc', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('home');
+    handle.pressChar('a');
+    expect(onChange).toHaveBeenLastCalledWith('abc');
+    handle.unmount();
+  });
+
+  it('end moves cursor to end', () => {
+    // Initial 'ab'. End. Press 'c' → 'abc'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'ab', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressChar('c');
+    expect(onChange).toHaveBeenLastCalledWith('abc');
+    handle.unmount();
+  });
+
+  it('ctrl+a is equivalent to home', () => {
+    // Initial 'bc'. End. Ctrl+a. Press 'a' → 'abc'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'bc', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressCtrl('a');
+    handle.pressChar('a');
+    expect(onChange).toHaveBeenLastCalledWith('abc');
+    handle.unmount();
+  });
+
+  it('ctrl+e is equivalent to end', () => {
+    // Initial 'ab'. Ctrl+e. Press 'c' → 'abc'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'ab', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressCtrl('e');
+    handle.pressChar('c');
+    expect(onChange).toHaveBeenLastCalledWith('abc');
+    handle.unmount();
+  });
+});
