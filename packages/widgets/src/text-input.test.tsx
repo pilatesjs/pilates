@@ -1,6 +1,6 @@
 import { mountWithInput } from '@pilates/react/test-utils';
-import { createElement } from 'react';
-import { describe, expect, it } from 'vitest';
+import { createElement, useState } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { TextInput } from './text-input.js';
 
 const opts = { width: 20, height: 1 };
@@ -85,5 +85,119 @@ describe('TextInput rendering', () => {
         opts,
       ),
     ).toThrow(/mask/i);
+  });
+});
+
+// Helper: a controlled TextInput that manages its own value state internally.
+// Using internal useState avoids calling handle.setState() from inside an
+// onChange handler, which would nest act() calls and hang the test runner.
+function ControlledTextInput({
+  initial,
+  onChangeSpy,
+  focus,
+}: {
+  initial: string;
+  onChangeSpy: (v: string) => void;
+  focus?: boolean;
+}) {
+  const [value, setValue] = useState(initial);
+  return createElement(TextInput, {
+    value,
+    focus,
+    onChange: (v: string) => {
+      onChangeSpy(v);
+      setValue(v);
+    },
+  });
+}
+
+describe('TextInput editing', () => {
+  it('inserts a printable character at the cursor', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: '', onChangeSpy: onChange }),
+      opts,
+    );
+    // Cursor starts at 0, value is empty → typing 'a' gives 'a'.
+    handle.pressChar('a');
+    expect(onChange).toHaveBeenCalledWith('a');
+    handle.unmount();
+  });
+
+  it('inserts characters in the middle when cursor is moved (cursor at 0 + insert)', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'bc', onChangeSpy: onChange }),
+      opts,
+    );
+    // Cursor starts at 0 → typing 'a' inserts before 'b'.
+    handle.pressChar('a');
+    expect(onChange).toHaveBeenCalledWith('abc');
+    handle.unmount();
+  });
+
+  it('backspace deletes the char before the cursor (after insert advances cursor)', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'a', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressChar('b'); // cursor=0 + initial='a' → inserts before 'a': value='ba', cursor=1
+    handle.pressKey('backspace'); // cursor=1, deletes char at 0 → value='a'
+    expect(onChange).toHaveBeenLastCalledWith('a');
+    handle.unmount();
+  });
+
+  it('backspace at start of value is a no-op', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'abc', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('backspace');
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+
+  it('delete removes the char at the cursor', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'abc', onChangeSpy: onChange }),
+      opts,
+    );
+    // Cursor at 0 → delete removes 'a'.
+    handle.pressKey('delete');
+    expect(onChange).toHaveBeenLastCalledWith('bc');
+    handle.unmount();
+  });
+
+  it('does not consume input when focus=false', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () =>
+        createElement(ControlledTextInput, { initial: 'abc', onChangeSpy: onChange, focus: false }),
+      opts,
+    );
+    handle.pressChar('z');
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+
+  it('does not insert ctrl-modified printable characters', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'abc', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.press({ ch: 'x', ctrl: true });
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
   });
 });

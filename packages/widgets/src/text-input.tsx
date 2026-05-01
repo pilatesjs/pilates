@@ -21,7 +21,7 @@ const ROW: { flexDirection: 'row'; flexGrow: 1 } = { flexDirection: 'row', flexG
 
 export function TextInput({
   value,
-  onChange: _onChange,
+  onChange,
   onSubmit: _onSubmit,
   placeholder,
   mask,
@@ -36,9 +36,38 @@ export function TextInput({
   const [cursor, setCursor] = useState(0);
   const clampedCursor = Math.min(cursor, value.length);
 
-  // Placeholder useInput call so the component subscribes to keystrokes (gated by focus).
-  // The real key handler is wired in Task 3.2 (next task in the plan).
-  useInput(() => {}, { isActive: focus });
+  useInput(
+    (event) => {
+      // Ctrl-modified printable chars are NOT inserted (reserved for shortcuts).
+      if (event.ctrl) return;
+      // Alt-modified printable chars are NOT inserted.
+      if (event.alt) return;
+
+      if (event.name === 'backspace') {
+        if (clampedCursor === 0) return;
+        const next = value.slice(0, clampedCursor - 1) + value.slice(clampedCursor);
+        setCursor(clampedCursor - 1);
+        onChange(next);
+        return;
+      }
+
+      if (event.name === 'delete') {
+        if (clampedCursor >= value.length) return;
+        const next = value.slice(0, clampedCursor) + value.slice(clampedCursor + 1);
+        onChange(next);
+        return;
+      }
+
+      if (event.ch !== undefined) {
+        // Printable char: insert at cursor.
+        const next = value.slice(0, clampedCursor) + event.ch + value.slice(clampedCursor);
+        setCursor(clampedCursor + 1);
+        onChange(next);
+        return;
+      }
+    },
+    { isActive: focus },
+  );
 
   // Empty value + focus: render only the cursor (or first cell of placeholder).
   if (value.length === 0) {
