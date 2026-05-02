@@ -121,7 +121,7 @@ export function layoutChildren(node: Node): void {
 }
 
 /** The 8-step flex pipeline for in-flow children. */
-function layoutFlexFlow(node: Node, visible: Node[]): void {
+function layoutFlexFlow(node: Node, visible: readonly Node[]): void {
   const main: Axis = mainAxis(node.style.flexDirection);
   const cross: Axis = crossAxis(node.style.flexDirection);
 
@@ -206,7 +206,7 @@ function layoutFlexFlow(node: Node, visible: Node[]): void {
  *   - else → 0 from parent's outer edge (no anchor; v1 simplification —
  *     Yoga falls back to justify/align here, which we may revisit).
  */
-function layoutAbsoluteChildren(parent: Node, absolutes: Node[]): void {
+function layoutAbsoluteChildren(parent: Node, absolutes: readonly Node[]): void {
   const outerW = parent.layout.width;
   const outerH = parent.layout.height;
   for (const child of absolutes) {
@@ -291,14 +291,24 @@ function layoutAbsoluteChild(child: Node, parentOuterW: number, parentOuterH: nu
   child.layout.height = height;
 }
 
-function absoluteChildrenOf(node: Node): Node[] {
-  const out: Node[] = [];
-  for (let i = 0; i < node.getChildCount(); i++) {
+// A frozen empty tuple lets the no-children case avoid allocating a
+// fresh array per layoutChildren call. Most subtrees in a real UI have
+// no absolute descendants, and this runs on every re-layout.
+const NO_CHILDREN: readonly Node[] = Object.freeze([]);
+
+function absoluteChildrenOf(node: Node): readonly Node[] {
+  const count = node.getChildCount();
+  if (count === 0) return NO_CHILDREN;
+  let out: Node[] | null = null;
+  for (let i = 0; i < count; i++) {
     const c = node.getChild(i)!;
     if (c.style.display === 'none') continue;
-    if (c.style.positionType === 'absolute') out.push(c);
+    if (c.style.positionType === 'absolute') {
+      if (out === null) out = [];
+      out.push(c);
+    }
   }
-  return out;
+  return out ?? NO_CHILDREN;
 }
 
 // ─── step 1: build items ────────────────────────────────────────────────
@@ -673,15 +683,18 @@ function inferCrossAxisFromContext(item: FlexItem, _line: FlexLine): Axis {
 
 // ─── helpers ────────────────────────────────────────────────────────────
 
-function visibleChildrenOf(node: Node): Node[] {
-  const out: Node[] = [];
-  for (let i = 0; i < node.getChildCount(); i++) {
+function visibleChildrenOf(node: Node): readonly Node[] {
+  const count = node.getChildCount();
+  if (count === 0) return NO_CHILDREN;
+  let out: Node[] | null = null;
+  for (let i = 0; i < count; i++) {
     const c = node.getChild(i)!;
     if (c.style.display === 'none') continue;
     if (c.style.positionType === 'absolute') continue; // M6 handles absolute
+    if (out === null) out = [];
     out.push(c);
   }
-  return out;
+  return out ?? NO_CHILDREN;
 }
 
 function measureLeafIfNeeded(node: Node): void {
@@ -793,7 +806,12 @@ function naturalCrossSize(child: Node, cross: Axis, innerCross: number): number 
 // padMainStart to recover the inner-relative pos before mirroring, then add
 // padMainStart back. Mirroring against the OUTER container would be wrong
 // whenever padding is asymmetric.
-function flipMainAxis(children: Node[], main: Axis, padMainStart: number, innerMain: number): void {
+function flipMainAxis(
+  children: readonly Node[],
+  main: Axis,
+  padMainStart: number,
+  innerMain: number,
+): void {
   for (const child of children) {
     const childMain = main === 'row' ? child.layout.width : child.layout.height;
     const childPos = main === 'row' ? child.layout.left : child.layout.top;
