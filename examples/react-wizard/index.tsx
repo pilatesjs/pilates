@@ -42,7 +42,7 @@ export function App() {
       </Text>
 
       {step === 'name' && (
-        <Box flexDirection="column" marginTop={1} height={3}>
+        <Box flexDirection="column" height={3}>
           <Text>What's your name?</Text>
           <TextInput
             value={name}
@@ -56,7 +56,7 @@ export function App() {
       )}
 
       {step === 'size' && (
-        <Box flexDirection="column" marginTop={1} height={5}>
+        <Box flexDirection="column" height={5}>
           <Text>Hi {name}. Pick a size:</Text>
           <Select
             items={sizes}
@@ -70,14 +70,14 @@ export function App() {
       )}
 
       {step === 'processing' && (
-        <Box flexDirection="row" marginTop={1} height={1}>
+        <Box flexDirection="row" height={1}>
           <Spinner type="dots" />
           <Text> Processing...</Text>
         </Box>
       )}
 
       {step === 'done' && (
-        <Box flexDirection="column" marginTop={1} height={2}>
+        <Box flexDirection="column" height={2}>
           <Text color="green">✓ Done</Text>
           <Text>
             name = {name}, size = {size}
