@@ -23,8 +23,13 @@ packages/
   core/      Engine: imperative Node API, layout algorithm, text measurement
   render/    Out-of-box renderer: declarative tree → painted ANSI string
   diff/      Cell-level frame diff + minimal ANSI redraw
-examples/    Runnable CLIs (chat-log, dashboard, gallery, modal,
-             progress-table, split-pane)
+  react/     React reconciler over the imperative core (JSX + hooks)
+  widgets/   Interactive widgets (TextInput, Select, Spinner) on @pilates/react
+e2e/         End-to-end smoke tests for examples (counter, dashboard,
+             modal, wizard) using @pilates/react/test-utils
+examples/    Runnable CLIs — six imperative (chat-log, dashboard, gallery,
+             modal, progress-table, split-pane) + four React (react-counter,
+             react-dashboard, react-modal, react-wizard)
 placeholder/ Stub package claiming the bare `pilates` name on npm
 tools/       Build-time helpers (Unicode table generator)
 ```

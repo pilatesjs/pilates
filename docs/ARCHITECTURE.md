@@ -5,28 +5,39 @@ package does, how the flex algorithm runs, how text measurement works,
 and how the engine is validated. It's aimed at contributors and at users
 deciding whether the design holds up for their use case.
 
-## The three packages
+## The five packages
 
-Pilates ships as three focused packages that compose:
+Pilates ships as five focused packages that compose:
 
 ```
-@pilates/core    layout engine     →  ComputedLayout per node
-@pilates/render  out-of-box paint  →  ANSI string
-@pilates/diff    incremental redraw →  ANSI escape stream
+@pilates/core      layout engine        →  ComputedLayout per node
+@pilates/render    out-of-box paint     →  ANSI string
+@pilates/diff      incremental redraw   →  ANSI escape stream
+@pilates/react     React reconciler     →  JSX/hooks → ContainerNode tree
+@pilates/widgets   interactive widgets  →  TextInput, Select, Spinner
 ```
 
-Each package depends only on the one before it. A consumer that wants
+The first three (`core` / `render` / `diff`) form the imperative core.
+Each depends only on the package(s) before it. A consumer that wants
 just the layout output can use `@pilates/core` alone. A consumer that
 wants strings printed to stdout uses `@pilates/render`. A consumer
 driving live updates over an existing terminal uses `@pilates/diff`
 on top of `renderToFrame()`.
 
-The split exists because **layout, painting, and incremental redraw are
-genuinely separable concerns**. Coupling them — the way Ink couples
-flex layout to React's reconciler — means consumers without that exact
-runtime have to reimplement the whole stack. Pilates' boundary is the
-`Frame` (a 2D cell grid): anything that can produce a Frame can drive
-any of the three packages.
+The last two (`react` / `widgets`) sit on top of that core for users
+who want to author terminal UIs with JSX and hooks. `@pilates/react`
+provides a custom `react-reconciler` host config whose host instances
+are `@pilates/render`'s `ContainerNode` / `TextNode`, plus
+`useInput` for keyboard input. `@pilates/widgets` ships interactive
+primitives (`TextInput`, `Select`, `Spinner`) built on top.
+
+The split exists because **layout, painting, incremental redraw, and
+the reconciler are genuinely separable concerns**. Coupling them — the
+way Ink couples flex layout to React's reconciler — means consumers
+without that exact runtime have to reimplement the whole stack.
+Pilates' boundary is the `Frame` (a 2D cell grid): anything that can
+produce a Frame can drive any of the lower three packages, and React
+is purely opt-in.
 
 ## The flex algorithm
 
@@ -213,6 +224,24 @@ packages/diff/src/
   diff.ts                   compute minimal CellChange[]
   apply.ts                  encode CellChange[] as ANSI escape string
   types.ts                  CellChange interface
+
+packages/react/src/
+  index.ts                  public exports (Box, Text, render, useInput, ...)
+  components.tsx            Box / Text / Spacer / Newline JSX components
+  reconciler.ts             HostInstance + RootContainer types
+  host-config.ts            react-reconciler HostConfig (mutation mode)
+  render.tsx                render() entry — providers + sync flush + diff
+  hooks.ts                  useApp / useStdout / useStderr / useInput
+  key-parser.ts             ESC-sequence parser for keypress events
+  text-flatten.ts           nested <Text> → string for TextNode.text
+  test-utils.ts             mount() / mountWithInput() for tests
+
+packages/widgets/src/
+  index.ts                  public exports
+  text-input.tsx            single-line input with cursor + placeholder
+  select.tsx                arrow-key list selector with focus / disable
+  spinner.tsx               interval-driven frame animator
+  spinner-frames.ts         curated frame sets (dots, line, ...)
 ```
 
 ## Further reading
@@ -221,4 +250,6 @@ packages/diff/src/
 - [`packages/core/README.md`](../packages/core/README.md) — engine API
 - [`packages/render/README.md`](../packages/render/README.md) — renderer API
 - [`packages/diff/README.md`](../packages/diff/README.md) — diff/apply API
+- [`packages/react/README.md`](../packages/react/README.md) — React reconciler API
+- [`packages/widgets/README.md`](../packages/widgets/README.md) — interactive widgets
 - [`CONTRIBUTING.md`](../CONTRIBUTING.md) — how to make changes that survive review

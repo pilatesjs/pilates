@@ -20,8 +20,14 @@ Only the four React-based examples are smoke-testable here:
 remaining six examples (`chat-log`, `dashboard`, `gallery`, `modal`,
 `progress-table`, `split-pane`) are static `@pilates/render` demos with
 no interactive surface — they call `process.stdout.write(render(tree))`
-once and exit, so there is nothing to drive in a test. They are still
-exercised at build / typecheck time.
+once and exit, so there is nothing to drive in a test. They are not
+covered by automated tests today (the workspace `typecheck` and `build`
+scripts both filter to `packages/*`). For now they're verified by
+running them manually:
+
+```sh
+pnpm --filter @pilates-examples/dashboard dev
+```
 
 ## Real-PTY layer
 
