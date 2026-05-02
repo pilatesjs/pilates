@@ -119,4 +119,41 @@ describe('Spinner', () => {
     expect(stripSGR(handle.lastWrite()).trim()).toBe('SOLO');
     handle.unmount();
   });
+
+  it('keeps animating when the parent passes a fresh inline frames array on every render', () => {
+    // Regression: depending on `effectiveFrames` identity reset the
+    // interval and the index whenever the parent re-rendered with a new
+    // inline `['A','B']` literal. The fix keys the effect off the frames'
+    // CONTENT, so a parent re-render that doesn't change the frame set
+    // leaves the interval (and the current index) intact.
+    vi.useFakeTimers();
+    try {
+      // Parent state drives a re-render but doesn't change the frames set.
+      const handle = mountWithInput<number>(
+        0,
+        // Inline literal: `['A','B']` is a fresh array on every render.
+        (_tick) => createElement(Spinner, { frames: ['A', 'B'] }),
+        opts,
+      );
+      expect(stripSGR(handle.lastWrite()).trim()).toBe('A');
+      advance(80);
+      expect(stripSGR(handle.lastWrite()).trim()).toBe('B');
+      // Force the parent to re-render (state change). With the bug, this
+      // would clear the interval and reset index to 0 — the next advance
+      // would still show 'B' (because index resets to 0 = 'A', but the
+      // interval is freshly armed and won't fire for another 80ms; the
+      // assertion below would see 'A' instead of the expected 'A → B'
+      // continuation).
+      handle.setState(1);
+      // Without the fix, the just-cleared+re-armed interval pushes the
+      // next 'A→B' transition past the next advance(80), so we'd see 'A'.
+      // With the fix, the interval keeps ticking and we see 'A' as the
+      // next frame after 'B'.
+      advance(80);
+      expect(stripSGR(handle.lastWrite()).trim()).toBe('A');
+      handle.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

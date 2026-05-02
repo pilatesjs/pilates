@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useContext, useEffect, useRef } from 'react';
 
 export interface AppHookValue {
   exit: (error?: Error) => void;
@@ -106,11 +106,35 @@ export function useInput(handler: (event: KeyEvent) => void, options: UseInputOp
   const v = useContext(StdinContext);
   if (!v) throw new Error('Pilates: useInput() must be used inside <render>.');
   const isActive = options.isActive ?? true;
+
+  // Capture the latest handler in a ref so we can subscribe a stable
+  // dispatch wrapper that delegates to it. Without this, the idiomatic
+  // call site `useInput(e => ...)` creates a fresh function on every
+  // parent render — and folding handler identity into the subscribe
+  // effect's deps would tear down the subscription and rebuild it on
+  // every keystroke that triggered a state update. The provider's
+  // setActive API is *also* defeated by such churn (it acts on the
+  // exact reference that was subscribed). The dispatch wrapper, by
+  // contrast, is created once and stays stable for the component's
+  // lifetime; setActive can flip it in place.
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  const dispatchRef = useRef<((event: KeyEvent) => void) | null>(null);
+  if (dispatchRef.current === null) {
+    dispatchRef.current = (event: KeyEvent) => handlerRef.current(event);
+  }
+
   useEffect(() => {
-    const unsubscribe = v.subscribe(handler);
-    if (!isActive) v.setActive(handler, false);
+    const dispatch = dispatchRef.current;
+    if (dispatch === null) return;
+    const unsubscribe = v.subscribe(dispatch);
     return () => {
       unsubscribe();
     };
-  }, [v, handler, isActive]);
+  }, [v]);
+  useEffect(() => {
+    const dispatch = dispatchRef.current;
+    if (dispatch === null) return;
+    v.setActive(dispatch, isActive);
+  }, [v, isActive]);
 }

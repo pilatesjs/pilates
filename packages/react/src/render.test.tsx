@@ -605,6 +605,36 @@ describe('useInput lifecycle', () => {
     handle.unmount();
   });
 
+  it('toggling isActive does not churn raw mode (uses setActive, not unsub/resub)', () => {
+    // Regression: useInput used to fold `isActive` into the subscribe
+    // effect's dep array, so toggling it tore down the subscription and
+    // rebuilt it — which forced the raw-mode refcount through 0 and back,
+    // re-toggling raw mode and dropping any keystrokes that landed in the
+    // teardown→re-subscribe window. The fix splits the subscribe and
+    // active-toggle paths: subscribe is identity-stable, setActive flips
+    // the flag in place and only releases raw mode when the refcount
+    // really hits 0.
+    function App({ active }: { active: boolean }) {
+      useInput(() => {}, { isActive: active });
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput<{ active: boolean }>(
+      { active: true },
+      (s) => <App active={s.active} />,
+      { width: 1, height: 1 },
+    );
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true]);
+    handle.setState({ active: false });
+    // setActive(false) drops refcount → raw mode releases.
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true, false]);
+    handle.setState({ active: true });
+    // setActive(true) reclaims raw mode — exactly one toggle, not three
+    // (which is what unsub→resub would have produced).
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true, false, true]);
+    handle.unmount();
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true, false, true, false]);
+  });
+
   it('render() binds stdin synchronously before returning', () => {
     // Regression: passive effects (useEffect) used to fire on the next
     // event-loop tick, after render() had already returned. With nothing
