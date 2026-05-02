@@ -250,6 +250,47 @@ describe('render — title slot', () => {
     const lines = out.split('\n');
     expect(lines[0]).toBe('┌───┐');
   });
+
+  it('renders short titles with the documented ┌─ title ─...─┐ layout', () => {
+    // Locks in the painter's title-slot behaviour: trailing pad-space
+    // sits immediately after the title content (regardless of how much
+    // of the slot the title actually consumed), and the unused tail of
+    // the slot stays as ─s from the border draw.
+    const cases: Array<{ title: string; expected: string }> = [
+      { title: 'A', expected: '╭─ A ──────╮' },
+      { title: 'AB', expected: '╭─ AB ─────╮' },
+      { title: 'ABCDEFG', expected: '╭─ ABCDEFG ╮' }, // exactly fills 7-cell slot
+    ];
+    for (const { title, expected } of cases) {
+      const out = renderToFrame({
+        width: 12,
+        height: 3,
+        border: 'rounded',
+        title,
+      }).toPlainString();
+      expect(out.split('\n')[0]).toBe(expected);
+    }
+  });
+
+  it('renders wide-grapheme titles with proper cell alignment', () => {
+    // Wide chars (CJK) should consume 2 cells each; the trailing pad
+    // still lands one cell after the last visible cell of the title.
+    const cases: Array<{ title: string; expected: string }> = [
+      { title: '你', expected: '╭─ 你 ─────╮' }, // 2-cell title in 7-cell slot
+      { title: '你你', expected: '╭─ 你你 ───╮' }, // 4-cell title
+      { title: 'A你B你', expected: '╭─ A你B你 ─╮' }, // 6-cell mixed title
+      { title: '你你你你', expected: '╭─ 你你你… ╮' }, // truncated to 7 cells
+    ];
+    for (const { title, expected } of cases) {
+      const out = renderToFrame({
+        width: 12,
+        height: 3,
+        border: 'rounded',
+        title,
+      }).toPlainString();
+      expect(out.split('\n')[0]).toBe(expected);
+    }
+  });
 });
 
 describe('render — practical layouts', () => {
