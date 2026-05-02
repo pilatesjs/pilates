@@ -49,8 +49,11 @@ function wrapParagraph(text: string, width: number): string[] {
         current += tok.text;
         currentWidth += tokWidth;
       } else {
-        // Wrap; whitespace at the wrap point is dropped.
-        lines.push(current);
+        // Wrap; whitespace at the wrap point is dropped. Skip the push
+        // when `current` is empty so over-long leading whitespace
+        // (e.g. five spaces at width=4) doesn't emit a phantom blank
+        // line before the first word.
+        if (current.length > 0) lines.push(current);
         current = '';
         currentWidth = 0;
       }

@@ -28,17 +28,48 @@ describe('applyDiff — cursor positioning', () => {
     expect(applyDiff([plain(3, 2, 'Q')])).toBe('\x1b[3;4HQ');
   });
 
-  it('emits one CSI move per change, in order', () => {
+  it('emits one CSI move per non-contiguous change, in order', () => {
     const out = applyDiff([plain(0, 0, 'A'), plain(2, 0, 'B'), plain(0, 1, 'C')]);
     expect(out).toBe('\x1b[1;1HA\x1b[1;3HB\x1b[2;1HC');
+  });
+
+  it('skips redundant CSI moves on contiguous runs', () => {
+    // After writing 'A' at (0,0,width=1) the cursor naturally advances
+    // to (1,0); the next change at (1,0) needs no CSI move. Same for B→C.
+    const out = applyDiff([plain(0, 0, 'A'), plain(1, 0, 'B'), plain(2, 0, 'C')]);
+    expect(out).toBe('\x1b[1;1HABC');
+  });
+
+  it('skips CSI move across a wide grapheme', () => {
+    // Wide chars advance the cursor by their width (2). After writing '你'
+    // at (0,0,width=2) the cursor is at (2,0); a change at (2,0) is
+    // contiguous and needs no CSI.
+    const wide = (x: number, y: number, char: string): CellChange => ({
+      x,
+      y,
+      char,
+      width: 2,
+      fg: undefined,
+      bg: undefined,
+      attrs: 0,
+    });
+    const out = applyDiff([wide(0, 0, '你'), plain(2, 0, 'a')]);
+    expect(out).toBe('\x1b[1;1H你a');
+  });
+
+  it('emits CSI when the next change is on a new row even at column 0', () => {
+    const out = applyDiff([plain(0, 0, 'A'), plain(0, 1, 'B')]);
+    // Cursor was at (1,0) after 'A'; next is (0,1) — not contiguous.
+    expect(out).toBe('\x1b[1;1HA\x1b[2;1HB');
   });
 });
 
 describe('applyDiff — SGR style changes', () => {
   it('emits no SGR sequences for a fully plain stream', () => {
     const out = applyDiff([plain(0, 0, 'A'), plain(1, 0, 'B')]);
-    // Only CSI cursor-position moves (terminate in 'H'), no SGR (terminate in 'm').
-    expect(out).toBe('\x1b[1;1HA\x1b[1;2HB');
+    // Only one CSI cursor-position before the run (the second cell is
+    // contiguous so no second CSI), no SGR (would terminate in 'm').
+    expect(out).toBe('\x1b[1;1HAB');
   });
 
   it('emits SGR for a styled change and reuses it for the next same-style change', () => {
