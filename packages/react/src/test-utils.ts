@@ -175,12 +175,15 @@ export function mount<T>(
 
 /**
  * EventEmitter-backed stdin double for use with {@link mountWithInput}.
- * Records `setRawMode` calls in `rawModeCalls` for lifecycle assertions.
+ * Records `setRawMode` calls in `rawModeCalls` and `pause`/`resume` calls
+ * in `flowCalls` so tests can assert on the lifecycle.
  */
 export interface FakeStdin {
   readonly isTTY: true;
   /** History of setRawMode calls: true = enabled, false = disabled. */
   readonly rawModeCalls: boolean[];
+  /** History of flow-control calls: 'pause' or 'resume', in order. */
+  readonly flowCalls: ReadonlyArray<'pause' | 'resume'>;
   setRawMode(mode: boolean): this;
   resume(): this;
   pause(): this;
@@ -200,18 +203,22 @@ export interface FakeStdin {
 export function makeFakeStdin(): FakeStdin {
   const emitter = new EventEmitter();
   const rawModeCalls: boolean[] = [];
+  const flowCalls: Array<'pause' | 'resume'> = [];
 
   const fake: FakeStdin = {
     isTTY: true,
     rawModeCalls,
+    flowCalls,
     setRawMode(mode: boolean) {
       rawModeCalls.push(mode);
       return this;
     },
     resume() {
+      flowCalls.push('resume');
       return this;
     },
     pause() {
+      flowCalls.push('pause');
       return this;
     },
     on(event: string, listener: (...args: unknown[]) => void) {

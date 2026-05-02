@@ -36,6 +36,30 @@ exports[`render snapshots — borders > single border with title > plain 1`] = `
 └────────────┘"
 `;
 
+exports[`render snapshots — colored text > 24-bit truecolor (#RRGGBB) > ansi 1`] = `
+"┌──────────┐
+│[38;2;255;128;0;48;2;16;32;48mrgb       [0m│
+└──────────┘"
+`;
+
+exports[`render snapshots — colored text > 24-bit truecolor (#RRGGBB) > plain 1`] = `
+"┌──────────┐
+│rgb       │
+└──────────┘"
+`;
+
+exports[`render snapshots — colored text > 256-color palette (numeric) > ansi 1`] = `
+"┌──────────┐
+│[38;5;196;48;5;21midx       [0m│
+└──────────┘"
+`;
+
+exports[`render snapshots — colored text > 256-color palette (numeric) > plain 1`] = `
+"┌──────────┐
+│idx       │
+└──────────┘"
+`;
+
 exports[`render snapshots — colored text > bold red text on yellow background > ansi 1`] = `
 "┌──────────┐
 │[1;31;43mWARN      [0m│
@@ -58,6 +82,18 @@ exports[`render snapshots — colored text > cyan text inside a single-bordered 
 "┌──────────┐
 │hi        │
 └──────────┘"
+`;
+
+exports[`render snapshots — colored text > multi-style transitions across cells in one row > ansi 1`] = `
+"┌────────────┐
+│[7mINV  [0;3;4mI/U  [0m  │
+└────────────┘"
+`;
+
+exports[`render snapshots — colored text > multi-style transitions across cells in one row > plain 1`] = `
+"┌────────────┐
+│INV  I/U    │
+└────────────┘"
 `;
 
 exports[`render snapshots — flex layout > column with header strip + body, distinct titles > ansi 1`] = `

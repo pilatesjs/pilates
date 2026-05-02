@@ -342,7 +342,9 @@ describe('layout invariants', () => {
         const ourBoxList = ourBoxes(ours);
 
         const yoga = buildYoga(spec);
-        Yoga.Config.create().setPointScaleFactor(1);
+        // Yoga 3.x's default pointScaleFactor is already 1; the previous
+        // `Yoga.Config.create().setPointScaleFactor(1)` line was a no-op
+        // because the config was never passed to any node. Dropped.
         yoga.calculateLayout(undefined, undefined);
         const yogaBoxList = yogaBoxes(yoga);
 
