@@ -68,6 +68,64 @@ describe('render snapshots — colored text', () => {
     expect(s.ansi).toMatchSnapshot('ansi');
     expect(s.plain).toMatchSnapshot('plain');
   });
+
+  it('24-bit truecolor (#RRGGBB)', () => {
+    // Locks the SGR shape `\e[38;2;R;G;B m` for foreground and the
+    // matching `48;2;...` for background. Regression here would
+    // typically be a fgSgr / bgSgr drift.
+    const out = render(
+      {
+        width: 12,
+        height: 3,
+        border: 'single',
+        children: [{ text: 'rgb', color: '#ff8000', bgColor: '#102030' }],
+      },
+      { ansi: true },
+    );
+    const s = snap(out);
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+  });
+
+  it('256-color palette (numeric)', () => {
+    // 38;5;N / 48;5;N path. Numeric 196 is bright red in xterm256, 21 is
+    // a cool blue — values picked so the snapshot encodes the parameter
+    // ordering (fg before bg) clearly.
+    const out = render(
+      {
+        width: 12,
+        height: 3,
+        border: 'single',
+        children: [{ text: 'idx', color: 196, bgColor: 21 }],
+      },
+      { ansi: true },
+    );
+    const s = snap(out);
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+  });
+
+  it('multi-style transitions across cells in one row', () => {
+    // Inverse on the left half and italic-underline on the right —
+    // catches SGR state-machine drift, since the painter emits a reset
+    // (or a delta SGR) on every style change between cells.
+    const out = render(
+      {
+        width: 14,
+        height: 3,
+        border: 'single',
+        flexDirection: 'row',
+        children: [
+          { width: 5, children: [{ text: 'INV', inverse: true }] },
+          { width: 5, children: [{ text: 'I/U', italic: true, underline: true }] },
+        ],
+      },
+      { ansi: true },
+    );
+    const s = snap(out);
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+  });
 });
 
 describe('render snapshots — flex layout', () => {

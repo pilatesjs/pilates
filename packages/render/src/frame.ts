@@ -30,7 +30,17 @@ export interface Cell {
   attrs: number;
 }
 
-const SPACE_CELL: Cell = { char: ' ', width: 1, fg: undefined, bg: undefined, attrs: 0 };
+// Frozen template — `freshCell()` always spreads it into a new object, so the
+// freeze never triggers at runtime, but it locks in the invariant that the
+// shape itself shouldn't drift (and a future caller that tries to mutate it
+// directly will fault rather than silently poison every other cell).
+const SPACE_CELL: Readonly<Cell> = Object.freeze({
+  char: ' ',
+  width: 1,
+  fg: undefined,
+  bg: undefined,
+  attrs: 0,
+});
 
 export class Frame {
   readonly width: number;

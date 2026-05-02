@@ -6,8 +6,9 @@
  * Each fixture is described once as a "spec" tree and applied to both
  * engines, so the structures stay in lock-step.
  *
- * yoga-layout's `setPointScaleFactor(1)` keeps Yoga rounding to integer
- * cells the same way we do.
+ * yoga-layout's default `pointScaleFactor` (in 3.x) is 1, which matches
+ * our integer-cell rounding — both engines round corners and derive size
+ * from rounded edges, so cell-for-cell agreement is meaningful.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -615,9 +616,12 @@ const FIXTURES: Fixture[] = [
 ];
 
 describe('yoga oracle — layouts match yoga-layout cell-for-cell', () => {
-  // Configure Yoga to round to whole-cell increments, like we do.
-  const cfg = Yoga.Config.create();
-  cfg.setPointScaleFactor(1);
+  // Yoga 3.x's default pointScaleFactor is already 1 (whole-cell rounding,
+  // matching the behaviour we want), and `Yoga.Node.create()` without an
+  // explicit config picks up that default. The previous `Yoga.Config.create()
+  // .setPointScaleFactor(1)` line built a config but never passed it to any
+  // node, so it was a no-op — kept around as a safety belt that didn't
+  // actually clip in. Dropped to avoid suggesting otherwise.
 
   for (const fixture of FIXTURES) {
     it(fixture.name, () => {
