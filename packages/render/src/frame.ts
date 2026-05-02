@@ -117,6 +117,29 @@ export class Frame {
     return cursor - x;
   }
 
+  /**
+   * Fill a single row with ' ' cells of the given style. Cheaper than
+   * calling `setGrapheme` per cell because it skips the per-cell
+   * `stringWidth(' ')` lookup, the in-bounds check, and the wide-char
+   * continuation-cell branch — none of which fire for plain space. Used
+   * by the painter to lay down a background colour or attribute strip
+   * before the actual text characters get written on top.
+   */
+  fillRow(x: number, y: number, width: number, style: CellStyle): void {
+    if (y < 0 || y >= this.height) return;
+    const x0 = Math.max(0, x);
+    const x1 = Math.min(this.width, x + width);
+    for (let cx = x0; cx < x1; cx++) {
+      this.cells[this.idx(cx, y)] = {
+        char: ' ',
+        width: 1,
+        fg: style.fg,
+        bg: style.bg,
+        attrs: style.attrs,
+      };
+    }
+  }
+
   /** Fill a rectangle with the given style, leaving chars unchanged. */
   fillBg(rect: Rect, bg: Color | undefined): void {
     if (bg === undefined) return;
