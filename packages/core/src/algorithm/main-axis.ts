@@ -181,7 +181,7 @@ function layoutFlexFlow(node: Node, visible: Node[]): void {
 
   // Reverse main-axis positions for *-reverse directions.
   if (isReverse(node.style.flexDirection)) {
-    flipMainAxis(visible, main, containerMain);
+    flipMainAxis(visible, main, padMainStart, innerMain);
   }
 }
 
@@ -797,11 +797,18 @@ function naturalCrossSize(child: Node, cross: Axis, innerCross: number): number 
   return 0;
 }
 
-function flipMainAxis(children: Node[], main: Axis, containerMain: number): void {
+// Flip child positions about the inner content box (the area between
+// padMainStart and padMainStart + innerMain). The child positions written in
+// step 8 are absolute (`padMainStart + innerPos`), so we must subtract
+// padMainStart to recover the inner-relative pos before mirroring, then add
+// padMainStart back. Mirroring against the OUTER container would be wrong
+// whenever padding is asymmetric.
+function flipMainAxis(children: Node[], main: Axis, padMainStart: number, innerMain: number): void {
   for (const child of children) {
     const childMain = main === 'row' ? child.layout.width : child.layout.height;
     const childPos = main === 'row' ? child.layout.left : child.layout.top;
-    const newPos = containerMain - childPos - childMain;
+    const innerPos = childPos - padMainStart;
+    const newPos = padMainStart + innerMain - innerPos - childMain;
     if (main === 'row') child.layout.left = newPos;
     else child.layout.top = newPos;
   }

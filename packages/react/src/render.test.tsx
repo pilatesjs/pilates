@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Box, Newline, Spacer, Text } from './components.js';
 import { useApp, useInput, useStdout } from './hooks.js';
 import { render } from './render.js';
-import { mount, mountWithInput, renderToString } from './test-utils.js';
+import { makeFakeStdin, mount, mountWithInput, renderToString } from './test-utils.js';
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC (0x1b) is exactly what we want to strip
 const stripAnsi = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').replace(/\x1b\[[0-9;]*[Hf]/g, '');
@@ -238,6 +238,63 @@ describe('composition', () => {
       ),
     );
     expect(out).toBe('hi ada   \n');
+  });
+
+  it('nested <Text> propagates state updates to the outer node', () => {
+    // Regression: TextNode in @pilates/render has no children slot — only
+    // the outermost <Text>'s node.text gets painted. Before the fix,
+    // commitTextUpdate re-flattened only the immediate parent, so updates
+    // to a string fragment inside a nested <Text> never reached the outer
+    // node — the diff between frames was empty and lastWrite returned no
+    // new bytes at all.
+    const handle = mount(
+      'aaa',
+      (s) => (
+        <Box width={9} height={1}>
+          <Text>
+            outer-<Text>{s}</Text>
+          </Text>
+        </Box>
+      ),
+      { width: 9, height: 1 },
+    );
+    expect(stripAnsi(handle.allWrites())).toContain('outer-aaa');
+    const beforeLength = handle.allWrites().length;
+    handle.setState('xyz');
+    // The fragment changed from 'aaa' to 'xyz' — three cells changed.
+    // Before the fix, outer.node.text was frozen at mount, the diff
+    // produced no cells, and allWrites() length wouldn't grow at all.
+    expect(handle.allWrites().length).toBeGreaterThan(beforeLength);
+    const last = stripAnsi(handle.lastWrite());
+    expect(last).toContain('x');
+    expect(last).toContain('y');
+    expect(last).toContain('z');
+    // 'outer-' didn't change so its cells aren't in the latest diff.
+    expect(last).not.toContain('outer-');
+  });
+
+  it('appending a <Text> child inside <Text> repaints the outer node', () => {
+    const handle = mount(
+      false,
+      (showInner) => (
+        <Box width={12} height={1}>
+          <Text>outer-{showInner && <Text>added</Text>}</Text>
+        </Box>
+      ),
+      { width: 12, height: 1 },
+    );
+    expect(stripAnsi(handle.allWrites())).toContain('outer-');
+    expect(stripAnsi(handle.allWrites())).not.toContain('added');
+    const beforeLength = handle.allWrites().length;
+    handle.setState(true);
+    // Mounting the inner <Text> grows the outer's flattened text from
+    // 'outer-' to 'outer-added' — five new non-space cells. Before the
+    // fix, the outer's node.text didn't update and the diff was empty.
+    expect(handle.allWrites().length).toBeGreaterThan(beforeLength);
+    const last = stripAnsi(handle.lastWrite());
+    expect(last).toContain('a');
+    expect(last).toContain('d');
+    expect(last).toContain('e');
   });
 });
 
@@ -546,6 +603,29 @@ describe('useInput lifecycle', () => {
     const handle = mountWithInput(0, () => <Text>x</Text>, { width: 1, height: 1 });
     expect(handle.fakeStdin.rawModeCalls).toEqual([]);
     handle.unmount();
+  });
+
+  it('render() binds stdin synchronously before returning', () => {
+    // Regression: passive effects (useEffect) used to fire on the next
+    // event-loop tick, after render() had already returned. With nothing
+    // pinning the loop alive, Node could exit before stdin was ever
+    // attached. render() now drains passive effects in-band, so
+    // setRawMode + the data listener are wired up by the time the call
+    // returns — verifiable by inspecting the fake stdin synchronously.
+    const fakeStdin = makeFakeStdin();
+    const fakeStdout = makeFakeStdout(20, 5);
+    const fakeStderr = makeFakeStdout(20, 5);
+    function App() {
+      useInput(() => {});
+      return <Text>x</Text>;
+    }
+    const instance = render(<App />, {
+      stdout: fakeStdout,
+      stderr: fakeStderr,
+      stdin: fakeStdin as unknown as NodeJS.ReadStream,
+    });
+    expect(fakeStdin.rawModeCalls).toEqual([true]);
+    instance.unmount();
   });
 
   it('survives setRawMode throwing', () => {

@@ -13,6 +13,18 @@ import type {
 } from './reconciler.js';
 import { flattenText } from './text-flatten.js';
 
+// TextNode has no `children` slot in @pilates/render — only `node.text`
+// is painted. So whenever a nested <Text>'s content changes (a fragment
+// mutates, a child is added/removed/moved), every ancestor <Text>'s
+// `node.text` must be recomputed, not just the immediate parent's.
+function reflattenAncestors(start: TextInstance): void {
+  let cur: TextInstance | null = start;
+  while (cur !== null) {
+    cur.node.text = flattenText(cur);
+    cur = cur.parent;
+  }
+}
+
 /** Strip undefined values from an object so JSX `prop={undefined}` doesn't override real defaults. */
 function defined<T extends object>(props: T): Partial<T> {
   const out: Partial<T> = {};
@@ -114,11 +126,11 @@ export function buildHostConfig(): PilatesHostConfig {
     },
     commitTextUpdate: (instance, _oldText, newText) => {
       // `instance` is a TextFragment (from createTextInstance). Mutate
-      // the fragment's text and re-flatten its parent <Text> so the
-      // RenderNode's node.text reflects the new content. The parent
-      // back-pointer was set in appendChildImpl / insertBeforeImpl.
+      // the fragment's text and re-flatten EVERY ancestor <Text> so the
+      // outermost RenderNode's node.text reflects the new content. The
+      // parent back-pointer was set in appendChildImpl / insertBeforeImpl.
       instance.text = newText;
-      if (instance.parent) instance.parent.node.text = flattenText(instance.parent);
+      if (instance.parent) reflattenAncestors(instance.parent);
     },
     clearContainer: (container) => {
       container.root.children = [];
@@ -161,6 +173,7 @@ function createInstance(type: string, props: Record<string, unknown>): HostInsta
       kind: 'text',
       node: { ...rest, text: '' } as RenderNode,
       fragments: [],
+      parent: null,
     } as TextInstance;
   }
   throw new Error(`Pilates: unknown host type "${type}"`);
@@ -176,15 +189,17 @@ function appendChildImpl(parent: HostInstance, child: AnyInstance): void {
       const oldIdx = parent.fragments.indexOf(child);
       if (oldIdx !== -1) parent.fragments.splice(oldIdx, 1);
       parent.fragments.push(child);
-      // Re-flatten so node.text reflects the new ordering.
-      parent.node.text = flattenText(parent);
+      // Re-flatten so node.text reflects the new ordering, and propagate
+      // up so any enclosing <Text> also picks up the change.
+      reflattenAncestors(parent);
       return;
     }
     if (child.kind === 'text') {
+      child.parent = parent;
       const oldIdx = parent.fragments.indexOf(child);
       if (oldIdx !== -1) parent.fragments.splice(oldIdx, 1);
       parent.fragments.push(child);
-      parent.node.text = flattenText(parent);
+      reflattenAncestors(parent);
       return;
     }
     throw new Error(
@@ -223,7 +238,7 @@ function appendChildToContainer(container: RootContainer, child: AnyInstance): v
 function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyInstance): void {
   if (parent.kind === 'text') {
     if (child.kind === 'fragment' || child.kind === 'text') {
-      if (child.kind === 'fragment') child.parent = parent;
+      child.parent = parent;
       // Drop any prior occurrence first so a move re-positions the
       // child rather than duplicating it.
       const oldIdx = parent.fragments.indexOf(child as TextFragment | TextInstance);
@@ -231,7 +246,7 @@ function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyI
       const beforeIdx = parent.fragments.indexOf(before as TextFragment | TextInstance);
       if (beforeIdx === -1) parent.fragments.push(child);
       else parent.fragments.splice(beforeIdx, 0, child);
-      parent.node.text = flattenText(parent);
+      reflattenAncestors(parent);
       return;
     }
     throw new Error(
@@ -278,8 +293,9 @@ function insertBeforeContainerImpl(
 function removeChildImpl(parent: HostInstance, child: AnyInstance): void {
   if (parent.kind === 'text') {
     if (child.kind === 'fragment' || child.kind === 'text') {
+      child.parent = null;
       parent.fragments = parent.fragments.filter((f) => f !== child);
-      parent.node.text = flattenText(parent);
+      reflattenAncestors(parent);
     }
     return;
   }

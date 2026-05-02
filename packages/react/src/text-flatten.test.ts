@@ -6,7 +6,7 @@ function frag(text: string): TextFragment {
   return { kind: 'fragment', text, parent: null };
 }
 function textInst(fragments: TextInstance['fragments']): TextInstance {
-  return { kind: 'text', node: { text: '' }, fragments };
+  return { kind: 'text', node: { text: '' }, fragments, parent: null };
 }
 
 describe('flattenText', () => {

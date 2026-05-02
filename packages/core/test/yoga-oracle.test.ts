@@ -38,6 +38,10 @@ interface SpecNode {
   flexBasis?: number;
   flex?: number;
   paddingAll?: number;
+  paddingTop?: number;
+  paddingRight?: number;
+  paddingBottom?: number;
+  paddingLeft?: number;
   marginAll?: number;
   gapRow?: number;
   gapColumn?: number;
@@ -112,6 +116,10 @@ function buildOurs(spec: SpecNode): Node {
   if (spec.flexBasis !== undefined) n.setFlexBasis(spec.flexBasis);
   if (spec.flex !== undefined) n.setFlex(spec.flex);
   if (spec.paddingAll !== undefined) n.setPadding(Edge.All, spec.paddingAll);
+  if (spec.paddingTop !== undefined) n.setPadding(Edge.Top, spec.paddingTop);
+  if (spec.paddingRight !== undefined) n.setPadding(Edge.Right, spec.paddingRight);
+  if (spec.paddingBottom !== undefined) n.setPadding(Edge.Bottom, spec.paddingBottom);
+  if (spec.paddingLeft !== undefined) n.setPadding(Edge.Left, spec.paddingLeft);
   if (spec.marginAll !== undefined) n.setMargin(Edge.All, spec.marginAll);
   if (spec.gapRow !== undefined) n.setGap('row', spec.gapRow);
   if (spec.gapColumn !== undefined) n.setGap('column', spec.gapColumn);
@@ -147,6 +155,10 @@ function buildYoga(spec: SpecNode): import('yoga-layout').Node {
   if (spec.flexBasis !== undefined) n.setFlexBasis(spec.flexBasis);
   if (spec.flex !== undefined) n.setFlex(spec.flex);
   if (spec.paddingAll !== undefined) n.setPadding(YEdge.All, spec.paddingAll);
+  if (spec.paddingTop !== undefined) n.setPadding(YEdge.Top, spec.paddingTop);
+  if (spec.paddingRight !== undefined) n.setPadding(YEdge.Right, spec.paddingRight);
+  if (spec.paddingBottom !== undefined) n.setPadding(YEdge.Bottom, spec.paddingBottom);
+  if (spec.paddingLeft !== undefined) n.setPadding(YEdge.Left, spec.paddingLeft);
   if (spec.marginAll !== undefined) n.setMargin(YEdge.All, spec.marginAll);
   if (spec.gapRow !== undefined) n.setGap(YGutter.Row, spec.gapRow);
   if (spec.gapColumn !== undefined) n.setGap(YGutter.Column, spec.gapColumn);
@@ -313,6 +325,47 @@ const FIXTURES: Fixture[] = [
       width: 60,
       height: 10,
       children: [{ width: 20 }, { width: 15 }],
+    },
+  },
+  {
+    // Regression: flipMainAxis used to mirror about the OUTER container size,
+    // which gave the wrong child position whenever main-axis padding was
+    // asymmetric. With padLeft=2, padRight=1 the child should land at left=14
+    // (mirrored about the inner content box), not left=13.
+    name: 'row-reverse with asymmetric main-axis padding',
+    spec: {
+      flexDirection: 'row-reverse',
+      width: 20,
+      height: 5,
+      paddingLeft: 2,
+      paddingRight: 1,
+      children: [{ width: 5, height: 1 }],
+    },
+  },
+  {
+    name: 'column-reverse with asymmetric main-axis padding',
+    spec: {
+      flexDirection: 'column-reverse',
+      width: 10,
+      height: 20,
+      paddingTop: 3,
+      paddingBottom: 1,
+      children: [{ width: 1, height: 4 }],
+    },
+  },
+  {
+    name: 'row-reverse + asymmetric padding + multiple children + gap',
+    spec: {
+      flexDirection: 'row-reverse',
+      width: 30,
+      height: 5,
+      paddingLeft: 4,
+      paddingRight: 2,
+      gapColumn: 1,
+      children: [
+        { width: 5, height: 1 },
+        { width: 6, height: 1 },
+      ],
     },
   },
   {

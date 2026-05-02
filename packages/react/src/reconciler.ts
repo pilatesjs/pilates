@@ -19,6 +19,12 @@ export interface TextInstance {
   kind: 'text';
   node: TextNode;
   fragments: Array<TextFragment | TextInstance>;
+  // Back-pointer to enclosing <Text>. Null when this Text lives directly
+  // under a <Box> (or at the root). Used so updates to a deeply nested
+  // <Text>'s content can re-flatten every ancestor's `node.text` —
+  // TextNode has no `children` slot in @pilates/render, so the outer
+  // <Text> is the only one whose `node.text` actually paints.
+  parent: TextInstance | null;
 }
 
 export interface TextFragment {
