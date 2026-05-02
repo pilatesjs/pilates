@@ -1,3 +1,4 @@
+import { pathToFileURL } from 'node:url';
 import { Box, Text, render, useApp } from '@pilates/react';
 import { useEffect, useState } from 'react';
 
@@ -26,10 +27,9 @@ export function App() {
 }
 
 // Only run when invoked directly (not when imported by tests).
-// Normalise path separators for Windows (Git Bash / MINGW64).
-const importUrl = import.meta.url;
-const argv1 = `file://${(process.argv[1] ?? '').replace(/\\/g, '/')}`;
-if (importUrl === argv1) {
+// pathToFileURL handles cross-platform quirks (Windows drive letters, the
+// file:/// vs file:// slash count) that hand-built file URLs get wrong.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const instance = render(<App />);
   await instance.waitUntilExit();
 }

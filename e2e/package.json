@@ -1,0 +1,15 @@
+{
+  "name": "@pilates-e2e/smoke",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@pilates/react": "workspace:*",
+    "@pilates/widgets": "workspace:*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "strip-ansi": "^7.2.0"
+  }
+}

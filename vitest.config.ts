@@ -6,7 +6,11 @@ export default defineConfig({
     jsxImportSource: 'react',
   },
   test: {
-    include: ['packages/*/src/**/*.test.{ts,tsx}', 'packages/*/test/**/*.test.{ts,tsx}'],
+    include: [
+      'packages/*/src/**/*.test.{ts,tsx}',
+      'packages/*/test/**/*.test.{ts,tsx}',
+      'e2e/**/*.test.{ts,tsx}',
+    ],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov', 'html'],

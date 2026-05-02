@@ -3,7 +3,16 @@ import type { ContainerNode } from '@pilates/render';
 import { type ReactElement, act, createElement, useState } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
-import type { KeyEvent, KeyName } from './hooks.js';
+import {
+  AppContext,
+  type AppHookValue,
+  type KeyEvent,
+  type KeyName,
+  StderrContext,
+  type StderrHookValue,
+  StdoutContext,
+  type StdoutHookValue,
+} from './hooks.js';
 import { buildHostConfig } from './host-config.js';
 import type { RootContainer } from './reconciler.js';
 import { StdinProvider } from './render.js';
@@ -372,13 +381,43 @@ export function mountWithInput<T>(
     return renderFn(props.state);
   }
 
+  // Stub provider values so apps using useApp/useStdout/useStderr work in
+  // tests without an extra mount helper. Apps that don't use these hooks
+  // are unaffected.
+  const exitRef: { fn: (() => void) | null } = { fn: null };
+  const appValue: AppHookValue = {
+    exit: () => exitRef.fn?.(),
+  };
+  const stdoutValue: StdoutHookValue = {
+    stdout: process.stdout,
+    write: () => true,
+    columns: options.width,
+    rows: options.height,
+  };
+  const stderrValue: StderrHookValue = {
+    stderr: process.stderr,
+    write: () => true,
+  };
+
   function Wrapper(props: { initial: T }) {
     const [state, setState] = useState(props.initial);
     setter = setState;
     return createElement(
-      StdinProvider,
-      { stdin: fakeStdin as unknown as NodeJS.ReadStream },
-      createElement(Inner, { state }),
+      AppContext.Provider,
+      { value: appValue },
+      createElement(
+        StdoutContext.Provider,
+        { value: stdoutValue },
+        createElement(
+          StderrContext.Provider,
+          { value: stderrValue },
+          createElement(
+            StdinProvider,
+            { stdin: fakeStdin as unknown as NodeJS.ReadStream },
+            createElement(Inner, { state }),
+          ),
+        ),
+      ),
     );
   }
 
@@ -446,12 +485,16 @@ export function mountWithInput<T>(
         sync.flushSyncWork();
       });
     },
-    unmount: () => {
-      withAct(() => {
-        sync.updateContainerSync(null, handle, null, null);
-        sync.flushSyncWork();
-      });
-    },
+    unmount: ((): (() => void) => {
+      const fn = () => {
+        withAct(() => {
+          sync.updateContainerSync(null, handle, null, null);
+          sync.flushSyncWork();
+        });
+      };
+      exitRef.fn = fn;
+      return fn;
+    })(),
     press,
     pressKey: (name: KeyName) => press({ name }),
     pressChar: (ch: string) => press({ ch }),

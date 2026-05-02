@@ -48,6 +48,25 @@ importers:
         specifier: ^3.2.1
         version: 3.2.1
 
+  e2e:
+    dependencies:
+      '@pilates/react':
+        specifier: workspace:*
+        version: link:../packages/react
+      '@pilates/widgets':
+        specifier: workspace:*
+        version: link:../packages/widgets
+      react:
+        specifier: ^19.0.0
+        version: 19.2.5
+    devDependencies:
+      '@types/react':
+        specifier: ^19.0.0
+        version: 19.2.14
+      strip-ansi:
+        specifier: ^7.2.0
+        version: 7.2.0
+
   examples/chat-log:
     dependencies:
       '@pilates/render':
