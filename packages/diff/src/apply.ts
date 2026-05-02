@@ -24,10 +24,18 @@ export function applyDiff(changes: CellChange[]): string {
   let activeBg: Color | undefined;
   let activeAttrs = 0;
   let dirty = false;
+  // After writing a glyph the terminal cursor naturally advances by
+  // `width` cells. Track where the cursor ends up so contiguous changes
+  // skip a redundant CSI cursor-position. -1 means "unknown" (initial
+  // state — must emit CSI before the first change).
+  let expectedX = -1;
+  let expectedY = -1;
 
   for (const c of changes) {
-    // Cursor position: 1-indexed in ANSI.
-    out.push(`\x1b[${c.y + 1};${c.x + 1}H`);
+    if (c.x !== expectedX || c.y !== expectedY) {
+      // Cursor position: 1-indexed in ANSI.
+      out.push(`\x1b[${c.y + 1};${c.x + 1}H`);
+    }
 
     const sameStyle = c.fg === activeFg && c.bg === activeBg && c.attrs === activeAttrs;
     if (!sameStyle) {
@@ -52,6 +60,8 @@ export function applyDiff(changes: CellChange[]): string {
     }
 
     out.push(c.char);
+    expectedX = c.x + c.width;
+    expectedY = c.y;
   }
 
   if (dirty) out.push(SGR_RESET);
