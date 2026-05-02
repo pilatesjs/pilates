@@ -1,7 +1,7 @@
+import { pathToFileURL } from 'node:url';
 import { Box, Text, render, useApp } from '@pilates/react';
 import { Select, type SelectItem, Spinner, TextInput } from '@pilates/widgets';
 import { useEffect, useState } from 'react';
-import { pathToFileURL } from 'node:url';
 
 type Step = 'name' | 'size' | 'processing' | 'done';
 
@@ -99,6 +99,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const instance = render(<App />);
   await instance.waitUntilExit();
   if (finalResult.current) {
-    process.stdout.write(`\nResult: name=${finalResult.current.name}, size=${finalResult.current.size}\n`);
+    process.stdout.write(
+      `\nResult: name=${finalResult.current.name}, size=${finalResult.current.size}\n`,
+    );
   }
 }

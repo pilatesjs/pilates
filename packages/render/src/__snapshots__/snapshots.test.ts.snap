@@ -1,0 +1,129 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`render snapshots — borders > double border > ansi 1`] = `
+"╔════╗
+║    ║
+╚════╝"
+`;
+
+exports[`render snapshots — borders > double border > plain 1`] = `
+"╔════╗
+║    ║
+╚════╝"
+`;
+
+exports[`render snapshots — borders > rounded border > ansi 1`] = `
+"╭──────╮
+│      │
+╰──────╯"
+`;
+
+exports[`render snapshots — borders > rounded border > plain 1`] = `
+"╭──────╮
+│      │
+╰──────╯"
+`;
+
+exports[`render snapshots — borders > single border with title > ansi 1`] = `
+"┌─ Logs ─────┐
+│            │
+└────────────┘"
+`;
+
+exports[`render snapshots — borders > single border with title > plain 1`] = `
+"┌─ Logs ─────┐
+│            │
+└────────────┘"
+`;
+
+exports[`render snapshots — colored text > bold red text on yellow background > ansi 1`] = `
+"┌──────────┐
+│[1;31;43mWARN      [0m│
+└──────────┘"
+`;
+
+exports[`render snapshots — colored text > bold red text on yellow background > plain 1`] = `
+"┌──────────┐
+│WARN      │
+└──────────┘"
+`;
+
+exports[`render snapshots — colored text > cyan text inside a single-bordered box > ansi 1`] = `
+"┌──────────┐
+│[36mhi[0m        │
+└──────────┘"
+`;
+
+exports[`render snapshots — colored text > cyan text inside a single-bordered box > plain 1`] = `
+"┌──────────┐
+│hi        │
+└──────────┘"
+`;
+
+exports[`render snapshots — flex layout > column with header strip + body, distinct titles > ansi 1`] = `
+"┌─ Top ────────┐
+│              │
+└──────────────┘
+┌─ Bot ────────┐
+│              │
+└──────────────┘"
+`;
+
+exports[`render snapshots — flex layout > column with header strip + body, distinct titles > plain 1`] = `
+"┌─ Top ────────┐
+│              │
+└──────────────┘
+┌─ Bot ────────┐
+│              │
+└──────────────┘"
+`;
+
+exports[`render snapshots — flex layout > row of two flex children with borders > ansi 1`] = `
+"┌────────┐┌────────┐
+│        ││        │
+└────────┘└────────┘"
+`;
+
+exports[`render snapshots — flex layout > row of two flex children with borders > plain 1`] = `
+"┌────────┐┌────────┐
+│        ││        │
+└────────┘└────────┘"
+`;
+
+exports[`render snapshots — text wrapping > handles wide CJK text > ansi 1`] = `
+"┌────────┐
+│你好世界│
+└────────┘"
+`;
+
+exports[`render snapshots — text wrapping > handles wide CJK text > plain 1`] = `
+"┌────────┐
+│你好世界│
+└────────┘"
+`;
+
+exports[`render snapshots — text wrapping > truncates with ellipsis when wrap = "truncate" > ansi 1`] = `
+"┌────────┐
+│this li…│
+└────────┘"
+`;
+
+exports[`render snapshots — text wrapping > truncates with ellipsis when wrap = "truncate" > plain 1`] = `
+"┌────────┐
+│this li…│
+└────────┘"
+`;
+
+exports[`render snapshots — text wrapping > wraps long text inside the inner area > ansi 1`] = `
+"┌────────┐
+│one two │
+│three   │
+└────────┘"
+`;
+
+exports[`render snapshots — text wrapping > wraps long text inside the inner area > plain 1`] = `
+"┌────────┐
+│one two │
+│three   │
+└────────┘"
+`;
