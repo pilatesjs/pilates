@@ -149,7 +149,7 @@ function layoutFlexFlow(node: Node, visible: Node[]): void {
 
   // Step 3: distribute slack within each line.
   for (const line of lines) {
-    distributeFlexInLine(line, innerMain, gapMain, main);
+    distributeFlexInLine(line, innerMain, main);
   }
 
   // Step 4: each line's cross size.
@@ -380,21 +380,11 @@ function makeLine(items: FlexItem[], hypotheticalMain: number): FlexLine {
 
 // ─── step 3: distribute flex-grow / flex-shrink within a line ───────────
 
-function distributeFlexInLine(
-  line: FlexLine,
-  innerMain: number,
-  gapMain: number,
-  main: Axis,
-): void {
-  const remaining =
-    innerMain -
-    line.hypotheticalMain -
-    Math.max(0, line.items.length - 1) * (line.items.length > 1 ? 0 : 0);
-  // Note: gapMain is already included in hypotheticalMain via singleLine /
-  // makeLine accounting (for wrap case) — wait, actually gapMain is added
-  // for singleLine. Let me handle this consistently:
-  void gapMain;
-
+function distributeFlexInLine(line: FlexLine, innerMain: number, main: Axis): void {
+  // `line.hypotheticalMain` already includes the gap budget — both
+  // singleLine() and packIntoLines() accumulate gaps into it as they
+  // build the line — so the slack is just inner - hypothetical.
+  const remaining = innerMain - line.hypotheticalMain;
   if (remaining > 0) {
     distributeGrow(line.items, remaining, main);
   } else if (remaining < 0) {
