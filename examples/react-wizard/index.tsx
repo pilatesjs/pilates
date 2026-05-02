@@ -42,7 +42,7 @@ export function App() {
       </Text>
 
       {step === 'name' && (
-        <Box flexDirection="column" marginTop={1} height={3}>
+        <Box flexDirection="column" height={3}>
           <Text>What's your name?</Text>
           <TextInput
             value={name}
@@ -56,7 +56,7 @@ export function App() {
       )}
 
       {step === 'size' && (
-        <Box flexDirection="column" marginTop={1} height={5}>
+        <Box flexDirection="column" height={5}>
           <Text>Hi {name}. Pick a size:</Text>
           <Select
             items={sizes}
@@ -70,14 +70,14 @@ export function App() {
       )}
 
       {step === 'processing' && (
-        <Box flexDirection="row" marginTop={1} height={1}>
+        <Box flexDirection="row" height={1}>
           <Spinner type="dots" />
           <Text> Processing...</Text>
         </Box>
       )}
 
       {step === 'done' && (
-        <Box flexDirection="column" marginTop={1} height={2}>
+        <Box flexDirection="column" height={2}>
           <Text color="green">✓ Done</Text>
           <Text>
             name = {name}, size = {size}
@@ -92,10 +92,6 @@ export function App() {
 // pathToFileURL handles cross-platform quirks (Windows drive letters, the
 // file:/// vs file:// slash count) that hand-built file URLs get wrong.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  // Pin stdin into flowing mode so Node's event loop stays alive long enough
-  // for React's passive effects (which attach useInput's stdin listener) to
-  // fire. Without this the wizard can exit before its first paint commits.
-  process.stdin.resume();
   const instance = render(<App />);
   await instance.waitUntilExit();
   if (finalResult.current) {

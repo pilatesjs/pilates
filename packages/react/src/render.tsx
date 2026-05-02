@@ -43,6 +43,11 @@ export interface RenderInstance {
  * react-reconciler@0.31 split the legacy synchronous flush into
  * `updateContainerSync` + `flushSyncWork`. The @types/react-reconciler
  * @0.28.9 surface doesn't list these yet, so we cast at the boundary.
+ *
+ * `flushPassiveEffects` drains pending useEffect callbacks; we need it
+ * inside `render()` so listeners (stdin data handlers, raw-mode toggle)
+ * are bound before the function returns, instead of one event-loop tick
+ * later when stdin might not yet hold the loop alive.
  */
 interface SyncReconciler {
   updateContainerSync(
@@ -52,6 +57,7 @@ interface SyncReconciler {
     callback: (() => void) | null,
   ): void;
   flushSyncWork(): void;
+  flushPassiveEffects(): boolean;
 }
 
 function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler {
@@ -317,6 +323,18 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
 
   sync.updateContainerSync(wrapped, handle, null, null);
   sync.flushSyncWork();
+  // Drain passive effects synchronously before returning. Without this,
+  // StdinProvider's `stdin.on('data')` + `setRawMode(true)` + `resume()`
+  // wouldn't fire until the next event-loop tick — by which point Node
+  // may have already exited (nothing else holding the loop alive). Each
+  // effect run can schedule further sync state updates (e.g.,
+  // ResizeBridge's `force(n => n + 1)`), so loop until quiescent. The
+  // bound is a safety net against pathological effect chains; real apps
+  // settle in 1-2 iterations.
+  for (let i = 0; i < 8; i++) {
+    if (!sync.flushPassiveEffects()) break;
+    sync.flushSyncWork();
+  }
 
   const instance: RenderInstance = {
     unmount: () => finishUnmount(),
