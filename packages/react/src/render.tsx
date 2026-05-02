@@ -5,6 +5,7 @@ import {
   type ReactNode,
   createElement,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -154,38 +155,45 @@ function StdinProvider({
     };
   }, [stdin, isRawModeSupported]);
 
-  const value: StdinHookValue = {
-    stdin,
-    isRawModeSupported,
-    subscribe: (handler) => {
-      const state = stateRef.current;
-      state.subscribers.set(handler, true);
-      state.refcount += 1;
-      ensureRawMode(stdin, state, isRawModeSupported);
-      return () => {
-        const wasActive = state.subscribers.get(handler) === true;
-        state.subscribers.delete(handler);
-        if (wasActive) {
+  // Memoize the context value so the provider's identity survives parent
+  // re-renders. Otherwise every parent state change would create a fresh
+  // value, causing useInput's subscribe effect (deps include `v`) to tear
+  // down and rebuild on every keystroke that triggered an update.
+  const value = useMemo<StdinHookValue>(
+    () => ({
+      stdin,
+      isRawModeSupported,
+      subscribe: (handler) => {
+        const state = stateRef.current;
+        state.subscribers.set(handler, true);
+        state.refcount += 1;
+        ensureRawMode(stdin, state, isRawModeSupported);
+        return () => {
+          const wasActive = state.subscribers.get(handler) === true;
+          state.subscribers.delete(handler);
+          if (wasActive) {
+            state.refcount -= 1;
+            if (state.refcount === 0) releaseRawMode(stdin, state, isRawModeSupported);
+          }
+        };
+      },
+      setActive: (handler, active) => {
+        const state = stateRef.current;
+        const current = state.subscribers.get(handler);
+        if (current === undefined) return;
+        if (current === active) return;
+        state.subscribers.set(handler, active);
+        if (active) {
+          state.refcount += 1;
+          ensureRawMode(stdin, state, isRawModeSupported);
+        } else {
           state.refcount -= 1;
           if (state.refcount === 0) releaseRawMode(stdin, state, isRawModeSupported);
         }
-      };
-    },
-    setActive: (handler, active) => {
-      const state = stateRef.current;
-      const current = state.subscribers.get(handler);
-      if (current === undefined) return;
-      if (current === active) return;
-      state.subscribers.set(handler, active);
-      if (active) {
-        state.refcount += 1;
-        ensureRawMode(stdin, state, isRawModeSupported);
-      } else {
-        state.refcount -= 1;
-        if (state.refcount === 0) releaseRawMode(stdin, state, isRawModeSupported);
-      }
-    },
-  };
+      },
+    }),
+    [stdin, isRawModeSupported],
+  );
   return createElement(StdinContext.Provider, { value }, children);
 }
 
