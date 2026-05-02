@@ -8,6 +8,8 @@
 <p align="center">
   <a href="https://www.npmjs.com/package/@pilates/core"><img src="https://img.shields.io/npm/v/@pilates/core?label=%40pilates%2Fcore&color=cb3837" alt="npm @pilates/core"></a>
   <a href="https://www.npmjs.com/package/@pilates/render"><img src="https://img.shields.io/npm/v/@pilates/render?label=%40pilates%2Frender&color=cb3837" alt="npm @pilates/render"></a>
+  <a href="https://www.npmjs.com/package/@pilates/react"><img src="https://img.shields.io/npm/v/@pilates/react?label=%40pilates%2Freact&color=cb3837" alt="npm @pilates/react"></a>
+  <a href="https://www.npmjs.com/package/@pilates/widgets"><img src="https://img.shields.io/npm/v/@pilates/widgets?label=%40pilates%2Fwidgets&color=cb3837" alt="npm @pilates/widgets"></a>
   <a href="https://bundlephobia.com/package/@pilates/core"><img src="https://img.shields.io/bundlephobia/minzip/@pilates/core?label=%40pilates%2Fcore%20size" alt="bundle size @pilates/core"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@pilates/core?color=blue" alt="license MIT"></a>
 </p>
@@ -61,35 +63,61 @@ all of React. **Pilates** separates them:
   coordinates. Pure TypeScript, **zero runtime dependencies**. Handles
   CJK / emoji / wide-char widths, integer-cell rounding, the CSS Flexbox
   freeze loop, and absolute positioning. Validated cell-for-cell against a
-  reference WASM flexbox implementation across 30 oracle fixtures.
+  reference WASM flexbox implementation across 30+ oracle fixtures.
 - **`@pilates/render`** — the out-of-box renderer. Declarative POJO tree →
   painted ANSI string with borders, titles, colors, and text wrap. Uses core
   internally; depends only on it.
+- **`@pilates/diff`** — cell-level frame diffing + minimal ANSI redraw
+  sequences for live TUIs. Pairs with `@pilates/render`.
+- **`@pilates/react`** — optional React reconciler on top of the same engine,
+  for consumers who want JSX and hooks. Independent of the core / render /
+  diff stack — you don't pay for it if you don't import it.
+- **`@pilates/widgets`** — interactive widgets (`TextInput`, `Select`,
+  `Spinner`) built on `@pilates/react`. For wizard-style CLI flows.
 
 ## Packages
 
 | Package | Status | What |
 |---|---|---|
-| [`@pilates/core`](./packages/core)     | `1.0.0-rc.1`              | Engine: imperative Node API, returns layout boxes. |
-| [`@pilates/render`](./packages/render) | `1.0.0-rc.2`              | Out-of-box: declarative tree → painted string. |
-| [`@pilates/diff`](./packages/diff)     | `0.1.0`                   | Cell-level frame diff + minimal ANSI redraw. |
-| [`@pilates/react`](./packages/react)   | `0.1.0-rc.1` (pre-release)| React reconciler — author terminal UIs with JSX and hooks. |
+| [`@pilates/core`](./packages/core)       | `1.0.0-rc.1`     | Engine: imperative Node API, returns layout boxes. |
+| [`@pilates/render`](./packages/render)   | `1.0.0-rc.2`     | Out-of-box: declarative tree → painted string. |
+| [`@pilates/diff`](./packages/diff)       | `0.1.0`          | Cell-level frame diff + minimal ANSI redraw. |
+| [`@pilates/react`](./packages/react)     | `0.2.1`          | React reconciler — author terminal UIs with JSX and hooks. |
+| [`@pilates/widgets`](./packages/widgets) | `0.1.0-rc.1`     | Interactive widgets (`TextInput`, `Select`, `Spinner`) for `@pilates/react`. |
 
 ## Examples
 
-Three runnable examples live under [`examples/`](./examples/):
+Ten runnable examples live under [`examples/`](./examples/) — six built on
+the imperative `@pilates/render` API, four built on `@pilates/react`.
+
+**Imperative (`@pilates/render`):**
 
 | Example | What it shows |
 |---|---|
 | [chat-log](./examples/chat-log)             | Two-pane chat layout: scrolling messages + status sidebar. Wide-char & emoji passthrough. |
+| [dashboard](./examples/dashboard)           | System-monitor layout: status header, four stat tiles in a row, metrics strip. |
+| [gallery](./examples/gallery)               | Grid of cards that wraps to multiple rows on a narrow container. |
+| [modal](./examples/modal)                   | Confirm-action modal floating over a list — exercises absolute positioning. |
 | [progress-table](./examples/progress-table) | Multi-row progress dashboard with bars and color-coded status. |
 | [split-pane](./examples/split-pane)         | Editor-style: header + 3-pane body (files / editor / outline) + status footer. |
 
+**React (`@pilates/react` + `@pilates/widgets`):**
+
+| Example | What it shows |
+|---|---|
+| [react-counter](./examples/react-counter)     | Minimal reconciler example: counter incrementing every 250ms, demonstrating the diff-based redraw loop. |
+| [react-dashboard](./examples/react-dashboard) | React port of `dashboard` with a live `tick` counter on the header. |
+| [react-modal](./examples/react-modal)         | React port of `modal`: centered confirmation dialog over a scrollable list. |
+| [react-wizard](./examples/react-wizard)       | Multi-step `TextInput → Select → Spinner` wizard exercising every `@pilates/widgets` component. |
+
 ```bash
 pnpm install
+# imperative
 pnpm --filter @pilates-examples/chat-log dev
 pnpm --filter @pilates-examples/progress-table dev
-pnpm --filter @pilates-examples/split-pane dev
+# react
+pnpm --filter @pilates-examples/react-counter dev
+pnpm --filter @pilates-examples/react-wizard dev
 ```
 
 ## Quick start (using just the engine)
