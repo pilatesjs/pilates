@@ -14,7 +14,6 @@
  * relative `layout.left/top` as we descend.
  */
 
-import { stringWidth } from '@pilates/core';
 import type { Node } from '@pilates/core';
 import { borderChars, hasBorder } from './borders.js';
 import type { Bridge } from './build.js';
@@ -93,10 +92,23 @@ function paintContainer(frame: Frame, spec: ContainerNode, rect: Rect): void {
   }
 
   // Title slot: render inline on the top border with the layout
-  // `┌─ title ─...─┐`. We need at least 6 cells: 2 corners + 1 leading ─ +
-  // 2 padding spaces + at least 1 char of title.
-  if (spec.title && rect.width >= 6) {
-    const innerWidth = rect.width - 5; // 2 corners + 1 leading ─ + 2 spaces
+  //
+  //   ┌ ─ ' ' [title cells] ' ' ─ ─ … ─ ┐
+  //   ↑       ↑              ↑          ↑
+  //   x0+0    x0+TITLE_LEAD  trailing   x1
+  //
+  // TITLE_LEAD reserves [corner, leading ─, leading pad-space] (3 cells),
+  // TITLE_TRAIL reserves [trailing pad-space, corner] (2 cells), so
+  // displaying any title needs at least 5 chrome cells + 1 title cell = 6.
+  // The unused tail of the title slot — when `written` ends up shorter
+  // than `innerWidth`, e.g. a 2-cell title in a 7-cell slot — is left as
+  // the ─s the border draw already wrote, giving the documented
+  // ┌─ title ─...─┐ layout for any title width.
+  const TITLE_LEAD = 3;
+  const TITLE_TRAIL = 2;
+  const TITLE_CHROME = TITLE_LEAD + TITLE_TRAIL;
+  if (spec.title && rect.width >= TITLE_CHROME + 1) {
+    const innerWidth = rect.width - TITLE_CHROME;
     const title = truncateLine(spec.title, innerWidth);
     if (title.length > 0) {
       const tStyle: CellStyle = {
@@ -104,10 +116,13 @@ function paintContainer(frame: Frame, spec: ContainerNode, rect: Rect): void {
         bg: undefined,
         attrs: 0,
       };
-      // Leave the leading ─ from the border draw at x0+1, then " title ".
-      frame.setGrapheme(x0 + 2, y0, ' ', borderStyle);
-      const written = frame.writeText(x0 + 3, y0, title, tStyle);
-      frame.setGrapheme(x0 + 3 + written, y0, ' ', borderStyle);
+      // Leading pad-space: overwrites the ─ at x0+(TITLE_LEAD - 1).
+      frame.setGrapheme(x0 + TITLE_LEAD - 1, y0, ' ', borderStyle);
+      const written = frame.writeText(x0 + TITLE_LEAD, y0, title, tStyle);
+      // Trailing pad-space: lands immediately after the title, regardless
+      // of whether `written < innerWidth`. The cells between (here) and
+      // the right corner stay as the ─s the border draw already wrote.
+      frame.setGrapheme(x0 + TITLE_LEAD + written, y0, ' ', borderStyle);
     }
   }
 }
@@ -127,34 +142,19 @@ function paintText(frame: Frame, spec: TextNode, rect: Rect): void {
     lines = wrapText(spec.text, rect.width);
   }
 
+  // Whether each row needs a background-fill strip before chars land —
+  // hoisted out of the loop so the property checks happen once, not per
+  // line. The fillRow path itself is allocated/branched-free for plain
+  // space cells.
+  const needsBgFill = style.bg !== undefined || style.attrs !== 0;
   for (let i = 0; i < lines.length && i < rect.height; i++) {
     const line = lines[i]!;
-    // Background fill across the entire line for inverse / bgColor effect.
-    if (style.bg !== undefined || style.attrs !== 0) {
-      paintBackgroundRow(frame, rect.x, rect.y + i, rect.width, style);
+    if (needsBgFill) {
+      frame.fillRow(rect.x, rect.y + i, rect.width, style);
     }
     frame.writeText(rect.x, rect.y + i, line, style);
   }
 }
 
-/**
- * Pre-paint a row with the text style so background / attrs apply across
- * the full text-node rectangle, not just where characters land.
- */
-function paintBackgroundRow(
-  frame: Frame,
-  x: number,
-  y: number,
-  width: number,
-  style: CellStyle,
-): void {
-  const bgStyle: CellStyle = { fg: style.fg, bg: style.bg, attrs: style.attrs };
-  for (let cx = x; cx < x + width; cx++) {
-    frame.setGrapheme(cx, y, ' ', bgStyle);
-  }
-}
-
 // Re-export Color for index.ts convenience.
 export type { Color };
-// stringWidth is referenced in the painter doc only; suppress unused.
-void stringWidth;
