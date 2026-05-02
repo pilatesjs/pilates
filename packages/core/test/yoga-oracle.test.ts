@@ -573,7 +573,10 @@ const FIXTURES: Fixture[] = [
     },
   },
   {
-    name: 'absolute: parent has padding, edges relative to inner',
+    // Pins Yoga 3.x semantics: absolute children's edge offsets are relative to
+    // the parent's OUTER box, not the post-padding inner box. The previous name
+    // claimed "inner" and was misleading.
+    name: 'absolute: parent has padding, edges relative to outer',
     spec: {
       flexDirection: 'row',
       width: 40,

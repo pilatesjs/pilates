@@ -135,7 +135,16 @@ export class Node {
     this.markDirty();
   }
 
-  /** CSS `flex` shorthand: grow=value, shrink=1, basis=0 (when value > 0). */
+  /**
+   * CSS `flex` shorthand: grow=value, shrink=1, basis=0 (when value > 0).
+   *
+   * Note that the implied `shrink: 1` follows CSS, not Yoga: Yoga's
+   * default `flexShrink` is 0, and `setFlex(N)` in Yoga also leaves
+   * shrink at 0. Pilates intentionally tracks CSS here so consumers
+   * who think in CSS terms get the result they expect; consumers
+   * porting from Ink (which wraps Yoga) should call `setFlexShrink(0)`
+   * after `setFlex` if they need the Yoga behaviour.
+   */
   setFlex(value: number): void {
     if (!Number.isFinite(value)) throw new RangeError(`flex must be finite, got ${value}`);
     if (value > 0) {
@@ -315,7 +324,13 @@ export class Node {
     return this._dirty;
   }
 
-  /** Internal: called by the algorithm once layout is fresh. */
+  /**
+   * Called by the algorithm once layout is fresh. Not part of the public
+   * API — consumers should treat layout cleanliness as derived state and
+   * never reach in to clear the flag themselves.
+   *
+   * @internal
+   */
   clearDirty(): void {
     this._dirty = false;
   }
