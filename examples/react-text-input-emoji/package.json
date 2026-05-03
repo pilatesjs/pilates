@@ -1,0 +1,20 @@
+{
+  "name": "@pilates-examples/react-text-input-emoji",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.tsx",
+  "scripts": {
+    "dev": "tsx index.tsx"
+  },
+  "dependencies": {
+    "@pilates/core": "workspace:*",
+    "@pilates/react": "workspace:*",
+    "@pilates/widgets": "workspace:*",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "tsx": "^4.19.2"
+  }
+}
