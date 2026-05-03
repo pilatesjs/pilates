@@ -30,6 +30,13 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   wrap. Indent-only lines and end-of-paragraph whitespace are still
   preserved (CSS `white-space: normal` parity).
 
+### Added — `@pilates/react` (next minor)
+
+- `useWindowSize()` — convenience hook returning `{ columns, rows }`,
+  re-rendering on terminal resize. Equivalent to picking those fields
+  off `useStdout()`; offered for parity with the name peer libraries
+  use.
+
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 
 Codebase-review fixes (from PR #23) carried into the active bake. No API
