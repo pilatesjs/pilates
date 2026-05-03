@@ -7,10 +7,8 @@ release-candidate train.
 
 ## Unreleased
 
-Codebase-review batch (PR #23). Seven correctness / API-hygiene fixes across
-four packages, surfaced by an internal review pass before the imminent
-`@pilates/core@1.0.0` and `@pilates/render@1.0.0` promotions. All fixes ship
-TDD with new failing-then-passing tests; workspace test count 429 → 446.
+Pending — will land with the `@pilates/core@1.0.0` and `@pilates/render@1.0.0`
+promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
 
 ### Changed — `@pilates/core` (pre-1.0)
 
@@ -32,7 +30,12 @@ TDD with new failing-then-passing tests; workspace test count 429 → 446.
   wrap. Indent-only lines and end-of-paragraph whitespace are still
   preserved (CSS `white-space: normal` parity).
 
-### Fixed — `@pilates/react` (pre-1.0)
+## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
+
+Codebase-review fixes (from PR #23) carried into the active bake. No API
+breaks. Workspace test count 429 → 446.
+
+### Fixed — `@pilates/react` 0.2.2
 
 - Key parser: a bare `\x1b` at end-of-chunk is now returned as `remainder`
   instead of being emitted as `{ name: 'escape' }` immediately. Split-chunk
@@ -52,7 +55,7 @@ TDD with new failing-then-passing tests; workspace test count 429 → 446.
   schedule state updates now settle before `lastWrite()` returns. Mirrors
   the existing `mountWithInput()` behavior.
 
-### Fixed — `@pilates/widgets` (pre-1.0)
+### Fixed — `@pilates/widgets` 0.1.0-rc.2
 
 - `<TextInput>` cursor model is now grapheme-cluster indexed instead of
   UTF-16 code unit indexed. Backspace, left/right arrows, home/end,
@@ -66,13 +69,12 @@ TDD with new failing-then-passing tests; workspace test count 429 → 446.
   the current index. Previously, Enter became a silent no-op and no row
   showed as highlighted after the items list shrank.
 
-### Added — `@pilates/widgets`
+### Added — `@pilates/widgets` 0.1.0-rc.2
 
-- New runtime dependency on `@pilates/core` (workspace) for grapheme
-  segmentation in `<TextInput>`. `@pilates/core` was already a transitive
-  dep via `@pilates/react`; this just makes the direct relationship
-  explicit so the widgets package can `import { graphemes } from
-  '@pilates/core'`.
+- New runtime dependency on `@pilates/core` for grapheme segmentation in
+  `<TextInput>`. `@pilates/core` was already a transitive dep via
+  `@pilates/react`; this just makes the direct relationship explicit so
+  the widgets package can `import { graphemes } from '@pilates/core'`.
 
 ## 2026-05-01 — `@pilates/react@0.2.0`
 

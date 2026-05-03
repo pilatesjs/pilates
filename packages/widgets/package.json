@@ -1,6 +1,6 @@
 {
   "name": "@pilates/widgets",
-  "version": "0.1.0-rc.1",
+  "version": "0.1.0-rc.2",
   "description": "Interactive widgets for Pilates: TextInput, Select, Spinner. Built on @pilates/react.",
   "license": "MIT",
   "author": "Zhijie Wang",

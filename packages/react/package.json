@@ -1,6 +1,6 @@
 {
   "name": "@pilates/react",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "React reconciler for @pilates/core. Author terminal UIs with JSX and hooks.",
   "license": "MIT",
   "author": "Zhijie Wang",
