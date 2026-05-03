@@ -188,7 +188,12 @@ flexbox implementation:
   positioning anchor)
 - 200+ unit + algorithm + render tests
 - Unicode width fuzzer running through 200 randomized strings against
-  `@xterm/headless` per CI run
+  `@xterm/headless` per CI run, plus a fixture set of pinned agreement
+  cases and documented divergences (where modern terminals render wider
+  than xterm.js's Unicode-11 tables)
+- Property-based fuzz with `fast-check` over layout invariants —
+  non-overflow, sibling non-overlap, reproducibility — across randomly
+  generated trees
 
 ## Notable design choices
 

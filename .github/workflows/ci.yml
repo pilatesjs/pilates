@@ -11,7 +11,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -21,6 +21,8 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
+          # pnpm 10.32 (pinned via packageManager) needs Node 22.13+;
+          # consumers on Node 20 work fine, but our toolchain doesn't.
           node-version: 22
           cache: pnpm
 

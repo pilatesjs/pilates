@@ -12,8 +12,8 @@ WASM flexbox implementation — packaged so consumers can take just the
 engine, just the painter, the diff loop, the React reconciler, or any
 combination, **without dragging in the rest**.
 
-The split into four focused packages is the product. Each can be used
-standalone:
+The split into five focused packages is the product. Each can be used
+standalone (or in combination):
 
 | Package | Use case | Depends on |
 |---|---|---|
@@ -21,6 +21,7 @@ standalone:
 | `@pilates/render` | Declarative POJO tree → painted ANSI string | core |
 | `@pilates/diff` | Frame-to-frame cell diff → minimal ANSI redraw | render (for `Frame`) |
 | `@pilates/react` | React 19 reconciler driving the above | core, render, diff |
+| `@pilates/widgets` | Interactive widgets (`TextInput`, `Select`, `Spinner`) | react |
 
 ## Where Pilates sits
 
@@ -70,10 +71,11 @@ its install base.
 
 ## What Pilates deliberately doesn't do
 
-- **No widget library.** No `<Spinner>`, `<Table>`, `<TextInput>`,
-  `<Select>` in the core packages. Widgets are user-land. (A separate
-  `@pilates/widgets` package is on the roadmap — see Phase 3 — but it
-  stays separate from the engine and reconciler.)
+- **No widgets in the engine or reconciler.** Widgets live in their own
+  opt-in package, `@pilates/widgets` (`<TextInput>`, `<Select>`,
+  `<Spinner>` shipped 2026-04-30). The engine, render layer, and React
+  reconciler don't carry them — you don't pay for widgets if you don't
+  import the widgets package.
 - **No animation primitives.** Terminal isn't a 60-fps medium.
 - **No alt-screen / mouse / clipboard / kitty graphics protocol.**
   Stays in the scrollback, writes ANSI, exits cleanly. Out of scope
@@ -85,55 +87,48 @@ its install base.
 
 ### Now (in flight)
 
-- **RC bake periods running.** `@pilates/core@1.0.0-rc.1` and
-  `@pilates/render@1.0.0-rc.2` bake until 2026-05-13 (Phase A.5,
-  issue #11). `@pilates/react@0.1.0-rc.1` bakes through 2026-05-14.
+- **`@pilates/core@1.0.0-rc.1` and `@pilates/render@1.0.0-rc.2` bake
+  until 2026-05-13** (issue #11). After bake-end with no blocking
+  feedback, both promote to `1.0.0` and `@pilates/diff` bumps to
+  `0.2.0`.
+- **`@pilates/widgets@0.1.0-rc.1` bakes through ~2026-05-15** (concurrent
+  with the core/render bake). Promotes to `0.1.0` if no blocking issues.
 - **Scheduled routines** at https://claude.ai/code/routines fire on
   those dates with the issue-tracker check + promotion checklist.
 
-### Phase 1 (next 2–4 weeks): close the input gap
+### Done
 
-Ship `useInput` in `@pilates/react@0.2.0`. Without it, the reconciler
-only powers "watch this tick" demos — counters, dashboards, status
-displays. The moment a user wants a wizard, a menu, an interactive
-prompt, a TUI form, or any keystroke-driven CLI, they leave for Ink.
-That's a hard ceiling.
+- **`useInput` (shipped 2026-05-01).** `@pilates/react@0.2.0` added a
+  discriminated `KeyEvent` API + xterm-compatible key parser + lazy
+  raw-mode lifecycle. Closed the input gap that previously kept the
+  reconciler limited to "watch this tick" demos. Spec:
+  `docs/superpowers/specs/2026-04-30-useInput-design.md`.
+- **`@pilates/widgets@0.1.0-rc.1` (shipped 2026-04-30).** A separate
+  fifth package on top of `@pilates/react` with `<TextInput>`,
+  `<Select>`, `<Spinner>` — the trio that closes the practical
+  adoption gate ("how do I prompt for a string?"). `<MultiSelect>`
+  and `<Table>` deferred to a `0.2+` minor on demand. Spec:
+  `docs/superpowers/specs/2026-05-01-widgets-design.md`.
 
-API direction: discriminated `KeyEvent` (modern style, not Ink's
-bag-of-booleans). See `docs/superpowers/specs/<date>-useInput-design.md`
-once that brainstorm completes.
+### Next: promote core/render/diff to 1.0
 
-Defer `useFocus` to Phase 3 unless real demand surfaces during the
-`useInput` rollout.
+After 2026-05-13 with no blocking feedback: bump `@pilates/core` →
+`1.0.0`, `@pilates/render` → `1.0.0`, `@pilates/diff` → `0.2.0`.
+Closes #11. No new features — pure version-bump and release-note work.
 
-### Phase 2 (1–2 weeks): promote core/render/diff to 1.0
+### Beyond v1 (demand-driven, no commitment)
 
-Once Phase A.5 routines fire and the bake's clean: bump
-`@pilates/core` → `1.0.0`, `@pilates/render` → `1.0.0`, `@pilates/diff`
-→ `0.2.0`. Closes #11. No new features — pure version-bump and
-release-note work.
-
-### Phase 3 (4–8 weeks): a separate widget library
-
-Once `useInput` is in users' hands, the practical adoption gate becomes
-"how do I prompt for a string?" / "how do I render a table?" Ship
-`@pilates/widgets` as a fifth package that depends on `@pilates/react`
-and provides the canonical patterns: text input, single-select,
-multi-select, spinner, table. Keeping it in its own package preserves
-`@pilates/react`'s footprint and the "compose what you need" thesis.
-
-If during Phase 3 real demand for `useFocus` shows up (multi-input
-forms, tab navigation), fold it in then with concrete use cases driving
-the API rather than speculation.
-
-### Beyond Phase 3 (no commitment yet)
-
-- `<Static>` (append-only region above the live area) — interesting
-  for log-above-status patterns; ship if requested.
-- `<Transform>` (paint-time text post-processor) — interesting for
-  gradients, hyperlinks; ship if requested.
-- Nested-`<Text>` style inheritance — known v0.1 limitation; fix when
-  a real workflow hits it.
+- **`useFocus`** — fold in if multi-input forms / tab navigation
+  surface real use cases. Deferred from the original `useInput` and
+  widgets work because the demand wasn't concrete yet.
+- **`<MultiSelect>`, `<Table>` widgets** — ship in
+  `@pilates/widgets@0.2+` on demand.
+- **`<Static>`** (append-only region above the live area) —
+  interesting for log-above-status patterns; ship if requested.
+- **`<Transform>`** (paint-time text post-processor) — interesting
+  for gradients, hyperlinks; ship if requested.
+- **Nested-`<Text>` style inheritance** — known v0.1 limitation;
+  fix when a real workflow hits it.
 
 These are deliberately demand-driven, not roadmap-driven.
 
