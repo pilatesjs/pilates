@@ -100,6 +100,17 @@ export function useStdout(): StdoutHookValue {
   return v;
 }
 
+/**
+ * Convenience hook returning just the terminal dimensions. Re-renders on
+ * SIGWINCH (`stdout.emit('resize')`). Equivalent to picking
+ * `{ columns, rows }` off `useStdout()`; offered for parity with the
+ * `useWindowSize` name peer libraries use.
+ */
+export function useWindowSize(): { columns: number; rows: number } {
+  const { columns, rows } = useStdout();
+  return { columns, rows };
+}
+
 export function useStderr(): StderrHookValue {
   const v = useContext(StderrContext);
   if (!v) throw new Error('Pilates: useStderr() must be used inside <render>.');

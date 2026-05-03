@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Box, Newline, Spacer, Text } from './components.js';
-import { useApp, useInput, useStdout } from './hooks.js';
+import { useApp, useInput, useStdout, useWindowSize } from './hooks.js';
 import { render } from './render.js';
 import { makeFakeStdin, mount, mountWithInput, renderToString } from './test-utils.js';
 
@@ -411,6 +411,32 @@ describe('hooks', () => {
     // give effect time to run
     await new Promise((r) => setTimeout(r, 0));
     expect(stripAnsi(writes.join(''))).toContain('30x8');
+
+    instance.unmount();
+  });
+
+  it('useWindowSize returns columns/rows and reflects resize', async () => {
+    function App() {
+      const { columns, rows } = useWindowSize();
+      return <Text>{`${columns}x${rows}`}</Text>;
+    }
+    const stdout = makeFakeStdout(40, 10);
+    const { EventEmitter } = await import('node:events');
+    const ee = new EventEmitter();
+    (stdout as unknown as { on: typeof ee.on; off: typeof ee.off; emit: typeof ee.emit }).on =
+      ee.on.bind(ee);
+    (stdout as unknown as { off: typeof ee.off }).off = ee.off.bind(ee);
+    (stdout as unknown as { emit: typeof ee.emit }).emit = ee.emit.bind(ee);
+    const writes = (stdout as unknown as { __buf: string[] }).__buf;
+
+    const instance = render(<App />, { stdout, stderr: makeFakeStdout(20, 5) });
+    expect(stripAnsi(writes.join(''))).toContain('40x10');
+
+    (stdout as unknown as { columns: number }).columns = 80;
+    (stdout as unknown as { rows: number }).rows = 24;
+    ee.emit('resize');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(stripAnsi(writes.join(''))).toContain('80x24');
 
     instance.unmount();
   });
