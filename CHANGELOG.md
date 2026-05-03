@@ -36,6 +36,12 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   re-rendering on terminal resize. Equivalent to picking those fields
   off `useStdout()`; offered for parity with the name peer libraries
   use.
+- `snapshot(out)` exported from `@pilates/react/test-utils`. Returns
+  `{ ansi, plain }` for two-shot snapshot testing — one form catches
+  color / cursor drift, the other catches layout drift. Strips CSI
+  inline (no `strip-ansi` runtime dep). The widgets package's
+  internal `snap()` / `strip()` helpers are now thin re-exports of
+  this.
 
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 

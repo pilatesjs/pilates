@@ -548,3 +548,42 @@ export function mountWithInput<T>(
     fakeStdin,
   };
 }
+
+// ---------------------------------------------------------------------------
+// snapshot — bundle frame output for two-shot snapshot testing
+// ---------------------------------------------------------------------------
+
+export interface Snapshot {
+  /** Raw output including SGR colors and cursor-position escapes. */
+  ansi: string;
+  /** All CSI escape sequences stripped, single trailing newline trimmed. */
+  plain: string;
+}
+
+/**
+ * Bundle a frame string into raw + plain forms for two-shot snapshot
+ * testing.
+ *
+ *     const s = snapshot(handle.lastWrite());
+ *     expect(s.ansi).toMatchSnapshot('ansi');
+ *     expect(s.plain).toMatchSnapshot('plain');
+ *
+ * Two snapshots per scene catch different regressions: `ansi` catches
+ * color / indicator / cursor-position drift; `plain` catches layout
+ * drift independent of styling. When a diff hits only one, the failing
+ * layer is obvious.
+ *
+ * The CSI strip is inline (no `strip-ansi` dep) and covers everything
+ * Pilates emits — SGR (`\e[…m`), cursor positioning (`\e[…H` / `…f` /
+ * `…A` / `…B` / `…C` / `…D`), and erase (`\e[…J` / `…K`).
+ *
+ * Public — exported from `@pilates/react/test-utils`. Intended for use
+ * in test environments only.
+ */
+export function snapshot(out: string): Snapshot {
+  return {
+    ansi: out,
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: ESC (0x1b) is what we strip
+    plain: out.replace(/\x1b\[[\d;?]*[A-Za-z]/g, '').replace(/\n$/, ''),
+  };
+}

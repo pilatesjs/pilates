@@ -158,6 +158,39 @@ On SIGWINCH the layout root's dimensions are mutated and `prevFrame` is
 cleared, forcing a full repaint at the new size — anything else would
 leave stale cells past the new viewport.
 
+## Testing
+
+`@pilates/react/test-utils` ships helpers for unit-testing components
+without spawning a real terminal:
+
+| Helper | Returns | Use for |
+|---|---|---|
+| `renderToString(<App />, { width, height })` | `string` (frame as text + SGR) | Static-tree assertions; no input, no setState. |
+| `mount(initial, render, { width, height })` | `MountHandle<T>` | Components that update via `setState`. Wraps reconciler ops in `act()`; drains passive effects. |
+| `mountWithInput(initial, render, { width, height })` | `InputMountHandle<T>` | Components using `useInput`. Adds `pressKey()` / `pressChar()` / `pressCtrl()` and a `fakeStdin` for lifecycle assertions. |
+| `snapshot(out)` | `{ ansi, plain }` | Two-shot snapshot testing — one snapshot with SGR + cursor codes, one stripped for layout-only drift. |
+| `makeFakeStdin()` | `FakeStdin` | Lower-level stdin double if you need to drive bytes directly. |
+
+Snapshot pattern (Vitest):
+
+```tsx
+import { mountWithInput, snapshot } from '@pilates/react/test-utils';
+import { expect, it } from 'vitest';
+import { Spinner } from '@pilates/widgets';
+
+it('renders the dots spinner', () => {
+  const h = mountWithInput(0, () => <Spinner type="dots" />, { width: 4, height: 1 });
+  const s = snapshot(h.lastWrite());
+  expect(s.ansi).toMatchSnapshot('ansi');   // catches color / cursor drift
+  expect(s.plain).toMatchSnapshot('plain'); // catches layout drift
+  h.unmount();
+});
+```
+
+Two snapshots per scene make regressions easier to localize: if `ansi`
+diffs but `plain` doesn't, the regression is in the styling layer; if
+both diff, layout shifted too.
+
 ## What's NOT in v0.2
 
 The following are intentionally deferred. See `docs/STRATEGY.md` for the

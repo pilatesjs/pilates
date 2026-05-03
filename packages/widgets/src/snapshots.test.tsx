@@ -6,9 +6,8 @@
  * isolate which layer regressed.
  */
 
-import { mountWithInput } from '@pilates/react/test-utils';
+import { mountWithInput, snapshot as snap } from '@pilates/react/test-utils';
 import { createElement, useState } from 'react';
-import stripAnsi from 'strip-ansi';
 import { describe, expect, it } from 'vitest';
 import { Select, type SelectItem } from './select.js';
 import { Spinner } from './spinner.js';
@@ -19,21 +18,6 @@ import { TextInput } from './text-input.js';
 function ControlledTextInput({ initial }: { initial: string }) {
   const [value, setValue] = useState(initial);
   return createElement(TextInput, { value, onChange: setValue });
-}
-
-// strip-ansi doesn't strip cursor-position codes; the test harness uses
-// flat string output, so trim those alongside SGR for the plain snapshot.
-function strip(s: string): string {
-  return (
-    stripAnsi(s)
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: cursor-position escapes
-      .replace(/\x1b\[[0-9;]*[Hf]/g, '')
-      .replace(/\n$/, '')
-  );
-}
-
-function snap(s: string) {
-  return { ansi: s, plain: strip(s) };
 }
 
 const items: SelectItem<string>[] = [
