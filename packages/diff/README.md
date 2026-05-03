@@ -73,3 +73,9 @@ interface CellChange {
 `0.1.0` — feature-complete for the documented API. The diff is
 deliberately simple (per-cell, no run-length grouping). A future version
 may add adjacent-cell coalescing for fewer cursor moves on dense changes.
+
+The package stays in the `0.x` line for now — newer than `core` /
+`render`, and the cursor-coalescing work above is a likely
+non-additive change worth saving for `0.2.0`. Tracked in
+[issue #11](https://github.com/pilatesjs/pilates/issues/11) (bumps to
+`0.2.0` alongside the `core` / `render` `1.0.0` promotion at bake-end).
