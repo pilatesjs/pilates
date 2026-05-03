@@ -44,6 +44,20 @@ function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler 
 }
 
 /**
+ * Drain passive effects (useEffect callbacks) until the queue is empty,
+ * re-flushing sync work after each round in case an effect scheduled new
+ * state. The 8-iteration cap mirrors `render.tsx`'s settling loop and is a
+ * safety net against pathological effect chains; real components settle in
+ * 1–2 iterations.
+ */
+function drainPassive(sync: SyncReconciler): void {
+  for (let i = 0; i < 8; i++) {
+    if (!sync.flushPassiveEffects()) break;
+    sync.flushSyncWork();
+  }
+}
+
+/**
  * Mount a React element with a fake stdout, run one synchronous commit,
  * and return the rendered Frame's `toString()` output.
  *
@@ -151,20 +165,45 @@ export function mount<T>(
     null,
   );
   const sync = asSync(reconciler);
-  sync.updateContainerSync(createElement(Wrapper, { initial }), handle, null, null);
-  sync.flushSyncWork();
+  // Wrap reconciler ops in act() so passive effects (and any state updates
+  // they schedule) flush synchronously via React's actQueue, instead of being
+  // deferred to the event loop by the Scheduler. Mirrors `mountWithInput` —
+  // without it, an effect that calls setState during initial mount or after a
+  // setState from this handle never commits.
+  const withAct = (fn: () => void): void => {
+    const g = globalThis as Record<string, unknown>;
+    const prev = g.IS_REACT_ACT_ENVIRONMENT;
+    g.IS_REACT_ACT_ENVIRONMENT = true;
+    try {
+      act(fn);
+    } finally {
+      g.IS_REACT_ACT_ENVIRONMENT = prev;
+    }
+  };
+
+  withAct(() => {
+    sync.updateContainerSync(createElement(Wrapper, { initial }), handle, null, null);
+    sync.flushSyncWork();
+    drainPassive(sync);
+  });
 
   return {
     lastWrite: () => writes[writes.length - 1] ?? '',
     allWrites: () => writes.join(''),
     setState: (value) => {
-      if (!setter) throw new Error('setter not captured');
-      setter(value);
-      sync.flushSyncWork();
+      withAct(() => {
+        if (!setter) throw new Error('setter not captured');
+        setter(value);
+        sync.flushSyncWork();
+        drainPassive(sync);
+      });
     },
     unmount: () => {
-      sync.updateContainerSync(null, handle, null, null);
-      sync.flushSyncWork();
+      withAct(() => {
+        sync.updateContainerSync(null, handle, null, null);
+        sync.flushSyncWork();
+        drainPassive(sync);
+      });
     },
   };
 }

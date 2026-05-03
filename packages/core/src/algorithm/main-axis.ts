@@ -285,10 +285,10 @@ function layoutAbsoluteChild(child: Node, parentOuterW: number, parentOuterH: nu
     top = margin[POS_TOP];
   }
 
-  child.layout.left = left;
-  child.layout.top = top;
-  child.layout.width = width;
-  child.layout.height = height;
+  child._layout.left = left;
+  child._layout.top = top;
+  child._layout.width = width;
+  child._layout.height = height;
 }
 
 // A frozen empty tuple lets the no-children case avoid allocating a
@@ -715,20 +715,20 @@ function sizeOnAxis(node: Node, axis: Axis): number {
 }
 
 function writeMainPos(node: Node, main: Axis, value: number): void {
-  if (main === 'row') node.layout.left = value;
-  else node.layout.top = value;
+  if (main === 'row') node._layout.left = value;
+  else node._layout.top = value;
 }
 function writeMainSize(node: Node, main: Axis, value: number): void {
-  if (main === 'row') node.layout.width = value;
-  else node.layout.height = value;
+  if (main === 'row') node._layout.width = value;
+  else node._layout.height = value;
 }
 function writeCrossPos(node: Node, cross: Axis, value: number): void {
-  if (cross === 'row') node.layout.left = value;
-  else node.layout.top = value;
+  if (cross === 'row') node._layout.left = value;
+  else node._layout.top = value;
 }
 function writeCrossSize(node: Node, cross: Axis, value: number): void {
-  if (cross === 'row') node.layout.width = value;
-  else node.layout.height = value;
+  if (cross === 'row') node._layout.width = value;
+  else node._layout.height = value;
 }
 
 function resolveHypotheticalMainSize(
@@ -817,8 +817,8 @@ function flipMainAxis(
     const childPos = main === 'row' ? child.layout.left : child.layout.top;
     const innerPos = childPos - padMainStart;
     const newPos = padMainStart + innerMain - innerPos - childMain;
-    if (main === 'row') child.layout.left = newPos;
-    else child.layout.top = newPos;
+    if (main === 'row') child._layout.left = newPos;
+    else child._layout.top = newPos;
   }
 }
 

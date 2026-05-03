@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Box, Newline, Spacer, Text } from './components.js';
 import { useApp, useInput, useStdout } from './hooks.js';
@@ -133,6 +133,49 @@ describe('re-render diff', () => {
     handle.setState('static-but-key-unused-by-render');
     const writeCountAfter = handle.allWrites().length;
     expect(writeCountAfter).toBe(writeCountBefore);
+  });
+});
+
+describe('mount() drains passive effects', () => {
+  it('fires useEffect on initial mount before returning', () => {
+    const fires: string[] = [];
+    function Hooked() {
+      useEffect(() => {
+        fires.push('mounted');
+      }, []);
+      return <Text>x</Text>;
+    }
+    const handle = mount(0, () => <Hooked />, { width: 4, height: 1 });
+    expect(fires).toEqual(['mounted']);
+    handle.unmount();
+  });
+
+  it('fires deps-keyed useEffect when setState changes the dep', () => {
+    const fires: number[] = [];
+    function Counter({ count }: { count: number }) {
+      useEffect(() => {
+        fires.push(count);
+      }, [count]);
+      return <Text>{String(count)}</Text>;
+    }
+    const handle = mount(0, (count) => <Counter count={count} />, { width: 4, height: 1 });
+    expect(fires).toEqual([0]);
+    handle.setState(5);
+    expect(fires).toEqual([0, 5]);
+    handle.unmount();
+  });
+
+  it('commits cascading state updates scheduled from inside an effect', () => {
+    function Cascade() {
+      const [v, setV] = useState('initial');
+      useEffect(() => {
+        setV('after-effect');
+      }, []);
+      return <Text>{v}</Text>;
+    }
+    const handle = mount(0, () => <Cascade />, { width: 16, height: 1 });
+    expect(stripAnsi(handle.lastWrite())).toContain('after-effect');
+    handle.unmount();
   });
 });
 
@@ -488,7 +531,7 @@ describe('useInput', () => {
     handle.unmount();
   });
 
-  it('decodes named keys via the parser path', () => {
+  it('decodes named keys via the parser path', async () => {
     const seen: string[] = [];
     const handle = mountWithInput(
       0,
@@ -502,7 +545,32 @@ describe('useInput', () => {
     );
     handle.pressKey('up');
     handle.pressKey('escape');
+    // A bare ESC byte is held by the parser pending disambiguation
+    // (could prefix CSI/SS3/Alt). Wait past the ~50 ms flush window.
+    await new Promise((r) => setTimeout(r, 80));
     expect(seen).toEqual(['up', 'escape']);
+    handle.unmount();
+  });
+
+  it('reassembles a CSI arrow key whose ESC arrives in a separate chunk', async () => {
+    const seen: string[] = [];
+    const handle = mountWithInput(
+      0,
+      () => {
+        useInput((event) => {
+          if (event.name) seen.push(event.name);
+        });
+        return <Text>x</Text>;
+      },
+      { width: 5, height: 1 },
+    );
+    // Simulate the OS splitting `\x1b[A` across two reads. Before the
+    // disambiguation timer fires the `[A` arrives, so we should see a
+    // single `up` event (not `escape` followed by literal '[' and 'A').
+    handle.fakeStdin.emit('data', '\x1b');
+    handle.fakeStdin.emit('data', '[A');
+    await new Promise((r) => setTimeout(r, 80));
+    expect(seen).toEqual(['up']);
     handle.unmount();
   });
 
@@ -527,6 +595,23 @@ describe('useInput', () => {
     handle.pressChar('b');
     expect(seen).toEqual(['b']);
     handle.unmount();
+  });
+
+  it('initial isActive: false does not flash raw mode on/off during mount', () => {
+    const handle = mountWithInput(
+      0,
+      () => {
+        useInput(() => {}, { isActive: false });
+        return <Text>x</Text>;
+      },
+      { width: 5, height: 1 },
+    );
+    // Without initial-active plumbing, subscribe always bumped refcount and
+    // turned raw mode on, then setActive(false) immediately turned it off →
+    // [true, false]. Correct behavior is to never enable raw mode at all.
+    expect(handle.fakeStdin.rawModeCalls).toEqual([]);
+    handle.unmount();
+    expect(handle.fakeStdin.rawModeCalls).toEqual([]);
   });
 
   it('multiple subscribers all fire in mount order', () => {

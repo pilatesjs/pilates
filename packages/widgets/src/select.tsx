@@ -69,6 +69,22 @@ export function Select<T>({
     clampToFirstEnabledForward(items, Math.max(0, Math.min(initialIndex, items.length - 1))),
   );
 
+  // Re-clamp the highlight when `items` shrinks (or restructures) past the
+  // current index. Without this, a stale index produces a silent no-op on
+  // Enter and an invisible highlight in the rendered output.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: highlightIndex is intentionally read but not depended on — clamping fires only when items mutate
+  useEffect(() => {
+    if (items.length === 0) return;
+    if (highlightIndex >= 0 && highlightIndex < items.length && !items[highlightIndex]!.disabled) {
+      return;
+    }
+    const clamped = clampToFirstEnabledForward(
+      items,
+      Math.max(0, Math.min(highlightIndex, items.length - 1)),
+    );
+    if (clamped !== highlightIndex) setHighlightIndex(clamped);
+  }, [items]);
+
   // Fire onHighlight whenever highlightIndex changes (skip initial mount).
   const isFirstRender = useRef(true);
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — items/onHighlight are stable refs read inside, only highlightIndex drives re-fires

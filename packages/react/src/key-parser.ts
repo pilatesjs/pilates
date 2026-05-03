@@ -61,15 +61,14 @@ export function parse(input: string): ParseResult {
 
     if (cp === 0x1b) {
       if (i + 1 >= input.length) {
-        events.push({ name: 'escape', ctrl: false, alt: false, shift: false, sequence: '\x1b' });
-        i += 1;
-        continue;
+        // Bare ESC at end-of-chunk could prefix a CSI/SS3/Alt sequence whose
+        // remaining bytes haven't arrived yet. Hold it as remainder and let the
+        // caller decide on a real-Escape timeout (xterm.js / ink behavior).
+        return { events, remainder: input.slice(i) };
       }
       const next = input.codePointAt(i + 1);
       if (next === undefined) {
-        events.push({ name: 'escape', ctrl: false, alt: false, shift: false, sequence: '\x1b' });
-        i += 1;
-        continue;
+        return { events, remainder: input.slice(i) };
       }
       const nextCh = String.fromCodePoint(next);
       const sequence = `\x1b${nextCh}`;

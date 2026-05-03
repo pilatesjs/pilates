@@ -17,10 +17,10 @@ export function calculateLayout(
   availableWidth: number | undefined,
   availableHeight: number | undefined,
 ): void {
-  root.layout.left = 0;
-  root.layout.top = 0;
-  root.layout.width = resolveRootAxisSize(root, 'row', availableWidth);
-  root.layout.height = resolveRootAxisSize(root, 'column', availableHeight);
+  root._layout.left = 0;
+  root._layout.top = 0;
+  root._layout.width = resolveRootAxisSize(root, 'row', availableWidth);
+  root._layout.height = resolveRootAxisSize(root, 'column', availableHeight);
 
   layoutChildren(root);
   roundLayout(root);

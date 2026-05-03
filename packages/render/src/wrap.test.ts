@@ -28,6 +28,12 @@ describe('wrapText', () => {
     expect(wrapText('aaaa    bbbb', 4)).toEqual(['aaaa', 'bbbb']);
   });
 
+  it('trims trailing whitespace at wrap boundary when ws fits but next word does not', () => {
+    // Tokens: hello, ' ', world. Space fits (w=6), 'world' would push to 11.
+    // Wrap fires; line 1 must NOT carry the trailing space into rendered cells.
+    expect(wrapText('hello world', 6)).toEqual(['hello', 'world']);
+  });
+
   it('breaks a single overlong word at grapheme boundaries', () => {
     expect(wrapText('abcdefghij', 4)).toEqual(['abcd', 'efgh', 'ij']);
   });

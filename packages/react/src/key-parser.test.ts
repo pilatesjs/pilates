@@ -85,12 +85,24 @@ describe('key-parser SS3 function keys', () => {
 });
 
 describe('key-parser alt and lone-escape', () => {
-  it('decodes lone ESC as { name: "escape" }', () => {
+  it('returns lone ESC at end-of-chunk as remainder, not an event', () => {
+    // Bare ESC could be the start of a CSI/SS3/Alt sequence whose remaining
+    // bytes haven't arrived yet. Hold it for the next chunk; let the caller
+    // decide on a real-Escape timeout. Mirrors the partial-CSI handling above
+    // and matches xterm.js / ink behavior.
     const { events, remainder } = parse('\x1b');
-    expect(events).toEqual([
-      { name: 'escape', ctrl: false, alt: false, shift: false, sequence: '\x1b' },
+    expect(events).toEqual([]);
+    expect(remainder).toBe('\x1b');
+  });
+
+  it('rejoins ESC across chunks into a CSI arrow key', () => {
+    const first = parse('\x1b');
+    expect(first.remainder).toBe('\x1b');
+    const second = parse(`${first.remainder}[A`);
+    expect(second.events).toEqual([
+      { name: 'up', ctrl: false, alt: false, shift: false, sequence: '\x1b[A' },
     ]);
-    expect(remainder).toBe('');
+    expect(second.remainder).toBe('');
   });
 
   it('decodes ESC + lowercase letter as alt+letter', () => {

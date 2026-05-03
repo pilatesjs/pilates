@@ -5,6 +5,75 @@ All notable changes to Pilates are documented here. The format roughly follows
 follows [Semantic Versioning](https://semver.org/) once it leaves the `1.0.0`
 release-candidate train.
 
+## Unreleased
+
+Codebase-review batch (PR #23). Seven correctness / API-hygiene fixes across
+four packages, surfaced by an internal review pass before the imminent
+`@pilates/core@1.0.0` and `@pilates/render@1.0.0` promotions. All fixes ship
+TDD with new failing-then-passing tests; workspace test count 429 → 446.
+
+### Changed — `@pilates/core` (pre-1.0)
+
+- `Node.style` is now exposed as `Readonly<Style>` and `Node.layout` as
+  `Readonly<ComputedLayout>` on the public surface. External callers that
+  used to mutate via `node.style.flexGrow = 99` (silently bypassing
+  `markDirty()`) now fail typecheck. The supported path remains the
+  `setX()` / `calculateLayout()` API, which is unchanged. Internal
+  algorithm code reads via the readonly view and writes via the new
+  `_style` / `_layout` backing fields.
+- `pnpm typecheck` now uses a new `tsconfig.typecheck.json` that includes
+  test files, so `@ts-expect-error` directives that document API contracts
+  are validated.
+
+### Fixed — `@pilates/render` (pre-1.0)
+
+- `wrapText`: trailing whitespace is trimmed at wrap boundaries when a
+  whitespace token fits on the current line but the next word forces a
+  wrap. Indent-only lines and end-of-paragraph whitespace are still
+  preserved (CSS `white-space: normal` parity).
+
+### Fixed — `@pilates/react` (pre-1.0)
+
+- Key parser: a bare `\x1b` at end-of-chunk is now returned as `remainder`
+  instead of being emitted as `{ name: 'escape' }` immediately. Split-chunk
+  CSI sequences (`\x1b` then `[A` in the next read) now reassemble into the
+  correct arrow event instead of being parsed as `escape` plus literal `[A`.
+- `StdinProvider` adds a 50 ms disambiguation timer that flushes a held
+  bare ESC as a real Escape event when no follow-up byte arrives — matches
+  xterm.js / ink. Standalone Escape still fires; the cleanup tears the
+  timer down on unmount.
+- `useInput(handler, { isActive: false })` no longer briefly enables raw
+  mode during mount. `subscribe()` now takes an optional `initialActive`
+  flag (back-compat default `true`) so the handler can register inactive
+  without bumping the refcount.
+- `mount()` test helper (from `@pilates/react/test-utils`) now wraps
+  reconciler operations in `act()` and drains passive effects on initial
+  mount, `setState`, and `unmount`. Components with `useEffect` that
+  schedule state updates now settle before `lastWrite()` returns. Mirrors
+  the existing `mountWithInput()` behavior.
+
+### Fixed — `@pilates/widgets` (pre-1.0)
+
+- `<TextInput>` cursor model is now grapheme-cluster indexed instead of
+  UTF-16 code unit indexed. Backspace, left/right arrows, home/end,
+  Ctrl+U / Ctrl+K / Ctrl+W, character insertion, placeholder rendering,
+  and cursor-split rendering all walk graphemes via `graphemes()` from
+  `@pilates/core`. Emoji and ZWJ sequences (e.g. 👨‍👩‍👧) edit as one
+  user-perceived character; surrogate pairs no longer split mid-edit.
+  The `mask` prop validates as a single grapheme rather than a single
+  code unit.
+- `<Select>` re-clamps `highlightIndex` when the `items` prop shrinks past
+  the current index. Previously, Enter became a silent no-op and no row
+  showed as highlighted after the items list shrank.
+
+### Added — `@pilates/widgets`
+
+- New runtime dependency on `@pilates/core` (workspace) for grapheme
+  segmentation in `<TextInput>`. `@pilates/core` was already a transitive
+  dep via `@pilates/react`; this just makes the direct relationship
+  explicit so the widgets package can `import { graphemes } from
+  '@pilates/core'`.
+
 ## 2026-05-01 — `@pilates/react@0.2.0`
 
 ### Added

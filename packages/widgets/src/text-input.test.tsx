@@ -374,6 +374,123 @@ describe('TextInput line edits', () => {
   });
 });
 
+describe('TextInput grapheme-cluster cursor', () => {
+  // 👋 (U+1F44B) is a non-BMP codepoint encoded as a UTF-16 surrogate pair
+  // (length === 2 in JS strings). Cursor and edit operations must treat it
+  // as a single grapheme — a code-unit-indexed cursor splits the pair and
+  // produces an orphaned high surrogate.
+  const WAVE = '👋';
+  const FAMILY = '👨‍👩‍👧'; // ZWJ sequence; one user-perceived character
+
+  it('backspace deletes a whole emoji surrogate pair, not a half', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: WAVE, onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('backspace');
+    expect(onChange).toHaveBeenLastCalledWith('');
+    handle.unmount();
+  });
+
+  it('backspace through ASCII surrounding emoji deletes one grapheme at a time', () => {
+    // value 'a👋b'. End → cursor at last grapheme position. Backspace → 'a👋'.
+    // Backspace → 'a'. Backspace → ''.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: `a${WAVE}b`, onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('backspace');
+    expect(onChange).toHaveBeenLastCalledWith(`a${WAVE}`);
+    handle.pressKey('backspace');
+    expect(onChange).toHaveBeenLastCalledWith('a');
+    handle.pressKey('backspace');
+    expect(onChange).toHaveBeenLastCalledWith('');
+    handle.unmount();
+  });
+
+  it('left arrow steps back one whole emoji (not one code unit)', () => {
+    // value 'a👋b'. End → cursor past 'b'. Left → between 👋 and b.
+    // Left → between a and 👋. Left → before a. Type 'X' → 'Xa👋b'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: `a${WAVE}b`, onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('left');
+    handle.pressKey('left');
+    handle.pressKey('left');
+    handle.pressChar('X');
+    expect(onChange).toHaveBeenLastCalledWith(`Xa${WAVE}b`);
+    handle.unmount();
+  });
+
+  it('right arrow steps forward one whole emoji', () => {
+    // value '👋b'. Right → between 👋 and b. Type 'M' → '👋Mb'.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: `${WAVE}b`, onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('right');
+    handle.pressChar('M');
+    expect(onChange).toHaveBeenLastCalledWith(`${WAVE}Mb`);
+    handle.unmount();
+  });
+
+  it('inserting a typed emoji places it as one grapheme at the cursor', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'ab', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('right'); // cursor between a and b
+    handle.pressChar(WAVE);
+    expect(onChange).toHaveBeenLastCalledWith(`a${WAVE}b`);
+    // After insertion the cursor must sit AFTER the emoji — typing a new
+    // char inserts after it, not inside the surrogate pair.
+    handle.pressChar('!');
+    expect(onChange).toHaveBeenLastCalledWith(`a${WAVE}!b`);
+    handle.unmount();
+  });
+
+  it('treats a ZWJ family emoji as a single grapheme on backspace', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: FAMILY, onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('end');
+    handle.pressKey('backspace');
+    // The whole ZWJ sequence is one grapheme — backspace must clear it all.
+    expect(onChange).toHaveBeenLastCalledWith('');
+    handle.unmount();
+  });
+
+  it('placeholder starting with emoji does not render an orphaned surrogate', () => {
+    const handle = mountWithInput(
+      0,
+      () => createElement(TextInput, { value: '', onChange: () => {}, placeholder: `${WAVE} go` }),
+      opts,
+    );
+    const out = stripSGR(handle.lastWrite());
+    // The full emoji must appear in the rendered output. An orphaned surrogate
+    // produces U+FFFD or breaks the line — `WAVE` won't be a substring.
+    expect(out).toContain(WAVE);
+    handle.unmount();
+  });
+});
+
 describe('TextInput submit', () => {
   it('calls onSubmit with the current value on Enter', () => {
     const onChange = vi.fn<(v: string) => void>();

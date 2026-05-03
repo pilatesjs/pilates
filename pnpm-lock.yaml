@@ -237,6 +237,10 @@ importers:
         version: link:../core
 
   packages/widgets:
+    dependencies:
+      '@pilates/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@pilates/react':
         specifier: workspace:*
