@@ -67,8 +67,12 @@ export interface StdinHookValue {
    * Subscribe a handler to keystroke events. Returns an unsubscribe
    * function. The handler is called for every keystroke the underlying
    * stdin produces (broadcast — no focus filtering in v0.2).
+   *
+   * Pass `initialActive: false` to register the handler in an inactive
+   * state so the refcount and raw-mode toggle do not fire on mount —
+   * useful for components that conditionally enable input.
    */
-  subscribe: (handler: (event: KeyEvent) => void) => () => void;
+  subscribe: (handler: (event: KeyEvent) => void, initialActive?: boolean) => () => void;
   /**
    * Mark a previously-subscribed handler as active or inactive without
    * unsubscribing it. Affects the raw-mode refcount: a handler going
@@ -124,17 +128,30 @@ export function useInput(handler: (event: KeyEvent) => void, options: UseInputOp
     dispatchRef.current = (event: KeyEvent) => handlerRef.current(event);
   }
 
+  // Capture the initial isActive so the subscribe effect can register the
+  // handler in the right state from the start. Subsequent isActive changes
+  // are handled by the second effect via setActive.
+  const initialActiveRef = useRef(isActive);
+
   useEffect(() => {
     const dispatch = dispatchRef.current;
     if (dispatch === null) return;
-    const unsubscribe = v.subscribe(dispatch);
+    const unsubscribe = v.subscribe(dispatch, initialActiveRef.current);
     return () => {
       unsubscribe();
     };
   }, [v]);
+  // Skip the first invocation: subscribe() already applied the initial value.
+  // Otherwise this effect would fire setActive(dispatch, isActive) on mount
+  // for an already-correct state, churning the refcount uselessly.
+  const setActiveMounted = useRef(false);
   useEffect(() => {
     const dispatch = dispatchRef.current;
     if (dispatch === null) return;
+    if (!setActiveMounted.current) {
+      setActiveMounted.current = true;
+      return;
+    }
     v.setActive(dispatch, isActive);
   }, [v, isActive]);
 }

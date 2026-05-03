@@ -49,9 +49,41 @@ function nonNegativeOrThrow(value: number, name: string): number {
 }
 
 export class Node {
-  /** Public-but-internal: read by the layout algorithm and by `getComputedLayout`. */
-  readonly style: Style = defaultStyle();
-  readonly layout: ComputedLayout = defaultLayout();
+  /**
+   * Backing storage for `style`. Mutated by this class's setters and read
+   * by the algorithm via the public `style` getter. The leading `_` and
+   * `@internal` mark this as algorithm-only — consumers must use the
+   * `setX()` methods.
+   *
+   * @internal
+   */
+  readonly _style: Style = defaultStyle();
+  /**
+   * Backing storage for `layout`. Written by the algorithm in this package
+   * (see `algorithm/`); read externally via the public `layout` getter or
+   * the safer `getComputedLayout()` snapshot.
+   *
+   * @internal
+   */
+  readonly _layout: ComputedLayout = defaultLayout();
+
+  /**
+   * Read-only view of this node's style. Mutating the returned object is
+   * blocked at the type level — call `setX()` methods to change style so
+   * `markDirty()` runs.
+   */
+  get style(): Readonly<Style> {
+    return this._style;
+  }
+
+  /**
+   * Read-only view of this node's most recently computed layout. Use
+   * `getComputedLayout()` for a stable copy if you need to retain it past
+   * the next `calculateLayout()` call.
+   */
+  get layout(): Readonly<ComputedLayout> {
+    return this._layout;
+  }
 
   private readonly _children: Node[] = [];
   private _parent: Node | null = null;
@@ -126,12 +158,12 @@ export class Node {
   // ─── flex direction / wrap / flex shorthand ───────────────────────────
 
   setFlexDirection(value: FlexDirection): void {
-    this.style.flexDirection = value;
+    this._style.flexDirection = value;
     this.markDirty();
   }
 
   setFlexWrap(value: FlexWrap): void {
-    this.style.flexWrap = value;
+    this._style.flexWrap = value;
     this.markDirty();
   }
 
@@ -148,34 +180,34 @@ export class Node {
   setFlex(value: number): void {
     if (!Number.isFinite(value)) throw new RangeError(`flex must be finite, got ${value}`);
     if (value > 0) {
-      this.style.flexGrow = value;
-      this.style.flexShrink = 1;
-      this.style.flexBasis = 0;
+      this._style.flexGrow = value;
+      this._style.flexShrink = 1;
+      this._style.flexBasis = 0;
     } else if (value < 0) {
-      this.style.flexGrow = 0;
-      this.style.flexShrink = -value;
-      this.style.flexBasis = 'auto';
+      this._style.flexGrow = 0;
+      this._style.flexShrink = -value;
+      this._style.flexBasis = 'auto';
     } else {
-      this.style.flexGrow = 0;
-      this.style.flexShrink = 0;
-      this.style.flexBasis = 'auto';
+      this._style.flexGrow = 0;
+      this._style.flexShrink = 0;
+      this._style.flexBasis = 'auto';
     }
     this.markDirty();
   }
 
   setFlexGrow(value: number): void {
-    this.style.flexGrow = clampNonNegative(value);
+    this._style.flexGrow = clampNonNegative(value);
     this.markDirty();
   }
 
   setFlexShrink(value: number): void {
-    this.style.flexShrink = clampNonNegative(value);
+    this._style.flexShrink = clampNonNegative(value);
     this.markDirty();
   }
 
   setFlexBasis(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'flexBasis');
-    this.style.flexBasis = value;
+    this._style.flexBasis = value;
     this.markDirty();
   }
 
@@ -183,37 +215,37 @@ export class Node {
 
   setWidth(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'width');
-    this.style.width = value;
+    this._style.width = value;
     this.markDirty();
   }
 
   setHeight(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'height');
-    this.style.height = value;
+    this._style.height = value;
     this.markDirty();
   }
 
   setMinWidth(value: number): void {
-    this.style.minWidth = nonNegativeOrThrow(value, 'minWidth');
+    this._style.minWidth = nonNegativeOrThrow(value, 'minWidth');
     this.markDirty();
   }
 
   setMinHeight(value: number): void {
-    this.style.minHeight = nonNegativeOrThrow(value, 'minHeight');
+    this._style.minHeight = nonNegativeOrThrow(value, 'minHeight');
     this.markDirty();
   }
 
   /** Pass `undefined` to remove an upper bound. */
   setMaxWidth(value: number | undefined): void {
     if (value !== undefined) nonNegativeOrThrow(value, 'maxWidth');
-    this.style.maxWidth = value;
+    this._style.maxWidth = value;
     this.markDirty();
   }
 
   /** Pass `undefined` to remove an upper bound. */
   setMaxHeight(value: number | undefined): void {
     if (value !== undefined) nonNegativeOrThrow(value, 'maxHeight');
-    this.style.maxHeight = value;
+    this._style.maxHeight = value;
     this.markDirty();
   }
 
@@ -221,49 +253,49 @@ export class Node {
 
   setPadding(edge: Edge, value: number): void {
     nonNegativeOrThrow(value, 'padding');
-    writeEdge(this.style.padding, edge, value);
+    writeEdge(this._style.padding, edge, value);
     this.markDirty();
   }
 
   setMargin(edge: Edge, value: number): void {
     nonNegativeOrThrow(value, 'margin');
-    writeEdge(this.style.margin, edge, value);
+    writeEdge(this._style.margin, edge, value);
     this.markDirty();
   }
 
   setGap(axis: 'row' | 'column', value: number): void {
     nonNegativeOrThrow(value, 'gap');
-    if (axis === 'row') this.style.gapRow = value;
-    else this.style.gapColumn = value;
+    if (axis === 'row') this._style.gapRow = value;
+    else this._style.gapColumn = value;
     this.markDirty();
   }
 
   // ─── alignment ─────────────────────────────────────────────────────────
 
   setJustifyContent(value: Justify): void {
-    this.style.justifyContent = value;
+    this._style.justifyContent = value;
     this.markDirty();
   }
 
   setAlignItems(value: Align): void {
-    this.style.alignItems = value;
+    this._style.alignItems = value;
     this.markDirty();
   }
 
   setAlignContent(value: Align): void {
-    this.style.alignContent = value;
+    this._style.alignContent = value;
     this.markDirty();
   }
 
   setAlignSelf(value: Align): void {
-    this.style.alignSelf = value;
+    this._style.alignSelf = value;
     this.markDirty();
   }
 
   // ─── positioning ───────────────────────────────────────────────────────
 
   setPositionType(value: PositionType): void {
-    this.style.positionType = value;
+    this._style.positionType = value;
     this.markDirty();
   }
 
@@ -272,14 +304,14 @@ export class Node {
     if (value !== undefined && !Number.isFinite(value)) {
       throw new RangeError(`position must be finite or undefined, got ${value}`);
     }
-    writePositionEdge(this.style.position, edge, value);
+    writePositionEdge(this._style.position, edge, value);
     this.markDirty();
   }
 
   // ─── display ───────────────────────────────────────────────────────────
 
   setDisplay(value: Display): void {
-    this.style.display = value;
+    this._style.display = value;
     this.markDirty();
   }
 

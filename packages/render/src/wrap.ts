@@ -77,7 +77,13 @@ function wrapParagraph(text: string, width: number): string[] {
       current += tok.text;
       currentWidth += tokWidth;
     } else {
-      lines.push(current);
+      // Trim trailing whitespace at the wrap boundary: a space the previous
+      // iteration appended (because it fit) becomes a stray cell in the
+      // rendered line if we push it through. Skip the trim when `current`
+      // is entirely whitespace — that's a leading-indent line, kept as-is.
+      // End-of-paragraph whitespace (handled below) is also intentionally
+      // preserved. Matches CSS `white-space: normal`.
+      lines.push(/[^ \t]/.test(current) ? current.replace(/[ \t]+$/, '') : current);
       current = tok.text;
       currentWidth = tokWidth;
     }

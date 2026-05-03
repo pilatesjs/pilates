@@ -34,6 +34,29 @@ describe('Node — defaults', () => {
   });
 });
 
+describe('Node — public surface immutability (type-level)', () => {
+  // These directives confirm that the public types of `style` and `layout`
+  // are `Readonly<...>` so external callers can't bypass `markDirty()` by
+  // mutating fields directly. The `@ts-expect-error` lines fail typecheck
+  // if the field type ever loosens to mutable.
+  it('rejects external mutation of style at the type level', () => {
+    const n = Node.create();
+    // @ts-expect-error — `style` is exposed as Readonly<Style>; mutate via setX().
+    n.style.flexGrow = 99;
+    // Runtime is still mutable (the cast is type-only). The point of the
+    // typecheck guard is to catch the mistake at compile time — the runtime
+    // fact below just makes it visible that the directive isn't lying.
+    expect(n.style.flexGrow).toBe(99);
+  });
+
+  it('rejects external mutation of layout at the type level', () => {
+    const n = Node.create();
+    // @ts-expect-error — `layout` is exposed as Readonly<ComputedLayout>.
+    n.layout.left = 99;
+    expect(n.layout.left).toBe(99);
+  });
+});
+
 describe('Node — flex shorthand', () => {
   it('positive flex sets grow and basis 0', () => {
     const n = Node.create();

@@ -264,3 +264,36 @@ describe('Select selection', () => {
     handle.unmount();
   });
 });
+
+describe('Select reactivity to items prop changes', () => {
+  it('re-clamps highlight when items shrink past the current index', () => {
+    const items5: SelectItem<string>[] = [
+      { label: 'Apple', value: 'apple' },
+      { label: 'Banana', value: 'banana' },
+      { label: 'Cherry', value: 'cherry' },
+      { label: 'Date', value: 'date' },
+      { label: 'Elderberry', value: 'elderberry' },
+    ];
+    const items2 = items5.slice(0, 2);
+    const onSelect = vi.fn();
+    const handle = mountWithInput<{ shrunk: boolean }>(
+      { shrunk: false },
+      (state) =>
+        createElement(Select, {
+          items: state.shrunk ? items2 : items5,
+          onSelect,
+        }),
+      opts,
+    );
+    handle.pressKey('end');
+    // Highlight is now on Elderberry (index 4). Shrink list to 2 items.
+    handle.setState({ shrunk: true });
+    // Without re-clamping, Enter is a silent no-op (highlightIndex = 4 ≥ 2)
+    // and no row shows as highlighted in the rendered output.
+    expect(stripSGR(handle.lastWrite())).toContain('❯');
+    handle.pressKey('enter');
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(['apple', 'banana']).toContain(onSelect.mock.calls[0]![0].value);
+    handle.unmount();
+  });
+});

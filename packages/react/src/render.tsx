@@ -114,36 +114,45 @@ function StdinProvider({
   stdin: NodeJS.ReadStream;
   children?: ReactNode;
 }) {
-  const stateRef = useRef({
+  const stateRef = useRef<StdinProviderState>({
     subscribers: new Map<(event: KeyEvent) => void, boolean>(),
     refcount: 0,
     remainder: '',
     rawModeOn: false,
+    escapeTimer: null,
   });
   const isRawModeSupported = stdin.isTTY === true;
 
   useEffect(() => {
     const state = stateRef.current;
     const onData = (chunk: Buffer | string) => {
+      // A new byte cancels any pending bare-ESC disambiguation: it could be
+      // the rest of a CSI/SS3/Alt sequence whose ESC prefix we've been holding.
+      if (state.escapeTimer !== null) {
+        clearTimeout(state.escapeTimer);
+        state.escapeTimer = null;
+      }
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       const combined = state.remainder + text;
       const { events, remainder } = parseKeys(combined);
       state.remainder = remainder;
       for (const event of events) {
-        for (const [handler, active] of state.subscribers) {
-          if (!active) continue;
-          try {
-            handler(event);
-          } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            process.stderr.write(`Pilates: useInput handler threw: ${msg}\n`);
-          }
-        }
+        dispatchEvent(state, event);
+      }
+      // If the parser is sitting on a held bare ESC, schedule a flush. If
+      // another byte arrives in the disambiguation window we'll cancel it
+      // and re-parse the combined stream.
+      if (remainder === '\x1b') {
+        state.escapeTimer = setTimeout(() => flushHeldEscape(state), ESCAPE_DISAMBIGUATION_MS);
       }
     };
     stdin.on('data', onData);
     return () => {
       stdin.off('data', onData);
+      if (state.escapeTimer !== null) {
+        clearTimeout(state.escapeTimer);
+        state.escapeTimer = null;
+      }
       if (state.rawModeOn && isRawModeSupported) {
         try {
           stdin.setRawMode(false);
@@ -163,11 +172,13 @@ function StdinProvider({
     () => ({
       stdin,
       isRawModeSupported,
-      subscribe: (handler) => {
+      subscribe: (handler, initialActive = true) => {
         const state = stateRef.current;
-        state.subscribers.set(handler, true);
-        state.refcount += 1;
-        ensureRawMode(stdin, state, isRawModeSupported);
+        state.subscribers.set(handler, initialActive);
+        if (initialActive) {
+          state.refcount += 1;
+          ensureRawMode(stdin, state, isRawModeSupported);
+        }
         return () => {
           const wasActive = state.subscribers.get(handler) === true;
           state.subscribers.delete(handler);
@@ -202,6 +213,42 @@ interface StdinProviderState {
   refcount: number;
   remainder: string;
   rawModeOn: boolean;
+  /** Pending timer that flushes a held bare ESC as a real Escape event. */
+  escapeTimer: ReturnType<typeof setTimeout> | null;
+}
+
+/**
+ * Bare ESC at end-of-chunk is ambiguous: it could be a real Escape press
+ * or the prefix of a CSI / SS3 / Alt sequence whose remaining bytes are
+ * still in flight. The parser holds it as `remainder`; we flush it as a
+ * real Escape if no follow-up byte arrives within this window. xterm /
+ * ink use a similar disambiguation timeout (~50ms is industry standard).
+ */
+const ESCAPE_DISAMBIGUATION_MS = 50;
+
+function dispatchEvent(state: StdinProviderState, event: KeyEvent): void {
+  for (const [handler, active] of state.subscribers) {
+    if (!active) continue;
+    try {
+      handler(event);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Pilates: useInput handler threw: ${msg}\n`);
+    }
+  }
+}
+
+function flushHeldEscape(state: StdinProviderState): void {
+  state.escapeTimer = null;
+  if (state.remainder !== '\x1b') return;
+  state.remainder = '';
+  dispatchEvent(state, {
+    name: 'escape',
+    ctrl: false,
+    alt: false,
+    shift: false,
+    sequence: '\x1b',
+  });
 }
 
 function ensureRawMode(

@@ -57,10 +57,10 @@ function applyRounding(
   const roundedR = Math.round(my.x + my.w);
   const roundedB = Math.round(my.y + my.h);
 
-  node.layout.left = roundedX - parentRoundedX;
-  node.layout.top = roundedY - parentRoundedY;
-  node.layout.width = Math.max(0, roundedR - roundedX);
-  node.layout.height = Math.max(0, roundedB - roundedY);
+  node._layout.left = roundedX - parentRoundedX;
+  node._layout.top = roundedY - parentRoundedY;
+  node._layout.width = Math.max(0, roundedR - roundedX);
+  node._layout.height = Math.max(0, roundedB - roundedY);
 
   for (let i = 0; i < node.getChildCount(); i++) {
     applyRounding(node.getChild(i)!, abs, roundedX, roundedY);
