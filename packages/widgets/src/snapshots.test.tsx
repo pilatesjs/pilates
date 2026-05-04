@@ -9,6 +9,7 @@
 import { mountWithInput, snapshot as snap } from '@pilates/react/test-utils';
 import { createElement, useState } from 'react';
 import { describe, expect, it } from 'vitest';
+import { ProgressBar } from './progress-bar.js';
 import { Select, type SelectItem } from './select.js';
 import { Spinner } from './spinner.js';
 import { TextInput } from './text-input.js';
@@ -92,6 +93,86 @@ describe('TextInput snapshots', () => {
       height: 1,
     });
     for (const ch of 'hello') h.pressChar(ch);
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+});
+
+describe('ProgressBar snapshots', () => {
+  it('empty', () => {
+    const h = mountWithInput(0, () => createElement(ProgressBar, { value: 0, width: 10 }), {
+      width: 10,
+      height: 1,
+    });
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('half-filled with cyan/gray colors', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(ProgressBar, {
+          value: 50,
+          total: 100,
+          width: 10,
+          color: 'cyan',
+          trackColor: 'gray',
+        }),
+      { width: 10, height: 1 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('full', () => {
+    const h = mountWithInput(
+      0,
+      () => createElement(ProgressBar, { value: 100, total: 100, width: 10 }),
+      { width: 10, height: 1 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('ASCII custom characters', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(ProgressBar, {
+          value: 40,
+          total: 100,
+          width: 10,
+          fillChar: '=',
+          emptyChar: '-',
+        }),
+      { width: 10, height: 1 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('indeterminate initial frame', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(ProgressBar, {
+          indeterminate: true,
+          width: 10,
+          scannerWidth: 3,
+        }),
+      { width: 10, height: 1 },
+    );
     const s = snap(h.lastWrite());
     expect(s.ansi).toMatchSnapshot('ansi');
     expect(s.plain).toMatchSnapshot('plain');

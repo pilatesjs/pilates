@@ -43,6 +43,15 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   internal `snap()` / `strip()` helpers are now thin re-exports of
   this.
 
+### Added — `@pilates/widgets` (next minor)
+
+- `<ProgressBar>` — determinate or indeterminate progress bar.
+  Determinate clamps `value` to `[0, total]` and rounds to a cell
+  count; indeterminate animates a bouncing scanner of `scannerWidth`
+  cells across the bar at `interval` ms. Custom `fillChar` /
+  `emptyChar` and `color` / `trackColor` are supported. Built from
+  sibling `<Text>` spans (no nested-Text style inheritance needed).
+
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 
 Codebase-review fixes (from PR #23) carried into the active bake. No API
