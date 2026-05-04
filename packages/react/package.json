@@ -29,14 +29,14 @@
     "@pilates/core": "workspace:*",
     "@pilates/render": "workspace:*",
     "@pilates/diff": "workspace:*",
-    "react-reconciler": "^0.31.0"
+    "react-reconciler": "^0.33.0"
   },
   "peerDependencies": {
     "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
-    "@types/react-reconciler": "^0.28.9",
+    "@types/react-reconciler": "^0.33.0",
     "react": "^19.0.0"
   },
   "repository": {
