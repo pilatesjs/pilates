@@ -10,3 +10,6 @@ export type { TextInputProps } from './text-input.js';
 
 export { Select } from './select.js';
 export type { SelectItem, SelectProps, SelectIndicatorProps } from './select.js';
+
+export { ProgressBar } from './progress-bar.js';
+export type { ProgressBarProps } from './progress-bar.js';

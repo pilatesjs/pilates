@@ -1,5 +1,25 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`ProgressBar snapshots > ASCII custom characters > ansi 1`] = `"[1;1H====------"`;
+
+exports[`ProgressBar snapshots > ASCII custom characters > plain 1`] = `"====------"`;
+
+exports[`ProgressBar snapshots > empty > ansi 1`] = `"[1;1H░░░░░░░░░░"`;
+
+exports[`ProgressBar snapshots > empty > plain 1`] = `"░░░░░░░░░░"`;
+
+exports[`ProgressBar snapshots > full > ansi 1`] = `"[1;1H██████████"`;
+
+exports[`ProgressBar snapshots > full > plain 1`] = `"██████████"`;
+
+exports[`ProgressBar snapshots > half-filled with cyan/gray colors > ansi 1`] = `"[1;1H[36m█████[0;90m░░░░░[0m"`;
+
+exports[`ProgressBar snapshots > half-filled with cyan/gray colors > plain 1`] = `"█████░░░░░"`;
+
+exports[`ProgressBar snapshots > indeterminate initial frame > ansi 1`] = `"[1;1H███░░░░░░░"`;
+
+exports[`ProgressBar snapshots > indeterminate initial frame > plain 1`] = `"███░░░░░░░"`;
+
 exports[`Select snapshots > after pressing down — second item highlighted > ansi 1`] = `"[1;1H[36m [3;1H[0m❯"`;
 
 exports[`Select snapshots > after pressing down — second item highlighted > plain 1`] = `" ❯"`;
