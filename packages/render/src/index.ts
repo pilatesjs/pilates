@@ -2,6 +2,7 @@ export const VERSION = '1.0.0-rc.2';
 
 // Public render entry points.
 export { render, renderToFrame } from './render.js';
+export type { ComputedLayout } from './render.js';
 
 // Frame and its building blocks. Exposed so downstream packages
 // (e.g. @pilates/diff) can read cells and emit their own escape

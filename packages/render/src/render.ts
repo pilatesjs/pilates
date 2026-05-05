@@ -25,7 +25,29 @@ export function renderToFrame(tree: RenderNode): Frame {
   const layout = bridge.root.getComputedLayout();
   const frame = new Frame(layout.width, layout.height);
   paint(frame, bridge);
+  // Mirror the computed layout back onto each source RenderNode so consumers
+  // (notably `@pilates/react`'s `useBoxMetrics`) can read per-node geometry
+  // through their host-instance refs without re-running layout themselves.
+  // Mutating the user-provided tree is acceptable because `renderToFrame`'s
+  // contract is "compute layout + return a Frame"; the layout property is an
+  // observable side-effect, never an input.
+  for (const [coreNode, renderNode] of bridge.source) {
+    const lo = coreNode.getComputedLayout();
+    (renderNode as RenderNode & { _layout?: ComputedLayout })._layout = {
+      left: lo.left,
+      top: lo.top,
+      width: lo.width,
+      height: lo.height,
+    };
+  }
   return frame;
+}
+
+export interface ComputedLayout {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 /**

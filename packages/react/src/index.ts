@@ -34,6 +34,9 @@ export type {
 export { ThemeProvider, useTheme, defaultTheme, lightTheme } from './theme.js';
 export type { Theme, ThemeProviderProps } from './theme.js';
 
+export { useBoxMetrics } from './use-box-metrics.js';
+export type { BoxMetrics } from './use-box-metrics.js';
+
 // Render entry
 export { render } from './render.js';
 export type { RenderOptions, RenderInstance } from './render.js';

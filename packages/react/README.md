@@ -172,6 +172,38 @@ Use `useFocusManager()` to drive cycling programmatically (`focus(id)`,
 `focusNext()`, `focusPrevious()`) or to suspend Tab handling
 (`disableFocus()` / `enableFocus()`).
 
+## useBoxMetrics
+
+Read the most recent computed layout (left / top / width / height) of a
+`<Box>` referenced by a ref. Useful for animation, popover positioning,
+custom virtualization, or responsive UI that adapts to its container's
+actual measured size.
+
+```tsx
+import { useRef } from 'react';
+import { Box, Text, useBoxMetrics } from '@pilates/react';
+
+function ResponsivePanel() {
+  const ref = useRef(null);
+  const m = useBoxMetrics(ref);
+  return (
+    <Box ref={ref} flexGrow={1}>
+      <Text>{m ? `${m.width}×${m.height}` : 'measuring…'}</Text>
+    </Box>
+  );
+}
+```
+
+Returns `null` until the ref attaches and the first layout pass
+completes. Re-renders when (a) the terminal resizes (SIGWINCH, via the
+shared `useStdout` dependency) or (b) any commit produces a different
+layout for this Box. The implementation skips updates when the layout
+key is unchanged, so a `useBoxMetrics` consumer doesn't loop.
+
+`<Text ref={...}>` is also supported, but the Text-instance shape is
+internal and the hook narrows for `<Box>` only — if you need text
+metrics, measure via `stringWidth` / `wrapText` from `@pilates/core`.
+
 ## Theming
 
 Wrap a subtree in `<ThemeProvider>` to override the active palette of
