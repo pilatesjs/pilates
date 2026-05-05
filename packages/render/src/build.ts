@@ -63,6 +63,7 @@ function applyLayoutProps(node: Node, spec: RenderNode): void {
   if (spec.minHeight !== undefined) node.setMinHeight(spec.minHeight);
   if (spec.maxWidth !== undefined) node.setMaxWidth(spec.maxWidth);
   if (spec.maxHeight !== undefined) node.setMaxHeight(spec.maxHeight);
+  if (spec.aspectRatio !== undefined) node.setAspectRatio(spec.aspectRatio);
   applyEdgeValue(spec.padding, (e, v) => node.setPadding(e, v));
   applyEdgeValue(spec.margin, (e, v) => node.setMargin(e, v));
   if (typeof spec.gap === 'number') {

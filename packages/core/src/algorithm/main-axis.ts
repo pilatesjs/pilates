@@ -38,6 +38,7 @@ import {
   type Axis,
   clampSize,
   crossAxis,
+  effectivePreferredSize,
   gapAlong,
   isReverse,
   mainAxis,
@@ -632,7 +633,10 @@ function crossAlignItemsInLine(line: FlexLine, alignItems: Align): void {
     const cross = inferCrossAxisFromContext(item, line);
 
     if (align === 'stretch') {
-      const explicit = preferredSize(item.node.style, cross);
+      // aspectRatio-derived cross wins over stretch when the cross is auto
+      // — matches CSS aspect-ratio behavior and Yoga's HasDefiniteCrossSize
+      // check (an aspect-ratio derivation is treated as definite).
+      const explicit = effectivePreferredSize(item.node.style, cross);
       if (typeof explicit === 'number') {
         item.finalCross = clampSize(item.node.style, cross, explicit);
       } else {
@@ -740,7 +744,8 @@ function resolveHypotheticalMainSize(
   const basis = child.style.flexBasis;
   if (typeof basis === 'number') return basis;
 
-  const styleMain = preferredSize(child.style, main);
+  // Honor aspectRatio when main is auto but the cross axis is explicit.
+  const styleMain = effectivePreferredSize(child.style, main);
   if (typeof styleMain === 'number') return styleMain;
 
   const measure = child.getMeasureFunc();
@@ -780,7 +785,8 @@ function resolveHypotheticalMainSize(
 }
 
 function naturalCrossSize(child: Node, cross: Axis, innerCross: number): number {
-  const explicit = preferredSize(child.style, cross);
+  // Honor aspectRatio when cross is auto but the main axis is explicit.
+  const explicit = effectivePreferredSize(child.style, cross);
   if (typeof explicit === 'number') return explicit;
 
   const measure = child.getMeasureFunc();
@@ -830,7 +836,9 @@ function flipMainAxis(
  *   - 'auto' with neither → 0.
  */
 export function resolveRootAxisSize(node: Node, axis: Axis, available: number | undefined): number {
-  const style = preferredSize(node.style, axis);
+  // effectivePreferredSize covers the explicit case AND the case where this
+  // axis is auto but aspectRatio + the other axis derives a concrete value.
+  const style = effectivePreferredSize(node.style, axis);
   if (typeof style === 'number') {
     return clampSize(node.style, axis, style);
   }

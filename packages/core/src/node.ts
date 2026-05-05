@@ -249,6 +249,20 @@ export class Node {
     this.markDirty();
   }
 
+  /**
+   * Pass `undefined` to clear the constraint. Must be a positive finite
+   * number when set. See `style.ts` for the full derivation rules.
+   */
+  setAspectRatio(value: number | undefined): void {
+    if (value !== undefined) {
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new RangeError(`aspectRatio must be a positive finite number, got ${value}`);
+      }
+    }
+    this._style.aspectRatio = value;
+    this.markDirty();
+  }
+
   // ─── padding / margin / gap ────────────────────────────────────────────
 
   setPadding(edge: Edge, value: number): void {
