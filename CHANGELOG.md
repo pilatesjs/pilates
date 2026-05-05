@@ -55,6 +55,18 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   inline (no `strip-ansi` runtime dep). The widgets package's
   internal `snap()` / `strip()` helpers are now thin re-exports of
   this.
+- `<ThemeProvider>` + `useTheme()` + `defaultTheme` / `lightTheme` —
+  semantic color-token theming. Tight v1 token set: `primary`, `accent`,
+  `text`, `muted`, `success`, `warning`, `error`, `info`, `border`.
+  `<ThemeProvider>` accepts a full `Theme` or `Partial<Theme>`; partial
+  overrides merge on top of the parent (or `defaultTheme` when no parent
+  provider is present), and nested providers compose the same way.
+  `useTheme()` is opt-in — calling it outside any provider returns
+  `defaultTheme` instead of throwing, so simple apps can adopt theming
+  incrementally without restructuring. Built-in widgets in
+  `@pilates/widgets` are NOT theme-aware in this minor (would change
+  visible defaults / break existing snapshots) — that opt-in lands in a
+  follow-up.
 - `<ErrorBoundary>` — catches render-phase throws in its subtree and
   renders a fallback instead of crashing the whole tree. Default fallback
   is a single bold-red line `Render error: <message>` sized to fit any

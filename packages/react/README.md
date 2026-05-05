@@ -172,6 +172,53 @@ Use `useFocusManager()` to drive cycling programmatically (`focus(id)`,
 `focusNext()`, `focusPrevious()`) or to suspend Tab handling
 (`disableFocus()` / `enableFocus()`).
 
+## Theming
+
+Wrap a subtree in `<ThemeProvider>` to override the active palette of
+semantic color tokens (`primary`, `error`, `success`, etc.). Components
+that opt in via `useTheme()` get the active values; ones that don't
+keep using whatever color they have hardcoded.
+
+```tsx
+import { ThemeProvider, useTheme, lightTheme, Text, Box } from '@pilates/react';
+
+function Banner({ kind, children }: { kind: 'info' | 'error'; children: string }) {
+  const t = useTheme();
+  return <Text color={kind === 'error' ? t.error : t.info}>{children}</Text>;
+}
+
+<ThemeProvider theme={lightTheme}>
+  <App />
+  <ThemeProvider theme={{ error: 'red' }}>
+    <DangerZone />            {/* error overridden, all other tokens inherit */}
+  </ThemeProvider>
+</ThemeProvider>
+```
+
+`<ThemeProvider>` accepts either a full `Theme` or a `Partial<Theme>` —
+partial overrides merge over the parent (or `defaultTheme` if no parent
+provider is present). Nested providers compose the same way.
+
+`useTheme()` is opt-in: calling it outside any `<ThemeProvider>` returns
+`defaultTheme` rather than throwing, so simple apps can adopt theming
+incrementally.
+
+| Token | Intent |
+|---|---|
+| `primary` | Brand main — active tabs, primary CTA, focused field marker |
+| `accent` | Brand secondary — hover-equivalent, supplementary highlights |
+| `text` | Default body text |
+| `muted` | De-emphasized text — placeholders, disabled rows, captions |
+| `success` | Confirmations, positive state |
+| `warning` | Caution, lossy operations |
+| `error` | Failures, destructive actions |
+| `info` | Neutral notifications, hints |
+| `border` | Box / panel borders |
+
+Two themes ship out of the box — `defaultTheme` (tuned for dark
+terminals — the Linux / macOS default) and `lightTheme` (legible on
+light backgrounds).
+
 ## Error boundaries
 
 Wrap a subtree in `<ErrorBoundary>` to catch render-phase throws without
