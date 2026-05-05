@@ -14,5 +14,8 @@ export type { TextAreaProps } from './text-area.js';
 export { Select } from './select.js';
 export type { SelectItem, SelectProps, SelectIndicatorProps } from './select.js';
 
+export { MultiSelect } from './multi-select.js';
+export type { MultiSelectProps, MultiSelectIndicatorProps } from './multi-select.js';
+
 export { ProgressBar } from './progress-bar.js';
 export type { ProgressBarProps } from './progress-bar.js';
