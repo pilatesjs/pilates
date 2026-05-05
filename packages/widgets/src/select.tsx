@@ -1,4 +1,4 @@
-import { Box, Text, useInput } from '@pilates/react';
+import { Box, Text, useFocus, useInput } from '@pilates/react';
 import { type JSX, type ReactNode, useEffect, useRef, useState } from 'react';
 
 export interface SelectItem<T> {
@@ -21,8 +21,22 @@ export interface SelectProps<T> {
   onHighlight?: (item: SelectItem<T>) => void;
   /** Default 0; clamped forward to first non-disabled item. */
   initialIndex?: number;
-  /** Default true. */
+  /**
+   * Default true. Ignored when `focusId` is set — focus state then comes
+   * from the `useFocus` registration instead.
+   */
   focus?: boolean;
+  /**
+   * Register this Select with `useFocus(id)` so the surrounding
+   * `<FocusProvider>` (auto-installed by `render()`) can route Tab /
+   * Shift+Tab cycling through it. When set, `focus` is ignored.
+   */
+  focusId?: string;
+  /**
+   * When `focusId` is set, take focus on mount if no other focusable
+   * currently holds it. Ignored when `focusId` is undefined.
+   */
+  autoFocus?: boolean;
   /** Custom marker rendered to the left of each row. */
   indicator?: (props: SelectIndicatorProps) => ReactNode;
 }
@@ -63,8 +77,19 @@ export function Select<T>({
   onHighlight,
   initialIndex = 0,
   focus = true,
+  focusId,
+  autoFocus,
   indicator = defaultIndicator,
 }: SelectProps<T>): JSX.Element {
+  // Always call useFocus so hook order stays stable. When focusId is unset,
+  // register inactive so this Select doesn't appear in the cycle list.
+  const focusReg = useFocus({
+    ...(focusId !== undefined ? { id: focusId } : {}),
+    autoFocus: focusId !== undefined && (autoFocus ?? false),
+    isActive: focusId !== undefined,
+  });
+  const effectiveFocus = focusId !== undefined ? focusReg.isFocused : focus;
+
   const [highlightIndex, setHighlightIndex] = useState(() =>
     clampToFirstEnabledForward(items, Math.max(0, Math.min(initialIndex, items.length - 1))),
   );
@@ -137,7 +162,7 @@ export function Select<T>({
         return;
       }
     },
-    { isActive: focus },
+    { isActive: effectiveFocus },
   );
 
   if (items.length === 0) return <Box flexGrow={1} height={1} />;

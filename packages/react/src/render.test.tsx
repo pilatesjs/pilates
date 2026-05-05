@@ -630,7 +630,9 @@ describe('useInput', () => {
         useInput(() => {}, { isActive: false });
         return <Text>x</Text>;
       },
-      { width: 5, height: 1 },
+      // disableFocus avoids FocusProvider's internal Tab `useInput`, which
+      // would otherwise activate raw mode and mask this lifecycle assertion.
+      { width: 5, height: 1, disableFocus: true },
     );
     // Without initial-active plumbing, subscribe always bumped refcount and
     // turned raw mode on, then setActive(false) immediately turned it off →
@@ -711,7 +713,13 @@ describe('useInput lifecycle', () => {
   });
 
   it('does not enter raw mode when no useInput is mounted', () => {
-    const handle = mountWithInput(0, () => <Text>x</Text>, { width: 1, height: 1 });
+    // FocusProvider's internal Tab useInput would defeat this assertion;
+    // bypass it with disableFocus to test the lower-level lifecycle.
+    const handle = mountWithInput(0, () => <Text>x</Text>, {
+      width: 1,
+      height: 1,
+      disableFocus: true,
+    });
     expect(handle.fakeStdin.rawModeCalls).toEqual([]);
     handle.unmount();
   });
@@ -732,7 +740,10 @@ describe('useInput lifecycle', () => {
     const handle = mountWithInput<{ active: boolean }>(
       { active: true },
       (s) => <App active={s.active} />,
-      { width: 1, height: 1 },
+      // disableFocus avoids FocusProvider's internal Tab `useInput`, which
+      // would otherwise hold the raw-mode refcount above zero across the
+      // toggle dance and mask the no-churn behavior.
+      { width: 1, height: 1, disableFocus: true },
     );
     expect(handle.fakeStdin.rawModeCalls).toEqual([true]);
     handle.setState({ active: false });
@@ -937,6 +948,30 @@ describe('usePaste', () => {
     });
     expect(fakeStdin.rawModeCalls).toEqual([]);
     expect(buf.join('')).not.toContain('\x1b[?2004');
+    instance.unmount();
+  });
+});
+
+describe('render() — focus opt-out', () => {
+  it('focus: false routes Tab to user useInput instead of cycling focus', () => {
+    const seen: string[] = [];
+    function App() {
+      useInput((event) => {
+        if (event.name === 'tab') seen.push('tab');
+      });
+      return <Text>x</Text>;
+    }
+    const fakeStdin = makeFakeStdin();
+    const fakeStdout = makeFakeStdout(20, 5);
+    const fakeStderr = makeFakeStdout(20, 5);
+    const instance = render(<App />, {
+      stdout: fakeStdout,
+      stderr: fakeStderr,
+      stdin: fakeStdin as unknown as NodeJS.ReadStream,
+      focus: false,
+    });
+    fakeStdin.emit('data', '\t');
+    expect(seen).toEqual(['tab']);
     instance.unmount();
   });
 });

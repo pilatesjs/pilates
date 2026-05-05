@@ -11,6 +11,7 @@ import {
 } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
+import { FocusProvider, type FocusProviderProps } from './focus.js';
 import {
   AppContext,
   type AppHookValue,
@@ -33,6 +34,13 @@ export interface RenderOptions {
   stdout?: NodeJS.WriteStream;
   stderr?: NodeJS.WriteStream;
   stdin?: NodeJS.ReadStream;
+  /**
+   * Focus management (Tab / Shift+Tab cycling via `useFocus` /
+   * `useFocusManager`). Default: enabled with `autoTab: true`,
+   * `blurOnEscape: false`. Pass `false` to opt out entirely — Tab and
+   * Shift+Tab then flow through to user `useInput` handlers.
+   */
+  focus?: FocusProviderProps | false;
 }
 
 export interface RenderInstance {
@@ -422,6 +430,13 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
     write: (s) => stderr.write(s),
   };
 
+  const focusOpt = options.focus;
+  const stderrAndElement = createElement(StderrContext.Provider, { value: stderrValue }, element);
+  const stdinChildren =
+    focusOpt === false
+      ? stderrAndElement
+      : createElement(FocusProvider, focusOpt ?? null, stderrAndElement);
+
   const wrapped = createElement(
     AppContext.Provider,
     { value: appValue },
@@ -431,11 +446,7 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
       createElement(
         ResizeBridge,
         { rootNode, container },
-        createElement(
-          StdinProvider,
-          { stdin },
-          createElement(StderrContext.Provider, { value: stderrValue }, element),
-        ),
+        createElement(StdinProvider, { stdin }, stdinChildren),
       ),
     ),
   );

@@ -50,6 +50,21 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   its own, so a paste-only app works without an additional `useInput`.
   `render()` writes `\x1b[?2004h` on raw-mode entry and `\x1b[?2004l`
   on exit, gated on the same TTY check that gates raw mode.
+- `useFocus({ id?, autoFocus?, isActive? }) → { isFocused, focus, blur, id }`
+  and `useFocusManager() → { focusedId, focus, focusNext, focusPrevious,
+  enableFocus, disableFocus, isEnabled }` — focus management with Tab /
+  Shift+Tab cycling. A `<FocusProvider>` is auto-installed by `render()`
+  (opt out with `render(elem, { focus: false })`); it owns the Tab
+  listener via its own `useInput`, so cycling works even with no user
+  input handlers. Cycle order is mount order (explicit `order` deferred
+  to v0.4); `autoFocus` is first-wins-in-commit-order so two siblings
+  mounting in the same commit can't both steal focus. `id` defaults to
+  `useId()` so per-call-site stability survives parent re-renders.
+  `manager.focus("nope")` for an unknown id throws in dev, warns in
+  prod. `<FocusProvider blurOnEscape>` (opt-in) clears focus on Esc.
+- `key-parser`: `\x1b[Z` (xterm BackTab) now decodes to
+  `{ name: 'tab', shift: true }`, so user `useInput` handlers and the
+  internal focus-cycle listener can both treat Shift+Tab uniformly.
 
 ### Added — `@pilates/widgets` (next minor)
 
@@ -64,6 +79,12 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   the payload are stripped (single-line input); `<TextArea>` will
   preserve them. Emoji / ZWJ clusters in the paste survive intact via
   the existing grapheme-aware cursor model.
+- `<TextInput>` and `<Select>` accept `focusId?: string` and
+  `autoFocus?: boolean`. When `focusId` is set, the keystroke gate
+  routes through the surrounding `<FocusProvider>` — Tab / Shift+Tab
+  cycling moves between widgets without parent-side `focus={...}`
+  bookkeeping. The boolean `focus` prop still works (back-compat) and
+  is silently ignored when `focusId` is set.
 
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 

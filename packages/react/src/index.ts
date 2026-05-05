@@ -15,6 +15,14 @@ export type {
   UseInputOptions,
 } from './hooks.js';
 
+export { useFocus, useFocusManager } from './focus.js';
+export type {
+  FocusProviderProps,
+  UseFocusOptions,
+  UseFocusValue,
+  UseFocusManagerValue,
+} from './focus.js';
+
 // Render entry
 export { render } from './render.js';
 export type { RenderOptions, RenderInstance } from './render.js';

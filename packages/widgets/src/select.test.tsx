@@ -1,5 +1,5 @@
 import { mountWithInput } from '@pilates/react/test-utils';
-import { createElement } from 'react';
+import { Fragment, createElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Select, type SelectItem } from './select.js';
 
@@ -294,6 +294,47 @@ describe('Select reactivity to items prop changes', () => {
     handle.pressKey('enter');
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(['apple', 'banana']).toContain(onSelect.mock.calls[0]![0].value);
+    handle.unmount();
+  });
+});
+
+describe('Select focus integration', () => {
+  it('Tab routes arrow keys from the autofocused Select to the next focusable Select', () => {
+    const onSelectA = vi.fn<(item: SelectItem<string>) => void>();
+    const onSelectB = vi.fn<(item: SelectItem<string>) => void>();
+    const handle = mountWithInput(
+      0,
+      () =>
+        createElement(
+          Fragment,
+          null,
+          createElement(Select<string>, {
+            items: items3,
+            onSelect: onSelectA,
+            focusId: 'a',
+            autoFocus: true,
+          }),
+          createElement(Select<string>, {
+            items: items3,
+            onSelect: onSelectB,
+            focusId: 'b',
+          }),
+        ),
+      opts,
+    );
+    // Arrow keys + Enter on A.
+    handle.pressKey('down');
+    handle.pressKey('enter');
+    expect(onSelectA).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'banana' }));
+    expect(onSelectB).not.toHaveBeenCalled();
+
+    // Tab moves focus to B; subsequent arrows + Enter land in B.
+    handle.pressKey('tab');
+    handle.pressKey('down');
+    handle.pressKey('down');
+    handle.pressKey('enter');
+    expect(onSelectB).toHaveBeenLastCalledWith(expect.objectContaining({ value: 'cherry' }));
+    expect(onSelectA).toHaveBeenCalledTimes(1);
     handle.unmount();
   });
 });

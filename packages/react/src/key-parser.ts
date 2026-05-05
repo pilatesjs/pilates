@@ -215,6 +215,10 @@ function decodeCsi(params: string, final: string, sequence: string): KeyEvent | 
   if (final === 'D') return { ...base, name: 'left' };
   if (final === 'H') return { ...base, name: 'home' };
   if (final === 'F') return { ...base, name: 'end' };
+  // xterm BackTab — Shift+Tab. Modifier params on CSI Z are rare; if any
+  // are present they override the implicit shift bit (treat the CSI Z form
+  // as the canonical "Shift+Tab" with no extra modifiers needed).
+  if (final === 'Z') return { ...base, name: 'tab', shift: true };
 
   if (final === '~') {
     const num = Number.parseInt(baseStr, 10);

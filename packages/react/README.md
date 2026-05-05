@@ -67,7 +67,10 @@ mount with a message that points at the offending tree.
 ## Hooks
 
 ```ts
-import { useApp, useInput, usePaste, useStdout, useStderr, useWindowSize } from '@pilates/react';
+import {
+  useApp, useInput, usePaste, useFocus, useFocusManager,
+  useStdout, useStderr, useWindowSize,
+} from '@pilates/react';
 
 const { exit } = useApp();                     // exit(error?: Error) tears down the render
 const { columns, rows } = useStdout();         // tracks SIGWINCH; re-renders on resize
@@ -75,6 +78,8 @@ const { columns, rows } = useWindowSize();     // shorthand for just the dimensi
 const { write }        = useStderr();          // direct stderr access for log-style output
 useInput((event) => { /* ... */ });            // subscribe to keystrokes
 usePaste((text) => { /* ... */ });             // subscribe to bracketed-paste payloads
+const { isFocused, focus } = useFocus({ id: 'name', autoFocus: true });
+const manager = useFocusManager();             // focusedId, focusNext, disableFocus, …
 ```
 
 | Hook | Returns | Notes |
@@ -85,6 +90,8 @@ usePaste((text) => { /* ... */ });             // subscribe to bracketed-paste p
 | `useStderr()` | `{ stderr, write }` | Use for log lines that should NOT participate in the diff loop. |
 | `useInput()` | `void` | Subscribe to keystrokes. `event.name` for arrows / specials, `event.ch` for printable, modifiers via `event.ctrl/alt/shift`. Lazy raw-mode lifecycle — stdin is untouched if no useInput is mounted. Pass `{ isActive: false }` to opt a handler out without unsubscribing. |
 | `usePaste()` | `void` | Subscribe to xterm bracketed-paste payloads (DEC mode 2004). The handler receives the entire pasted text in one call (newlines / control bytes preserved), so a multi-line paste does NOT fire Enter on every newline through `useInput`. Activates raw mode on its own; pairs with the lazy `\x1b[?2004h` / `\x1b[?2004l` lifecycle. |
+| `useFocus({ id?, autoFocus?, isActive? })` | `{ isFocused, focus, blur, id }` | Register the calling component as a Tab-cycle target. `autoFocus` is first-wins-in-commit-order; `id` defaults to `useId()`. Gate `useInput` on `isFocused` to act on keystrokes only when this component holds focus. |
+| `useFocusManager()` | `{ focusedId, focus(id), focusNext, focusPrevious, enableFocus, disableFocus, isEnabled }` | Imperative control over the focus cycle. `disableFocus({ blur: true })` clears the current focus; the default keeps it pinned so `enableFocus()` resumes where it left off. |
 
 All hooks throw if called outside a `<render>` tree.
 
@@ -127,6 +134,43 @@ interface KeyEvent {
   sequence: string; // raw input bytes
 }
 ```
+
+### useFocus example
+
+`<FocusProvider>` is auto-installed by `render()` — Tab cycles forward
+through registered focusables, Shift+Tab cycles backward. Opt out with
+`render(elem, { focus: false })` to free Tab for your own handlers.
+
+```tsx
+import { useState } from 'react';
+import { render, Box, Text, useFocus, useInput } from '@pilates/react';
+
+function Field({ id, label }: { id: string; label: string }) {
+  const { isFocused } = useFocus({ id, autoFocus: id === 'name' });
+  const [value, setValue] = useState('');
+  useInput((event) => {
+    if (event.ch) setValue((v) => v + event.ch);
+    if (event.name === 'backspace') setValue((v) => v.slice(0, -1));
+  }, { isActive: isFocused });
+  return (
+    <Box border={isFocused ? 'double' : 'single'} padding={1}>
+      <Text>{label}: {value || '…'}</Text>
+    </Box>
+  );
+}
+
+render(
+  <Box flexDirection="column" gap={1}>
+    <Field id="name"  label="Name" />
+    <Field id="email" label="Email" />
+    <Text dim>Tab / Shift+Tab to switch fields</Text>
+  </Box>,
+);
+```
+
+Use `useFocusManager()` to drive cycling programmatically (`focus(id)`,
+`focusNext()`, `focusPrevious()`) or to suspend Tab handling
+(`disableFocus()` / `enableFocus()`).
 
 ## render() options
 
