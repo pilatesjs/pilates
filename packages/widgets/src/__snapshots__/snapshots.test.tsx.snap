@@ -28,9 +28,9 @@ exports[`ProgressBar snapshots > indeterminate initial frame > ansi 1`] = `"[1;
 
 exports[`ProgressBar snapshots > indeterminate initial frame > plain 1`] = `"███░░░░░░░"`;
 
-exports[`Select snapshots > after pressing down — second item highlighted > ansi 1`] = `"[1;1H[36m [3;1H[0m❯"`;
+exports[`Select snapshots > after pressing down — second item highlighted > ansi 1`] = `"[1;1H  [3;1H[36m❯ [0m"`;
 
-exports[`Select snapshots > after pressing down — second item highlighted > plain 1`] = `" ❯"`;
+exports[`Select snapshots > after pressing down — second item highlighted > plain 1`] = `"  ❯ "`;
 
 exports[`Select snapshots > default — first item highlighted > ansi 1`] = `"[1;1H[36m❯ [0mApple                       [2;1H                              [3;1H  Banana                      [4;1H  Cherry                      [5;1H                              "`;
 
@@ -64,9 +64,9 @@ exports[`Tabs snapshots > middle tab active with one disabled > ansi 1`] = `"[1
 
 exports[`Tabs snapshots > middle tab active with one disabled > plain 1`] = `" A  [B]  C                              "`;
 
-exports[`TextArea snapshots > cursor parked at end of middle line > ansi 1`] = `"[1;1Hfoo[2;1Hb[2;4H[7m [0m"`;
+exports[`TextArea snapshots > cursor parked at end of middle line > ansi 1`] = `"[2;1Hb[2;4H[7m [0m"`;
 
-exports[`TextArea snapshots > cursor parked at end of middle line > plain 1`] = `"foob "`;
+exports[`TextArea snapshots > cursor parked at end of middle line > plain 1`] = `"b "`;
 
 exports[`TextArea snapshots > empty with placeholder > ansi 1`] = `"[1;1H[2;7mn[0;2mote here…[0m          [2;1H                    [3;1H                    "`;
 

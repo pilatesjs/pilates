@@ -55,6 +55,39 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   inline (no `strip-ansi` runtime dep). The widgets package's
   internal `snap()` / `strip()` helpers are now thin re-exports of
   this.
+- `useBoxMetrics(ref)` — reads the most recent computed layout
+  (`{ left, top, width, height }`) of a `<Box>` referenced by `ref`.
+  Returns `null` until the ref attaches and the first layout pass
+  completes. Re-renders on SIGWINCH (via shared `useStdout` dep) and
+  whenever a commit produces a different layout for this Box; the
+  internal layout-key check prevents the hook from looping. `<Box>`
+  and `<Text>` now accept `ref?: Ref<unknown>` (Ink v7 parity).
+
+### Fixed — `@pilates/react` (pre-1.0)
+
+- `commitUpdate` was reading the **oldProps** position instead of
+  newProps under react-reconciler@0.31. The @types/react-reconciler@0.28.9
+  signature shifts every arg one slot left from the runtime, and the
+  type-shim cast picked up `oldProps` while believing it was `newProps`.
+  Result: any prop change on a `<Box>` that affected layout (`width`,
+  `height`, `flex*`, padding, margin, etc.) was silently ignored — only
+  Text-content updates worked because they go through `commitTextUpdate`
+  on a separate path. The fix uses positional args via a typed cast so
+  the runtime arg at index 3 (newProps) lands correctly. No existing
+  tests caught this because none changed Box layout props at runtime;
+  caught while building `useBoxMetrics`. Two snapshots updated to the
+  correct (now-fully-redrawn) deltas.
+
+### Changed — `@pilates/render` (pre-1.0)
+
+- `renderToFrame` now mirrors each computed `{ left, top, width, height }`
+  back onto the source `RenderNode` as `node._layout`. This lets the
+  React layer expose `useBoxMetrics(ref)` without re-running layout from
+  user-land. Mutating the input tree is acceptable because
+  `renderToFrame`'s contract is "compute layout + return a Frame" — the
+  layout property is an observable side-effect, never an input.
+  `ComputedLayout` is a new exported type.
+
 - `<ThemeProvider>` + `useTheme()` + `defaultTheme` / `lightTheme` —
   semantic color-token theming. Tight v1 token set: `primary`, `accent`,
   `text`, `muted`, `success`, `warning`, `error`, `info`, `border`.

@@ -102,12 +102,23 @@ export function buildHostConfig(): PilatesHostConfig {
     // dropping `updatePayload` and adding the source Fiber:
     //   0.28: (instance, payload, type, oldProps, newProps, fiber)
     //   0.31: (instance, type, oldProps, newProps, fiber)
-    // Parameters are positional, so the @0.28 type signature lands the
-    // 0.31 newProps in the slot the type calls `Type` (a string). Cast
-    // through `unknown` to recover its actual Record shape, then mutate
-    // instance.node in place.
-    commitUpdate: (instance, _typeArg, runtimeNewProps) => {
-      const newProps = runtimeNewProps as unknown as Record<string, unknown>;
+    //
+    // The @0.28 types declare `(instance, updatePayload, type, oldProps,
+    // newProps)` — five named args. Under the 0.31 runtime that slot
+    // mapping is shifted left by one (no updatePayload), so the runtime
+    // arg whose @0.28 NAME is `oldProps` is actually 0.31's `newProps`.
+    // We grab the FOURTH positional arg (index 3 in the runtime
+    // signature) via the variadic `...args` to dodge the type mismatch
+    // entirely — relying on the @types name lands us on the wrong slot
+    // and silently applies STALE props, which silently breaks any
+    // layout-affecting Box prop change (width / height / flex / …).
+    commitUpdate: ((
+      instance: HostInstance,
+      _typeArg: unknown,
+      _oldProps: unknown,
+      runtimeNewProps: unknown,
+    ): void => {
+      const newProps = runtimeNewProps as Record<string, unknown>;
       // Mutate `instance.node` IN PLACE — the parent's children array
       // holds a reference to this exact object, so reassigning
       // instance.node would orphan the new value.
@@ -123,7 +134,7 @@ export function buildHostConfig(): PilatesHostConfig {
       for (const k of Object.keys(rest)) {
         target[k] = rest[k];
       }
-    },
+    }) as unknown as PilatesHostConfig['commitUpdate'] & object,
     commitTextUpdate: (instance, _oldText, newText) => {
       // `instance` is a TextFragment (from createTextInstance). Mutate
       // the fragment's text and re-flatten EVERY ancestor <Text> so the
