@@ -77,6 +77,8 @@ render(<Wizard />);
 
 **Key bindings:** printable chars insert at cursor; `←`/`→` move; `Home`/`End` (or `Ctrl+A`/`Ctrl+E`) jump; `Backspace`/`Delete` delete; `Ctrl+U`/`Ctrl+K` clear to start/end; `Ctrl+W` delete previous word; `Enter` calls `onSubmit`.
 
+**Paste:** xterm bracketed paste (DEC mode 2004) is consumed via `usePaste` — the entire pasted block inserts at the cursor as a single `onChange` call. Newlines and carriage returns are stripped (single-line input). Emoji / ZWJ clusters in the paste survive intact.
+
 ## `<Select>`
 
 ```tsx

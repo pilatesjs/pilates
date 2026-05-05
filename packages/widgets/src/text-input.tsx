@@ -1,5 +1,5 @@
 import { graphemes } from '@pilates/core';
-import { Box, Text, useInput } from '@pilates/react';
+import { Box, Text, useInput, usePaste } from '@pilates/react';
 import { type JSX, useState } from 'react';
 
 export interface TextInputProps {
@@ -150,6 +150,20 @@ export function TextInput({
     },
     { isActive: focus },
   );
+
+  // Bracketed paste arrives as a single payload (DEC mode 2004), not as a
+  // flood of keystroke events — so the whole block inserts as one edit and
+  // newlines inside don't fire as Enter. Strip CR / LF for this single-line
+  // input; <TextArea> will preserve them when it lands.
+  usePaste((text) => {
+    if (!focus) return;
+    const sanitized = text.replace(/\r\n|\r|\n/g, '');
+    if (sanitized.length === 0) return;
+    const insertedCount = splitGraphemes(sanitized).length;
+    const next = gs.slice(0, clampedCursor).join('') + sanitized + gs.slice(clampedCursor).join('');
+    setCursor(clampedCursor + insertedCount);
+    onChange(next);
+  });
 
   // Empty value + focus: render only the cursor (or first grapheme of placeholder).
   if (graphemeCount === 0) {

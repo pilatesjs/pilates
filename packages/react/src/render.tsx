@@ -114,8 +114,29 @@ function StdinProvider({
   stdin: NodeJS.ReadStream;
   children?: ReactNode;
 }) {
+  // Read the stdout `write` fn from context so bracketed-paste enable /
+  // disable sequences land on the same stream as the rendered frame.
+  // Required because DEC mode 2004 is a terminal-side flag set via
+  // output bytes — even though it controls how stdin delivers paste
+  // payloads. Going through the hook's `write` (rather than the raw
+  // `stdout` handle) lets test utilities stub it out without leaking
+  // escape sequences to process.stdout.
+  //
+  // StdoutProvider creates a fresh `write` reference on every render, so
+  // capture the latest in a ref and call it through a stable wrapper.
+  // This keeps the context value's identity stable (no churn on parent
+  // re-render or SIGWINCH resize) and avoids re-firing subscribe effects.
+  const { write: latestStdoutWrite } = useStdout();
+  const latestWriteRef = useRef(latestStdoutWrite);
+  latestWriteRef.current = latestStdoutWrite;
+  const stableWriteRef = useRef<((s: string) => boolean) | null>(null);
+  if (stableWriteRef.current === null) {
+    stableWriteRef.current = (s) => latestWriteRef.current(s);
+  }
+  const stdoutWrite = stableWriteRef.current;
   const stateRef = useRef<StdinProviderState>({
     subscribers: new Map<(event: KeyEvent) => void, boolean>(),
+    pasteSubscribers: new Set<(text: string) => void>(),
     refcount: 0,
     remainder: '',
     rawModeOn: false,
@@ -134,10 +155,13 @@ function StdinProvider({
       }
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       const combined = state.remainder + text;
-      const { events, remainder } = parseKeys(combined);
+      const { events, pastes, remainder } = parseKeys(combined);
       state.remainder = remainder;
       for (const event of events) {
         dispatchEvent(state, event);
+      }
+      for (const paste of pastes) {
+        dispatchPaste(state, paste);
       }
       // If the parser is sitting on a held bare ESC, schedule a flush. If
       // another byte arrives in the disambiguation window we'll cancel it
@@ -154,15 +178,10 @@ function StdinProvider({
         state.escapeTimer = null;
       }
       if (state.rawModeOn && isRawModeSupported) {
-        try {
-          stdin.setRawMode(false);
-          state.rawModeOn = false;
-        } catch {
-          /* swallow on teardown */
-        }
+        releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
       }
     };
-  }, [stdin, isRawModeSupported]);
+  }, [stdin, stdoutWrite, isRawModeSupported]);
 
   // Memoize the context value so the provider's identity survives parent
   // re-renders. Otherwise every parent state change would create a fresh
@@ -177,14 +196,14 @@ function StdinProvider({
         state.subscribers.set(handler, initialActive);
         if (initialActive) {
           state.refcount += 1;
-          ensureRawMode(stdin, state, isRawModeSupported);
+          ensureRawMode(stdin, stdoutWrite, state, isRawModeSupported);
         }
         return () => {
           const wasActive = state.subscribers.get(handler) === true;
           state.subscribers.delete(handler);
           if (wasActive) {
             state.refcount -= 1;
-            if (state.refcount === 0) releaseRawMode(stdin, state, isRawModeSupported);
+            if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
           }
         };
       },
@@ -196,26 +215,47 @@ function StdinProvider({
         state.subscribers.set(handler, active);
         if (active) {
           state.refcount += 1;
-          ensureRawMode(stdin, state, isRawModeSupported);
+          ensureRawMode(stdin, stdoutWrite, state, isRawModeSupported);
         } else {
           state.refcount -= 1;
-          if (state.refcount === 0) releaseRawMode(stdin, state, isRawModeSupported);
+          if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
         }
       },
+      subscribePaste: (handler) => {
+        const state = stateRef.current;
+        state.pasteSubscribers.add(handler);
+        state.refcount += 1;
+        ensureRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+        return () => {
+          if (!state.pasteSubscribers.delete(handler)) return;
+          state.refcount -= 1;
+          if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+        };
+      },
     }),
-    [stdin, isRawModeSupported],
+    [stdin, stdoutWrite, isRawModeSupported],
   );
   return createElement(StdinContext.Provider, { value }, children);
 }
 
 interface StdinProviderState {
   subscribers: Map<(event: KeyEvent) => void, boolean>;
+  pasteSubscribers: Set<(text: string) => void>;
   refcount: number;
   remainder: string;
   rawModeOn: boolean;
   /** Pending timer that flushes a held bare ESC as a real Escape event. */
   escapeTimer: ReturnType<typeof setTimeout> | null;
 }
+
+/**
+ * xterm DEC private mode 2004 — when set, the terminal wraps pasted
+ * content in `\x1b[200~` … `\x1b[201~` so we can deliver it as a single
+ * payload through `usePaste` instead of emitting one keystroke per byte
+ * (which would, e.g., fire Enter on every newline in the paste).
+ */
+const PASTE_MODE_ENABLE = '\x1b[?2004h';
+const PASTE_MODE_DISABLE = '\x1b[?2004l';
 
 /**
  * Bare ESC at end-of-chunk is ambiguous: it could be a real Escape press
@@ -238,6 +278,17 @@ function dispatchEvent(state: StdinProviderState, event: KeyEvent): void {
   }
 }
 
+function dispatchPaste(state: StdinProviderState, text: string): void {
+  for (const handler of state.pasteSubscribers) {
+    try {
+      handler(text);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Pilates: usePaste handler threw: ${msg}\n`);
+    }
+  }
+}
+
 function flushHeldEscape(state: StdinProviderState): void {
   state.escapeTimer = null;
   if (state.remainder !== '\x1b') return;
@@ -253,6 +304,7 @@ function flushHeldEscape(state: StdinProviderState): void {
 
 function ensureRawMode(
   stdin: NodeJS.ReadStream,
+  stdoutWrite: (s: string) => boolean,
   state: StdinProviderState,
   isRawModeSupported: boolean,
 ): void {
@@ -261,6 +313,14 @@ function ensureRawMode(
       stdin.setRawMode(true);
       stdin.resume();
       state.rawModeOn = true;
+      // Bracketed paste opt-in is paired with raw mode: same TTY gate,
+      // same lifetime. Write failures are non-fatal — the worst case is
+      // a paste comes through as a stream of keystrokes (pre-2004 behavior).
+      try {
+        stdoutWrite(PASTE_MODE_ENABLE);
+      } catch {
+        /* swallow — terminal just won't bracket pastes */
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(
@@ -278,10 +338,16 @@ function ensureRawMode(
 
 function releaseRawMode(
   stdin: NodeJS.ReadStream,
+  stdoutWrite: (s: string) => boolean,
   state: StdinProviderState,
   isRawModeSupported: boolean,
 ): void {
   if (state.rawModeOn && isRawModeSupported) {
+    try {
+      stdoutWrite(PASTE_MODE_DISABLE);
+    } catch {
+      /* swallow */
+    }
     try {
       stdin.setRawMode(false);
       state.rawModeOn = false;

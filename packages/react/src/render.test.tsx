@@ -832,3 +832,111 @@ describe('useInput end-to-end', () => {
     handle.unmount();
   });
 });
+
+describe('usePaste', () => {
+  it('delivers the text between paste markers in one call', async () => {
+    const { usePaste } = await import('./hooks.js');
+    const seen: string[] = [];
+    function App() {
+      usePaste((text) => seen.push(text));
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 1, height: 1 });
+    handle.fakeStdin.emit('data', '\x1b[200~hello, world\x1b[201~');
+    expect(seen).toEqual(['hello, world']);
+    handle.unmount();
+  });
+
+  it('does not surface paste payloads as keystroke events', async () => {
+    // Regression: a multi-line paste used to fire as a flood of keystrokes,
+    // including Enter on each newline. Bracketed paste must keep the
+    // payload off the useInput channel entirely.
+    const { usePaste } = await import('./hooks.js');
+    const keys: string[] = [];
+    const pastes: string[] = [];
+    function App() {
+      useInput((e) => {
+        if (e.name) keys.push(`name:${e.name}`);
+        else if (e.ch) keys.push(`ch:${e.ch}`);
+      });
+      usePaste((text) => pastes.push(text));
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 1, height: 1 });
+    handle.fakeStdin.emit('data', '\x1b[200~line1\nline2\x1b[201~');
+    expect(keys).toEqual([]);
+    expect(pastes).toEqual(['line1\nline2']);
+    handle.unmount();
+  });
+
+  it('reassembles a paste split across stdin chunks', async () => {
+    const { usePaste } = await import('./hooks.js');
+    const seen: string[] = [];
+    function App() {
+      usePaste((text) => seen.push(text));
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 1, height: 1 });
+    handle.fakeStdin.emit('data', '\x1b[200~partial');
+    expect(seen).toEqual([]); // not yet
+    handle.fakeStdin.emit('data', ' rest\x1b[201~');
+    expect(seen).toEqual(['partial rest']);
+    handle.unmount();
+  });
+
+  it('subscribing to paste alone activates raw mode', async () => {
+    // usePaste should bump the same refcount as useInput so a paste-only
+    // app still gets raw mode + bracketed paste enabled.
+    const { usePaste } = await import('./hooks.js');
+    function App() {
+      usePaste(() => {});
+      return <Text>x</Text>;
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 1, height: 1 });
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true]);
+    handle.unmount();
+    expect(handle.fakeStdin.rawModeCalls).toEqual([true, false]);
+  });
+
+  it('render() writes \\x1b[?2004h on raw-mode enter and \\x1b[?2004l on exit', async () => {
+    // End-to-end through render() because the enable/disable sequences
+    // are written to stdout, not stdin.
+    const { usePaste } = await import('./hooks.js');
+    function App() {
+      usePaste(() => {});
+      return <Text>x</Text>;
+    }
+    const fakeStdin = makeFakeStdin();
+    const fakeStdout = makeFakeStdout(20, 5);
+    const fakeStderr = makeFakeStdout(20, 5);
+    const buf = (fakeStdout as unknown as { __buf: string[] }).__buf;
+    const instance = render(<App />, {
+      stdout: fakeStdout,
+      stderr: fakeStderr,
+      stdin: fakeStdin as unknown as NodeJS.ReadStream,
+    });
+    expect(buf.join('')).toContain('\x1b[?2004h');
+    instance.unmount();
+    expect(buf.join('')).toContain('\x1b[?2004l');
+  });
+
+  it('does not enter raw mode or write paste-mode sequences for a non-TTY stdin', async () => {
+    const { usePaste } = await import('./hooks.js');
+    function App() {
+      usePaste(() => {});
+      return <Text>x</Text>;
+    }
+    const fakeStdin = makeFakeStdin();
+    (fakeStdin as unknown as { isTTY: boolean }).isTTY = false;
+    const fakeStdout = makeFakeStdout(20, 5);
+    const buf = (fakeStdout as unknown as { __buf: string[] }).__buf;
+    const instance = render(<App />, {
+      stdout: fakeStdout,
+      stderr: makeFakeStdout(20, 5),
+      stdin: fakeStdin as unknown as NodeJS.ReadStream,
+    });
+    expect(fakeStdin.rawModeCalls).toEqual([]);
+    expect(buf.join('')).not.toContain('\x1b[?2004');
+    instance.unmount();
+  });
+});
