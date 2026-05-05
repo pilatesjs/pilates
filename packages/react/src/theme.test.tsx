@@ -1,4 +1,3 @@
-import { createElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Box, Text } from './components.js';
 import { mountWithInput } from './test-utils.js';
@@ -8,13 +7,13 @@ const opts = { width: 20, height: 1 };
 
 describe('useTheme — defaults', () => {
   it('returns defaultTheme when no <ThemeProvider> wraps the consumer', () => {
-    let captured: Theme | null = null;
+    const captured: { value: Theme | null } = { value: null };
     function App() {
-      captured = useTheme();
+      captured.value = useTheme();
       return null;
     }
     const handle = mountWithInput(0, () => <App />, opts);
-    expect(captured).toEqual(defaultTheme);
+    expect(captured.value).toEqual(defaultTheme);
     handle.unmount();
   });
 
@@ -56,9 +55,9 @@ describe('useTheme — defaults', () => {
 describe('ThemeProvider — full theme override', () => {
   it('useTheme returns the provided theme', () => {
     const custom: Theme = { ...defaultTheme, primary: 'magenta', error: 'yellow' };
-    let captured: Theme | null = null;
+    const captured: { value: Theme | null } = { value: null };
     function Inner() {
-      captured = useTheme();
+      captured.value = useTheme();
       return null;
     }
     const handle = mountWithInput(
@@ -70,16 +69,16 @@ describe('ThemeProvider — full theme override', () => {
       ),
       opts,
     );
-    expect(captured).toEqual(custom);
+    expect(captured.value).toEqual(custom);
     handle.unmount();
   });
 });
 
 describe('ThemeProvider — partial override', () => {
   it('merges a partial override on top of the parent theme', () => {
-    let captured: Theme | null = null;
+    const captured: { value: Theme | null } = { value: null };
     function Inner() {
-      captured = useTheme();
+      captured.value = useTheme();
       return null;
     }
     const handle = mountWithInput(
@@ -92,16 +91,16 @@ describe('ThemeProvider — partial override', () => {
       opts,
     );
     // primary overridden, every other token from defaultTheme
-    expect(captured?.primary).toBe('magenta');
-    expect(captured?.error).toBe(defaultTheme.error);
-    expect(captured?.success).toBe(defaultTheme.success);
+    expect(captured.value?.primary).toBe('magenta');
+    expect(captured.value?.error).toBe(defaultTheme.error);
+    expect(captured.value?.success).toBe(defaultTheme.success);
     handle.unmount();
   });
 
   it('a nested ThemeProvider merges over the outer one', () => {
-    let captured: Theme | null = null;
+    const captured: { value: Theme | null } = { value: null };
     function Inner() {
-      captured = useTheme();
+      captured.value = useTheme();
       return null;
     }
     const handle = mountWithInput(
@@ -116,8 +115,8 @@ describe('ThemeProvider — partial override', () => {
       opts,
     );
     // primary inherited from outer; error overridden by inner
-    expect(captured?.primary).toBe('magenta');
-    expect(captured?.error).toBe('yellow');
+    expect(captured.value?.primary).toBe('magenta');
+    expect(captured.value?.error).toBe('yellow');
     handle.unmount();
   });
 });
