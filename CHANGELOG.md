@@ -98,6 +98,15 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   cycling moves between widgets without parent-side `focus={...}`
   bookkeeping. The boolean `focus` prop still works (back-compat) and
   is silently ignored when `focusId` is set.
+- `<TextArea>` — multi-line text editor. Grapheme-aware 1-D cursor that
+  walks across line boundaries; Enter inserts `\n`; `↑`/`↓` move
+  between lines at preserved column (clamped to line length);
+  `Home`/`End` are line-relative; backspace at column 0 joins with the
+  previous line, delete at end-of-line joins with the next. Bracketed
+  paste preserves newlines (unlike `<TextInput>`). Auto-grows
+  vertically with content; word-wrap inside lines and fixed-height
+  scrolling viewports are deferred to v2. Same `focus` / `focusId` /
+  `autoFocus` props as `<TextInput>`.
 
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 
