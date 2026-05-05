@@ -3,6 +3,7 @@
 Interactive widgets for [Pilates](https://github.com/pilatesjs/pilates) terminal UIs:
 
 - **`<TextInput>`** — single-line text input with cursor, password mask, placeholder
+- **`<TextArea>`** — multi-line text editor with grapheme-aware cursor, paste preserves newlines
 - **`<Select>`** — single-select menu with keyboard navigation
 - **`<Spinner>`** — animated progress indicator with built-in frame catalog
 - **`<ProgressBar>`** — determinate or indeterminate progress bar with custom colors and characters
@@ -80,6 +81,29 @@ render(<Wizard />);
 **Key bindings:** printable chars insert at cursor; `←`/`→` move; `Home`/`End` (or `Ctrl+A`/`Ctrl+E`) jump; `Backspace`/`Delete` delete; `Ctrl+U`/`Ctrl+K` clear to start/end; `Ctrl+W` delete previous word; `Enter` calls `onSubmit`.
 
 **Paste:** xterm bracketed paste (DEC mode 2004) is consumed via `usePaste` — the entire pasted block inserts at the cursor as a single `onChange` call. Newlines and carriage returns are stripped (single-line input). Emoji / ZWJ clusters in the paste survive intact.
+
+## `<TextArea>`
+
+Multi-line editor. Auto-grows vertically with content (no fixed-height /
+scrolling viewport in v1 — wrap the textarea in a `<Box>` to constrain
+visually).
+
+```tsx
+<TextArea
+  value={value}                    // required, controlled (may contain '\n')
+  onChange={setValue}              // required
+  placeholder="Notes…"             // optional
+  focus={true}                     // optional, default true (ignored when focusId is set)
+  focusId="notes"                  // optional — Tab cycling via useFocus
+  autoFocus                        // optional — paired with focusId
+/>
+```
+
+**Key bindings:** printable chars insert at cursor; **Enter** inserts a newline; `←`/`→` move across line boundaries; `↑`/`↓` move to prev/next line at the same column (clamped to line length); `Home`/`End` (or `Ctrl+A`/`Ctrl+E`) jump to start/end of the current line; `Backspace` removes the previous grapheme (joins lines when at column 0); `Delete` removes the next grapheme (joins lines when at end-of-line); `Ctrl+U`/`Ctrl+K` clear current line to start/end; `Ctrl+W` deletes the previous word.
+
+**Paste:** preserves newlines verbatim — multi-line clipboard contents land as multiple lines.
+
+**Tab inside the textarea:** `<FocusProvider>` (auto-installed by `render()`) eats Tab for focus cycling. To disable focus cycling and let Tab insert a literal tab character, call `useFocusManager().disableFocus()` while the textarea is focused (or wrap the area in a custom `<FocusProvider autoTab={false}>`).
 
 ## `<Select>`
 

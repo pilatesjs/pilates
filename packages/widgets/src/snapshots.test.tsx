@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import { ProgressBar } from './progress-bar.js';
 import { Select, type SelectItem } from './select.js';
 import { Spinner } from './spinner.js';
+import { TextArea } from './text-area.js';
 import { TextInput } from './text-input.js';
 
 // Internal-state wrapper avoids calling handle.setState from inside an
@@ -173,6 +174,53 @@ describe('ProgressBar snapshots', () => {
         }),
       { width: 10, height: 1 },
     );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+});
+
+describe('TextArea snapshots', () => {
+  it('empty with placeholder', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(TextArea, {
+          value: '',
+          onChange: () => {},
+          placeholder: 'note here…',
+        }),
+      { width: 20, height: 3 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('three-line value with cursor at start', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(TextArea, { value: 'line one\nline two\nline three', onChange: () => {} }),
+      { width: 20, height: 3 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('cursor parked at end of middle line', () => {
+    function Driver() {
+      const [value, setValue] = useState('foo\nbar\nbaz');
+      return createElement(TextArea, { value, onChange: setValue });
+    }
+    const h = mountWithInput(0, () => createElement(Driver), { width: 20, height: 3 });
+    // Move cursor: down to line 2, then end-of-line.
+    h.pressKey('down');
+    h.pressKey('end');
     const s = snap(h.lastWrite());
     expect(s.ansi).toMatchSnapshot('ansi');
     expect(s.plain).toMatchSnapshot('plain');

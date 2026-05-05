@@ -8,6 +8,9 @@ export type { SpinnerType } from './spinner-frames.js';
 export { TextInput } from './text-input.js';
 export type { TextInputProps } from './text-input.js';
 
+export { TextArea } from './text-area.js';
+export type { TextAreaProps } from './text-area.js';
+
 export { Select } from './select.js';
 export type { SelectItem, SelectProps, SelectIndicatorProps } from './select.js';
 

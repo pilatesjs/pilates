@@ -40,6 +40,18 @@ exports[`Spinner snapshots > initial frame (line) > ansi 1`] = `"[1;1H-   "`;
 
 exports[`Spinner snapshots > initial frame (line) > plain 1`] = `"-   "`;
 
+exports[`TextArea snapshots > cursor parked at end of middle line > ansi 1`] = `"[1;1Hfoo[2;1Hb[2;4H[7m [0m"`;
+
+exports[`TextArea snapshots > cursor parked at end of middle line > plain 1`] = `"foob "`;
+
+exports[`TextArea snapshots > empty with placeholder > ansi 1`] = `"[1;1H[2;7mn[0;2mote here…[0m          [2;1H                    [3;1H                    "`;
+
+exports[`TextArea snapshots > empty with placeholder > plain 1`] = `"note here…                                                  "`;
+
+exports[`TextArea snapshots > three-line value with cursor at start > ansi 1`] = `"[1;1H[7ml[0mine one            [2;1Hline two            [3;1Hline three          "`;
+
+exports[`TextArea snapshots > three-line value with cursor at start > plain 1`] = `"line one            line two            line three          "`;
+
 exports[`TextInput snapshots > after typing five characters > ansi 1`] = `"[1;5Ho[7m [0m"`;
 
 exports[`TextInput snapshots > after typing five characters > plain 1`] = `"o "`;
