@@ -1,5 +1,5 @@
 import { graphemes } from '@pilates/core';
-import { Box, Text, useInput, usePaste } from '@pilates/react';
+import { Box, Text, useFocus, useInput, usePaste } from '@pilates/react';
 import { type JSX, useState } from 'react';
 
 export interface TextInputProps {
@@ -13,8 +13,24 @@ export interface TextInputProps {
   placeholder?: string;
   /** If set, renders this character in place of every visible grapheme. Single grapheme only. */
   mask?: string;
-  /** Default true. When false, does not consume keystrokes and does not render a cursor. */
+  /**
+   * Default true. When false, does not consume keystrokes and does not render
+   * a cursor. Ignored when `focusId` is set — focus state then comes from the
+   * `useFocus` registration instead.
+   */
   focus?: boolean;
+  /**
+   * Register this input with `useFocus(id)` so the surrounding
+   * `<FocusProvider>` (auto-installed by `render()`) can route Tab /
+   * Shift+Tab cycling through it. When set, `focus` is ignored and the
+   * keystroke gate comes from the manager's focused id.
+   */
+  focusId?: string;
+  /**
+   * When `focusId` is set, take focus on mount if no other focusable
+   * currently holds it. Ignored when `focusId` is undefined.
+   */
+  autoFocus?: boolean;
 }
 
 const ROW: { flexDirection: 'row'; flexGrow: 1 } = { flexDirection: 'row', flexGrow: 1 };
@@ -38,6 +54,8 @@ export function TextInput({
   placeholder,
   mask,
   focus = true,
+  focusId,
+  autoFocus,
 }: TextInputProps): JSX.Element {
   if (mask !== undefined) {
     const maskGs = splitGraphemes(mask);
@@ -47,6 +65,16 @@ export function TextInput({
       );
     }
   }
+
+  // Always call useFocus so hook order stays stable across renders. When
+  // focusId is undefined, register with isActive=false so the input doesn't
+  // appear in the manager's cycle list.
+  const focusReg = useFocus({
+    ...(focusId !== undefined ? { id: focusId } : {}),
+    autoFocus: focusId !== undefined && (autoFocus ?? false),
+    isActive: focusId !== undefined,
+  });
+  const effectiveFocus = focusId !== undefined ? focusReg.isFocused : focus;
 
   const [cursor, setCursor] = useState(0);
   const gs = splitGraphemes(value);
@@ -148,7 +176,7 @@ export function TextInput({
         return;
       }
     },
-    { isActive: focus },
+    { isActive: effectiveFocus },
   );
 
   // Bracketed paste arrives as a single payload (DEC mode 2004), not as a
@@ -156,7 +184,7 @@ export function TextInput({
   // newlines inside don't fire as Enter. Strip CR / LF for this single-line
   // input; <TextArea> will preserve them when it lands.
   usePaste((text) => {
-    if (!focus) return;
+    if (!effectiveFocus) return;
     const sanitized = text.replace(/\r\n|\r|\n/g, '');
     if (sanitized.length === 0) return;
     const insertedCount = splitGraphemes(sanitized).length;
@@ -167,7 +195,7 @@ export function TextInput({
 
   // Empty value + focus: render only the cursor (or first grapheme of placeholder).
   if (graphemeCount === 0) {
-    if (!focus) {
+    if (!effectiveFocus) {
       if (placeholder) {
         return (
           <Box {...ROW}>
@@ -200,7 +228,7 @@ export function TextInput({
   const displayGs = mask !== undefined ? Array<string>(graphemeCount).fill(mask) : gs;
   const display = displayGs.join('');
 
-  if (!focus) {
+  if (!effectiveFocus) {
     return (
       <Box {...ROW}>
         <Text>{display}</Text>

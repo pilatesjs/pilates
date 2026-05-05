@@ -71,7 +71,9 @@ render(<Wizard />);
   onSubmit={(v) => ...}            // optional, fires on Enter
   placeholder="Type something"     // optional
   mask="*"                         // optional, for passwords (single character)
-  focus={true}                     // optional, default true
+  focus={true}                     // optional, default true (ignored when focusId is set)
+  focusId="name"                   // optional — Tab cycling via useFocus
+  autoFocus                        // optional — paired with focusId
 />
 ```
 
@@ -91,7 +93,9 @@ render(<Wizard />);
   onSelect={(item) => ...}         // required, fires on Enter
   onHighlight={(item) => ...}      // optional, fires on cursor move
   initialIndex={0}                 // optional, default 0
-  focus={true}                     // optional, default true
+  focus={true}                     // optional, default true (ignored when focusId is set)
+  focusId="size"                   // optional — Tab cycling via useFocus
+  autoFocus                        // optional — paired with focusId
   indicator={...}                  // optional, custom marker function
 />
 ```
@@ -147,16 +151,19 @@ To compose with a label, wrap in a row:
 
 ## Composing focus
 
-Widgets don't have a focus-management context. To wire mutual exclusion between widgets, gate each one's `focus` prop with parent state:
+The recommended approach is `focusId` — pair it with `useFocus` /
+`useFocusManager` from `@pilates/react`. A `<FocusProvider>` is
+auto-installed by `render()`, so Tab cycles through widgets that opt
+in by id; no parent-side bookkeeping needed.
 
 ```tsx
-const [active, setActive] = useState<'name' | 'size'>('name');
-
-<TextInput value={name} onChange={setName} focus={active === 'name'} />
-<Select items={sizes} onSelect={...} focus={active === 'size'} />
+<TextInput value={name}  onChange={setName}  focusId="name"  autoFocus />
+<TextInput value={email} onChange={setEmail} focusId="email" />
+<Select items={sizes} onSelect={…} focusId="size" />
 ```
 
-(A real `useFocus` may land in `@pilates/react` later if demand surfaces.)
+The boolean `focus` prop still works (back-compat) and is silently
+ignored when `focusId` is set.
 
 ## License
 

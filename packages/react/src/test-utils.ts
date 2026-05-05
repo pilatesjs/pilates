@@ -3,6 +3,7 @@ import type { ContainerNode } from '@pilates/render';
 import { type ReactElement, act, createElement, useState } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
+import { FocusProvider } from './focus.js';
 import {
   AppContext,
   type AppHookValue,
@@ -407,12 +408,23 @@ export interface InputMountHandle<T> extends MountHandle<T> {
  * Public — exported from `@pilates/react/test-utils`. Intended for use in
  * test environments only.
  */
+export interface MountWithInputOptions extends RenderToStringOptions {
+  /**
+   * When true, skip wrapping in `<FocusProvider>`. Tests that exercise
+   * the lower-level `<StdinProvider>` directly (e.g., raw-mode lifecycle
+   * tests, or tests that need to assert keystroke routing without
+   * Tab being intercepted) can opt out. Default false.
+   */
+  disableFocus?: boolean;
+}
+
 export function mountWithInput<T>(
   initial: T,
   renderFn: (state: T) => ReactElement,
-  options: RenderToStringOptions,
+  options: MountWithInputOptions,
 ): InputMountHandle<T> {
   const fakeStdin = makeFakeStdin();
+  const disableFocus = options.disableFocus ?? false;
 
   // We need access to flushSyncWork to flush after emitting data.
   // Re-implement mount's reconciler bootstrap inline so we can capture sync.
@@ -448,6 +460,7 @@ export function mountWithInput<T>(
   function Wrapper(props: { initial: T }) {
     const [state, setState] = useState(props.initial);
     setter = setState;
+    const innerEl = createElement(Inner, { state });
     return createElement(
       AppContext.Provider,
       { value: appValue },
@@ -460,7 +473,7 @@ export function mountWithInput<T>(
           createElement(
             StdinProvider,
             { stdin: fakeStdin as unknown as NodeJS.ReadStream },
-            createElement(Inner, { state }),
+            disableFocus ? innerEl : createElement(FocusProvider, null, innerEl),
           ),
         ),
       ),

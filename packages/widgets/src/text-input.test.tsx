@@ -1,5 +1,5 @@
 import { mountWithInput } from '@pilates/react/test-utils';
-import { act, createElement, useState } from 'react';
+import { Fragment, act, createElement, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { TextInput } from './text-input.js';
 
@@ -639,6 +639,70 @@ describe('TextInput bracketed paste', () => {
     );
     emitInAct(handle, '\x1b[200~\x1b[201~');
     expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+});
+
+describe('TextInput focus integration', () => {
+  it('Tab routes typing from the first focused input to the second', () => {
+    const onA = vi.fn<(v: string) => void>();
+    const onB = vi.fn<(v: string) => void>();
+    function ControlledA() {
+      const [v, setV] = useState('');
+      return createElement(TextInput, {
+        value: v,
+        focusId: 'a',
+        autoFocus: true,
+        onChange: (next: string) => {
+          onA(next);
+          setV(next);
+        },
+      });
+    }
+    function ControlledB() {
+      const [v, setV] = useState('');
+      return createElement(TextInput, {
+        value: v,
+        focusId: 'b',
+        onChange: (next: string) => {
+          onB(next);
+          setV(next);
+        },
+      });
+    }
+    const handle = mountWithInput(
+      null,
+      () => createElement(Fragment, null, createElement(ControlledA), createElement(ControlledB)),
+      opts,
+    );
+    handle.pressChar('1');
+    expect(onA).toHaveBeenLastCalledWith('1');
+    expect(onB).not.toHaveBeenCalled();
+    handle.pressKey('tab');
+    handle.pressChar('2');
+    expect(onA).toHaveBeenCalledTimes(1);
+    expect(onB).toHaveBeenLastCalledWith('2');
+    handle.unmount();
+  });
+
+  it('focusId set + focus={false}: focusId wins, input still active when registration is focused', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    function App() {
+      const [v, setV] = useState('');
+      return createElement(TextInput, {
+        value: v,
+        focus: false, // ignored because focusId is set
+        focusId: 'only',
+        autoFocus: true,
+        onChange: (next: string) => {
+          onChange(next);
+          setV(next);
+        },
+      });
+    }
+    const handle = mountWithInput(null, () => createElement(App), opts);
+    handle.pressChar('z');
+    expect(onChange).toHaveBeenCalledWith('z');
     handle.unmount();
   });
 });

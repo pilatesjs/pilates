@@ -151,6 +151,16 @@ describe('key-parser CSI modifier params', () => {
       { name: 'delete', ctrl: true, alt: false, shift: false, sequence: '\x1b[3;5~' },
     ]);
   });
+
+  it('decodes \\x1b[Z (CSI Z) as shift+tab — xterm BackTab', () => {
+    // xterm emits CSI Z for Shift+Tab; parsing it as a tab-with-shift lets
+    // FocusProvider cycle backwards through focusables without ad-hoc
+    // sequence sniffing.
+    const { events } = parse('\x1b[Z');
+    expect(events).toEqual([
+      { name: 'tab', ctrl: false, alt: false, shift: true, sequence: '\x1b[Z' },
+    ]);
+  });
 });
 
 describe('key-parser edge cases', () => {
