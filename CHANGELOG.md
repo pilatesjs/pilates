@@ -115,6 +115,15 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   Default 4-cell prefix combines a cursor column (`❯ ` / `  `) with a
   checkbox column (`☑ ` / `☐ `); custom `indicator` function receives
   `{ isHighlighted, isSelected, isDisabled }`.
+- `<Tabs>` — horizontal tab strip. Controlled via `activeKey` /
+  `onChange(key)`; `←`/`→` cycle through enabled tabs (wrap-around,
+  skip `disabled`), `Home`/`End` jump to first / last enabled. Activation
+  is immediate (no separate highlight + commit step). Renders only the
+  strip — consumers wire panel bodies based on the active key. Active
+  tab renders `[Label]` in cyan + bold, inactive ` Label `, disabled
+  dim. Same `focus` / `focusId` / `autoFocus` props as the other
+  widgets. Stale `activeKey` (no matching item) recovers on the next
+  arrow press by jumping to first / last enabled.
 
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 

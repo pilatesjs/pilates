@@ -13,6 +13,7 @@ import { MultiSelect } from './multi-select.js';
 import { ProgressBar } from './progress-bar.js';
 import { Select, type SelectItem } from './select.js';
 import { Spinner } from './spinner.js';
+import { Tabs, type TabsItem } from './tabs.js';
 import { TextArea } from './text-area.js';
 import { TextInput } from './text-input.js';
 
@@ -99,6 +100,53 @@ describe('MultiSelect snapshots', () => {
           onChange: () => {},
         }),
       { width: 30, height: 5 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+});
+
+describe('Tabs snapshots', () => {
+  const tabItems: TabsItem[] = [
+    { key: 'overview', label: 'Overview' },
+    { key: 'logs', label: 'Logs' },
+    { key: 'settings', label: 'Settings' },
+  ];
+
+  it('first tab active', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(Tabs, {
+          items: tabItems,
+          activeKey: 'overview',
+          onChange: () => {},
+        }),
+      { width: 40, height: 1 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('middle tab active with one disabled', () => {
+    const items: TabsItem[] = [
+      { key: 'a', label: 'A' },
+      { key: 'b', label: 'B' },
+      { key: 'c', label: 'C', disabled: true },
+    ];
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(Tabs, {
+          items,
+          activeKey: 'b',
+          onChange: () => {},
+        }),
+      { width: 40, height: 1 },
     );
     const s = snap(h.lastWrite());
     expect(s.ansi).toMatchSnapshot('ansi');

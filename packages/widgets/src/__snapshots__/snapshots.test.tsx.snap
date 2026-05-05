@@ -48,6 +48,14 @@ exports[`Spinner snapshots > initial frame (line) > ansi 1`] = `"[1;1H-   "`;
 
 exports[`Spinner snapshots > initial frame (line) > plain 1`] = `"-   "`;
 
+exports[`Tabs snapshots > first tab active > ansi 1`] = `"[1;1H[1;36m[Overview][0m  Logs   Settings             "`;
+
+exports[`Tabs snapshots > first tab active > plain 1`] = `"[Overview]  Logs   Settings             "`;
+
+exports[`Tabs snapshots > middle tab active with one disabled > ansi 1`] = `"[1;1H A  [1;36m[B][0m [2m C [0m                             "`;
+
+exports[`Tabs snapshots > middle tab active with one disabled > plain 1`] = `" A  [B]  C                              "`;
+
 exports[`TextArea snapshots > cursor parked at end of middle line > ansi 1`] = `"[1;1Hfoo[2;1Hb[2;4H[7m [0m"`;
 
 exports[`TextArea snapshots > cursor parked at end of middle line > plain 1`] = `"foob "`;
