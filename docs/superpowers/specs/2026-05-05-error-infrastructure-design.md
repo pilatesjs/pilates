@@ -343,7 +343,9 @@ The 16 existing `throw new Error('Pilates: …')` sites in the repo, mapped to t
 | `react/src/text-flatten.ts` | 23 | invalid Text child | `InvalidTextChild` |
 | `widgets/src/text-input.tsx` | 63 | `TextInput: mask must be a single grapheme, got "..." (... graphemes)` | `TextInputBadProp` (`meta: { propName: 'mask', received, graphemeCount }`) |
 
-**Migration guarantee:** every new `error.message` keeps the original payload (the offending value, the hook name, etc.) substring-intact, so any consumer test asserting on `expect(err.message).toContain('useApp')` continues to pass. The `Pilates:` prefix stays. New phrasing may add explanatory context after the substring; substring matchers tolerate that.
+**Migration guarantee:** every new `error.message` keeps the original payload (the offending value, the hook name, etc.) substring-intact, so any consumer test asserting on `expect(err.message).toContain('useApp')` continues to pass. New phrasing may add explanatory context after the substring; substring matchers tolerate that.
+
+**On the `"Pilates: "` prefix:** raw `error.message` does **not** include the `Pilates: ` prefix anymore — `formatPilatesError(err)` adds it at render time, so user-visible output (via the boundary fallback or Phase 2 overlay) still leads with `Pilates: …`. This avoids a double-prefix when consumers feed the error through `formatPilatesError`. Audit of the existing repo tests (`packages/react/src/focus.test.tsx:63,79`, `packages/react/src/render.test.tsx:525`) confirms no assertion checks for the `"Pilates:"` substring directly; all existing matchers use `.toMatch(/payload-only-fragment/)` or `.toContain('hook-name')`. Consumer-facing CHANGELOG entry calls out the prefix-source change.
 
 ## Did-you-mean for unknown JSX host types
 
@@ -429,7 +431,7 @@ This matches Node core's documented policy.
 
 | Risk | Mitigation |
 |---|---|
-| Existing consumers' tests assert on exact `error.message` text and break under migration | Migration guarantee preserves the original payload substring + `Pilates:` prefix in every new message. Run repo's full suite before merge. |
+| Existing consumers' tests assert on exact `error.message` text and break under migration | Migration guarantee preserves the original payload substring in every new message; the `Pilates: ` prefix moves into `formatPilatesError`. Existing repo tests audited (no `"Pilates:"` substring assertions; all use payload-only fragments). Run full suite before merge. |
 | `instanceof PilatesError` fails under pnpm hoisting / dual-publish | Symbol.for-tagged class + exported `isPilatesError` guard. Document both patterns in the README; recommend the guard. |
 | `process.env.NODE_ENV` not replaced by some bundler → hint table ships in prod bundle | Acceptable cost (~500 bytes for ~10 codes). Add conditional `exports` for dev/prod builds in a follow-up PR if anyone reports bundle-size bloat. |
 | Mutating `componentStack` on a thrown error surprises consumers | Documented in `PilatesErrorOptions` JSDoc as "set by reconciler glue, not user code". Field is mutable by design. |
