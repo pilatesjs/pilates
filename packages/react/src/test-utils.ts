@@ -45,6 +45,26 @@ function asSync(reconciler: ReturnType<typeof ReactReconciler>): SyncReconciler 
 }
 
 /**
+ * react-reconciler@0.31 expanded `createContainer` to take three error
+ * callbacks at positions 7-9: `onUncaughtError`, `onCaughtError`,
+ * `onRecoverableError`. The @types/react-reconciler@0.28.9 surface still
+ * shows the older 8-arg shape, so we cast at the call boundary. Without
+ * this, an ErrorBoundary catch lands in React's internal `logCaughtError`
+ * which calls `onCaughtError` and crashes with "is not a function".
+ */
+type CreateContainer14 = (
+  containerInfo: unknown,
+  tag: unknown,
+  hydrationCallbacks: unknown,
+  isStrictMode: boolean,
+  concurrentUpdatesByDefaultOverride: unknown,
+  identifierPrefix: string,
+  onUncaughtError: (err: Error, info: unknown) => void,
+  onCaughtError: (err: Error, info: unknown) => void,
+  onRecoverableError: (err: Error, info: unknown) => void,
+) => unknown;
+
+/**
  * Drain passive effects (useEffect callbacks) until the queue is empty,
  * re-flushing sync work after each round in case an effect scheduled new
  * state. The 8-iteration cap mirrors `render.tsx`'s settling loop and is a
@@ -90,7 +110,8 @@ export function renderToString(element: ReactElement, options: RenderToStringOpt
   // tests want the error to be observable synchronously.
   let captured: unknown = null;
   const reconciler = ReactReconciler(buildHostConfig());
-  const containerHandle = reconciler.createContainer(
+  const create14 = reconciler.createContainer as unknown as CreateContainer14;
+  const containerHandle = create14(
     container,
     LegacyRoot,
     null,
@@ -100,7 +121,8 @@ export function renderToString(element: ReactElement, options: RenderToStringOpt
     (err: Error) => {
       captured = err;
     },
-    null,
+    () => {},
+    () => {},
   );
   const sync = asSync(reconciler);
   sync.updateContainerSync(element, containerHandle, null, null);
@@ -155,7 +177,8 @@ export function mount<T>(
     onFlush: (ansi) => writes.push(ansi),
   };
   const reconciler = ReactReconciler(buildHostConfig());
-  const handle = reconciler.createContainer(
+  const create14 = reconciler.createContainer as unknown as CreateContainer14;
+  const handle = create14(
     container,
     LegacyRoot,
     null,
@@ -163,7 +186,8 @@ export function mount<T>(
     null,
     'pilates',
     () => {},
-    null,
+    () => {},
+    () => {},
   );
   const sync = asSync(reconciler);
   // Wrap reconciler ops in act() so passive effects (and any state updates
@@ -491,7 +515,8 @@ export function mountWithInput<T>(
     onFlush: (ansi) => writes.push(ansi),
   };
   const reconciler = ReactReconciler(buildHostConfig());
-  const handle = reconciler.createContainer(
+  const create14 = reconciler.createContainer as unknown as CreateContainer14;
+  const handle = create14(
     container,
     LegacyRoot,
     null,
@@ -499,7 +524,8 @@ export function mountWithInput<T>(
     null,
     'pilates',
     () => {},
-    null,
+    () => {},
+    () => {},
   );
   const sync = asSync(reconciler);
   // Wrap each reconciler operation in act() so that passive effects (useEffect

@@ -55,6 +55,22 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   inline (no `strip-ansi` runtime dep). The widgets package's
   internal `snap()` / `strip()` helpers are now thin re-exports of
   this.
+- `<ErrorBoundary>` — catches render-phase throws in its subtree and
+  renders a fallback instead of crashing the whole tree. Default fallback
+  is a single bold-red line `Render error: <message>` sized to fit any
+  viewport; consumers can pass a custom `fallback` (static `ReactNode` or
+  `(error, reset) => ReactNode`). `onError(error, info)` for logging /
+  telemetry; `resetKeys` clears the caught error when any array element
+  changes by `!==`. The class component implementation uses React's
+  built-in `getDerivedStateFromError` / `componentDidCatch` contract,
+  which means async errors and event-handler throws still bypass it
+  (the standard React boundary limitation). Sibling subtrees outside
+  the boundary continue rendering normally.
+- Internal: `createContainer` now wires `onCaughtError` and
+  `onRecoverableError` (react-reconciler@0.31's signature). The previous
+  8-arg call worked for happy paths but crashed inside React's
+  `logCaughtError` whenever an `<ErrorBoundary>` actually caught — the
+  bug stayed latent because no test exercised the boundary path until now.
 - `usePaste(handler)` — subscribes to xterm bracketed-paste payloads
   (DEC mode 2004). The handler receives the entire pasted text as one
   string (newlines / control bytes preserved), never as a flood of
