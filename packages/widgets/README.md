@@ -6,6 +6,7 @@ Interactive widgets for [Pilates](https://github.com/pilatesjs/pilates) terminal
 - **`<TextArea>`** — multi-line text editor with grapheme-aware cursor, paste preserves newlines
 - **`<Select>`** — single-select menu with keyboard navigation
 - **`<MultiSelect>`** — multi-select checklist; Space toggles, Enter submits the selection
+- **`<Tabs>`** — horizontal tab strip; arrow keys cycle through, controlled by activeKey
 - **`<Spinner>`** — animated progress indicator with built-in frame catalog
 - **`<ProgressBar>`** — determinate or indeterminate progress bar with custom colors and characters
 
@@ -149,6 +150,33 @@ visually).
 ```
 
 **Key bindings:** `↑`/`↓` move highlight (skip disabled, wrap-around); `Home`/`End` jump to first/last enabled; `Space` toggles the highlighted item's selection; `Enter` calls `onSubmit(selectedItems)`. The selection set is keyed by `item.key ?? String(item.value)`, and the array passed to `onSubmit` is ordered to match `items`.
+
+## `<Tabs>`
+
+Horizontal tab strip. Renders only the strip itself — the panel body is wired
+by the consumer based on `activeKey`.
+
+```tsx
+<Tabs
+  items={[
+    { key: 'overview', label: 'Overview' },
+    { key: 'logs', label: 'Logs' },
+    { key: 'settings', label: 'Settings', disabled: true },
+  ]}
+  activeKey={active}                  // controlled
+  onChange={setActive}                // (key: string) => void
+  focus={true}                        // optional, default true (ignored when focusId is set)
+  focusId="primary-tabs"              // optional — Tab cycling via useFocus
+  autoFocus                           // optional — paired with focusId
+/>
+
+{active === 'overview' && <OverviewPanel />}
+{active === 'logs'     && <LogsPanel />}
+```
+
+**Visual:** active tab renders as `[Label]` in cyan + bold; inactive tabs render as ` Label `; disabled tabs render dim. Tabs are separated by a single space.
+
+**Key bindings:** `←`/`→` cycle the active tab (skip disabled, wrap-around); `Home`/`End` jump to the first / last enabled tab. Activation is immediate — no separate highlight + commit step like `<Select>`. If `activeKey` matches no item (e.g., consumer passed a stale key), the next arrow press jumps to the first / last enabled tab.
 
 ## `<Spinner>`
 
