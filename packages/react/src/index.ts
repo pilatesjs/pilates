@@ -23,6 +23,14 @@ export type {
   UseFocusManagerValue,
 } from './focus.js';
 
+export { ErrorBoundary } from './error-boundary.js';
+export type {
+  ErrorBoundaryProps,
+  ErrorBoundaryFallback,
+  ErrorBoundaryFallbackProps,
+  ErrorBoundaryInfo,
+} from './error-boundary.js';
+
 // Render entry
 export { render } from './render.js';
 export type { RenderOptions, RenderInstance } from './render.js';

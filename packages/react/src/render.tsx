@@ -411,7 +411,32 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   const onUncaughtError = (err: Error) => finishUnmount(err, true);
   const onStreamError = (err: Error) => finishUnmount(err);
 
-  const handle = reconciler.createContainer(
+  // react-reconciler@0.31 takes onUncaughtError + onCaughtError +
+  // onRecoverableError at positions 7-9. The @types/react-reconciler@0.28.9
+  // surface still describes the older 8-arg shape, so we cast through the
+  // 14-arg form. Without onCaughtError as a function, an ErrorBoundary
+  // catch crashes inside React's logCaughtError ("is not a function").
+  type CreateContainer14 = (
+    a: unknown,
+    b: unknown,
+    c: unknown,
+    d: boolean,
+    e: unknown,
+    f: string,
+    onUncaught: (err: Error, info: unknown) => void,
+    onCaught: (err: Error, info: unknown) => void,
+    onRecoverable: (err: Error, info: unknown) => void,
+  ) => unknown;
+  const create14 = reconciler.createContainer as unknown as CreateContainer14;
+  const onCaughtError = (err: Error): void => {
+    // ErrorBoundary already produced a fallback UI. Surface the error to
+    // stderr so it isn't silently swallowed.
+    stderr.write(`Pilates: caught render error: ${err.message}\n`);
+  };
+  const onRecoverableError = (err: Error): void => {
+    stderr.write(`Pilates: recoverable render error: ${err.message}\n`);
+  };
+  const handle = create14(
     container,
     LegacyRoot,
     null,
@@ -419,7 +444,8 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
     null,
     'pilates',
     onUncaughtError,
-    null,
+    onCaughtError,
+    onRecoverableError,
   );
 
   const appValue: AppHookValue = {

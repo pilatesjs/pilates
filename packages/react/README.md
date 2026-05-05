@@ -172,6 +172,41 @@ Use `useFocusManager()` to drive cycling programmatically (`focus(id)`,
 `focusNext()`, `focusPrevious()`) or to suspend Tab handling
 (`disableFocus()` / `enableFocus()`).
 
+## Error boundaries
+
+Wrap a subtree in `<ErrorBoundary>` to catch render-phase throws without
+crashing the rest of the tree. Sibling subtrees outside the boundary
+continue rendering. The default fallback is a single bold-red line —
+`Render error: <message>` — sized to fit any viewport.
+
+```tsx
+import { ErrorBoundary, Box, Text } from '@pilates/react';
+
+<ErrorBoundary
+  fallback={(err, reset) => (
+    <Box flexDirection="column">
+      <Text color="red">{err.message}</Text>
+      <Text dim>Press R to retry</Text>
+    </Box>
+  )}
+  onError={(err, info) => log.error(err, info)}
+  resetKeys={[currentRoute]}
+>
+  <App />
+</ErrorBoundary>
+```
+
+| Prop | Notes |
+|---|---|
+| `fallback` | `ReactNode` (static) or `(error, reset) => ReactNode`. Defaults to a one-line `Render error: …` panel. |
+| `onError` | Called once per caught error with `(error, info)` where `info.componentStack` is provided by react-reconciler. Throws here are swallowed. |
+| `resetKeys` | When any element of this array changes (referential `!==`), the boundary clears its caught error and re-mounts children. Use to recover after the upstream cause has been fixed. |
+| `reset()` | Passed as the second arg to function fallbacks. Calling it clears the error. |
+
+ErrorBoundary catches render-phase errors only (the standard React
+contract). Async errors and event-handler throws need their own try/catch
+or a higher-level hook like `useApp().exit(err)`.
+
 ## render() options
 
 ```ts
