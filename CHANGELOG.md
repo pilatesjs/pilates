@@ -23,6 +23,19 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   test files, so `@ts-expect-error` directives that document API contracts
   are validated.
 
+### Added — `@pilates/core` (pre-1.0)
+
+- `setAspectRatio(value: number | undefined)` and `style.aspectRatio` —
+  CSS `aspect-ratio` (width / height). When set and exactly one of
+  `width` / `height` is a number (the other being `'auto'`), the auto
+  axis is derived as `set / aspectRatio` (height) or `set * aspectRatio`
+  (width). Both axes explicit ⇒ ratio is ignored. Min/max clamps still
+  apply on each axis after derivation. Honored by root sizing, flex
+  hypothetical / natural sizes, and the cross-stretch path so an
+  aspect-ratio-derived cross beats the default `align-items: stretch`.
+  `<Box aspectRatio={...} />` (via `@pilates/render`'s `LayoutProps`)
+  exposes the same prop to declarative consumers.
+
 ### Fixed — `@pilates/render` (pre-1.0)
 
 - `wrapText`: trailing whitespace is trimmed at wrap boundaries when a

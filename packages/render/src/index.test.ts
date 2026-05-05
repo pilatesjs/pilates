@@ -321,3 +321,24 @@ describe('render — practical layouts', () => {
     expect(lines[0]!.indexOf('Status')).toBeGreaterThan(15);
   });
 });
+
+describe('render — aspectRatio', () => {
+  it('derives child height from explicit width + aspectRatio', () => {
+    // Parent column 10×6. Child width=6, aspectRatio=2 → height=3.
+    // The bordered child should occupy a 6×3 area; the row beyond shows
+    // empty cells from the parent column.
+    const out = renderToFrame({
+      width: 10,
+      height: 6,
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      children: [{ width: 6, aspectRatio: 2, border: 'single' }],
+    }).toPlainString();
+    const lines = out.split('\n');
+    expect(lines[0]).toBe('┌────┐    ');
+    expect(lines[1]).toBe('│    │    ');
+    expect(lines[2]).toBe('└────┘    ');
+    // Rows 3-5 are blank parent fill.
+    expect(lines[3]).toBe('          ');
+  });
+});

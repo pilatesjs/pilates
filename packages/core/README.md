@@ -52,7 +52,7 @@ Setters mirror CSS Flexbox semantics. All values are in terminal cells.
 | Category | Setters |
 |---|---|
 | Direction | `setFlexDirection`, `setFlexWrap` |
-| Sizing | `setWidth`, `setHeight`, `setMinWidth`, `setMinHeight`, `setMaxWidth`, `setMaxHeight` |
+| Sizing | `setWidth`, `setHeight`, `setMinWidth`, `setMinHeight`, `setMaxWidth`, `setMaxHeight`, `setAspectRatio` |
 | Flex | `setFlex` (shorthand), `setFlexGrow`, `setFlexShrink`, `setFlexBasis` |
 | Spacing | `setPadding(edge, n)`, `setMargin(edge, n)`, `setGap('row' \| 'column', n)` |
 | Alignment | `setJustifyContent`, `setAlignItems`, `setAlignSelf`, `setAlignContent` |
@@ -96,7 +96,7 @@ Release candidate (`1.0.0-rc.1`). The full v1 surface is implemented and
 validated cell-for-cell against a reference WASM flexbox implementation
 across 30 oracle fixtures.
 
-**Out of v1:** `aspectRatio`, RTL/LTR direction inheritance, baseline alignment.
+**Out of v1:** RTL/LTR direction inheritance, baseline alignment.
 
 ## License
 

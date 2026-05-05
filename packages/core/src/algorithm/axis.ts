@@ -69,6 +69,28 @@ export function preferredSize(style: Style, axis: Axis): number | 'auto' {
   return axis === 'row' ? style.width : style.height;
 }
 
+/**
+ * Like `preferredSize`, but additionally derives the size from `aspectRatio`
+ * when this axis is `'auto'` and the perpendicular axis is an explicit number:
+ *   width = height * aspectRatio  (axis === 'row')
+ *   height = width  / aspectRatio (axis === 'column')
+ *
+ * If both axes are explicit, the explicit value on this axis wins (the ratio
+ * is treated as a hint, per the CSS aspect-ratio spec). If both are `'auto'`,
+ * we have nothing to derive from and return `'auto'`. The result is NOT
+ * clamped — callers are expected to feed it through `clampSize` so min/max
+ * still bind on each axis.
+ */
+export function effectivePreferredSize(style: Style, axis: Axis): number | 'auto' {
+  const s = preferredSize(style, axis);
+  if (typeof s === 'number') return s;
+  const ratio = style.aspectRatio;
+  if (ratio === undefined) return 'auto';
+  const other = preferredSize(style, axis === 'row' ? 'column' : 'row');
+  if (typeof other !== 'number') return 'auto';
+  return axis === 'row' ? other * ratio : other / ratio;
+}
+
 export function minSize(style: Style, axis: Axis): number {
   return axis === 'row' ? style.minWidth : style.minHeight;
 }

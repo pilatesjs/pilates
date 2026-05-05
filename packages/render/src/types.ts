@@ -80,6 +80,13 @@ export interface LayoutProps {
   minHeight?: number;
   maxWidth?: number;
   maxHeight?: number;
+  /**
+   * width / height ratio. When set and exactly one of `width` / `height` is a
+   * number (the other being `'auto'` or unset), the auto axis is derived as
+   * `set / aspectRatio` (height) or `set * aspectRatio` (width). Both axes
+   * explicit ⇒ ratio is ignored.
+   */
+  aspectRatio?: number;
   padding?: EdgeValue;
   margin?: EdgeValue;
   gap?: number | { row?: number; column?: number };

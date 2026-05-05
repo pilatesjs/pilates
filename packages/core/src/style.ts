@@ -2,7 +2,7 @@
  * Style types and defaults for the layout engine.
  *
  * The shape mirrors a subset of CSS Flexbox plus a few terminal-specific
- * choices (no aspect-ratio, no RTL direction, no baseline alignment in v1).
+ * choices (no RTL direction, no baseline alignment in v1).
  *
  * String-literal unions are preferred over numeric enums so that user code
  * reads naturally: `node.setFlexDirection('row')`. Internally we still
@@ -74,6 +74,15 @@ export interface Style {
   position: [number | undefined, number | undefined, number | undefined, number | undefined];
 
   display: Display;
+
+  /**
+   * width / height ratio. When set and exactly one of `width` / `height` is a
+   * number (the other being `'auto'`), the auto axis is derived as
+   * `set / aspectRatio` (height) or `set * aspectRatio` (width). When both
+   * dimensions are explicit, the ratio is ignored — explicit values win.
+   * Min/max clamps still apply on each axis after derivation.
+   */
+  aspectRatio: number | undefined;
 }
 
 export function defaultStyle(): Style {
@@ -107,5 +116,7 @@ export function defaultStyle(): Style {
     position: [undefined, undefined, undefined, undefined],
 
     display: 'flex',
+
+    aspectRatio: undefined,
   };
 }
