@@ -140,6 +140,16 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   dim. Same `focus` / `focusId` / `autoFocus` props as the other
   widgets. Stale `activeKey` (no matching item) recovers on the next
   arrow press by jumping to first / last enabled.
+- `<Table>` — tabular data display. Bold header row, horizontal `─`
+  divider, then one row per record. Per-column `width` (cells) /
+  `align` (`'left'` | `'right'` | `'center'`) / optional `render`
+  function for custom cell text. Values exceeding the column width
+  truncate to `width − 1` cells with a trailing `…`; wide-character
+  values (CJK / emoji) are measured via `stringWidth` from
+  `@pilates/core` so truncation never overshoots a wide grapheme.
+  Columns without `width` flex (16-cell fallback in v1; constrain
+  with a parent `<Box width=…>`). Out of v1: vertical separators,
+  wrapped multi-line cells, per-row selection, sorting / filtering.
 
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 

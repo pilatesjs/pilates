@@ -13,6 +13,7 @@ import { MultiSelect } from './multi-select.js';
 import { ProgressBar } from './progress-bar.js';
 import { Select, type SelectItem } from './select.js';
 import { Spinner } from './spinner.js';
+import { Table, type TableColumn } from './table.js';
 import { Tabs, type TabsItem } from './tabs.js';
 import { TextArea } from './text-area.js';
 import { TextInput } from './text-input.js';
@@ -100,6 +101,48 @@ describe('MultiSelect snapshots', () => {
           onChange: () => {},
         }),
       { width: 30, height: 5 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+});
+
+describe('Table snapshots', () => {
+  interface Person {
+    name: string;
+    age: number;
+    role: string;
+  }
+  const tableCols: TableColumn<Person>[] = [
+    { key: 'name', header: 'Name', width: 8 },
+    { key: 'age', header: 'Age', width: 4, align: 'right' },
+    { key: 'role', header: 'Role', width: 12 },
+  ];
+  const tableRows: Person[] = [
+    { name: 'Alice', age: 30, role: 'engineer' },
+    { name: 'Bob', age: 25, role: 'designer' },
+  ];
+
+  it('three-column table with two data rows', () => {
+    const h = mountWithInput(
+      0,
+      () => createElement(Table<Person>, { columns: tableCols, rows: tableRows }),
+      { width: 30, height: 4 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('truncates long values with ellipsis', () => {
+    const longRows: Person[] = [{ name: 'Bartholomew', age: 100, role: 'lead-architect' }];
+    const h = mountWithInput(
+      0,
+      () => createElement(Table<Person>, { columns: tableCols, rows: longRows }),
+      { width: 30, height: 3 },
     );
     const s = snap(h.lastWrite());
     expect(s.ansi).toMatchSnapshot('ansi');

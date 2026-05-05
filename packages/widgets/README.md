@@ -7,6 +7,7 @@ Interactive widgets for [Pilates](https://github.com/pilatesjs/pilates) terminal
 - **`<Select>`** — single-select menu with keyboard navigation
 - **`<MultiSelect>`** — multi-select checklist; Space toggles, Enter submits the selection
 - **`<Tabs>`** — horizontal tab strip; arrow keys cycle through, controlled by activeKey
+- **`<Table>`** — fixed-column tabular display with header, divider, alignment, ellipsis truncation
 - **`<Spinner>`** — animated progress indicator with built-in frame catalog
 - **`<ProgressBar>`** — determinate or indeterminate progress bar with custom colors and characters
 
@@ -177,6 +178,36 @@ by the consumer based on `activeKey`.
 **Visual:** active tab renders as `[Label]` in cyan + bold; inactive tabs render as ` Label `; disabled tabs render dim. Tabs are separated by a single space.
 
 **Key bindings:** `←`/`→` cycle the active tab (skip disabled, wrap-around); `Home`/`End` jump to the first / last enabled tab. Activation is immediate — no separate highlight + commit step like `<Select>`. If `activeKey` matches no item (e.g., consumer passed a stale key), the next arrow press jumps to the first / last enabled tab.
+
+## `<Table>`
+
+Tabular data display: bold headers, a horizontal divider, then one row per record.
+
+```tsx
+<Table
+  columns={[
+    { key: 'name', header: 'Name', width: 20 },
+    { key: 'age',  header: 'Age',  width: 4, align: 'right' },
+    { key: 'role', header: 'Role', width: 16,
+      render: (val, row) => `${val} (${row.team})` },
+  ]}
+  rows={people}
+/>
+```
+
+Each column declares:
+
+| Field | Notes |
+|---|---|
+| `key` | Property of the row used to look up this column's raw value. |
+| `header` | Bold text in the top row. |
+| `width?` | Cells. When omitted, the column flexes — 16-cell fallback in v1; a parent `<Box width=…>` constrains the visible area. |
+| `align?` | `'left'` (default), `'right'`, or `'center'`. |
+| `render?` | `(value, row) => string`. Receives the raw value and the full row; returns the cell's displayed text. Plain strings only in v1 — Table pads / truncates the result. |
+
+**Layout:** values longer than the column width are truncated to `width − 1` cells with a trailing `…`. Wide-character values (CJK, emoji) are measured via `stringWidth` from `@pilates/core` so truncation never overshoots a wide grapheme.
+
+**Out of v1:** vertical separators between columns, multi-line cells (wrap), per-row selection / highlight, sorting / filtering. Wrap selection-friendly variants in your own component or wait for a future `<DataTable>`.
 
 ## `<Spinner>`
 

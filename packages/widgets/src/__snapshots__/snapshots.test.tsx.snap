@@ -48,6 +48,14 @@ exports[`Spinner snapshots > initial frame (line) > ansi 1`] = `"[1;1H-   "`;
 
 exports[`Spinner snapshots > initial frame (line) > plain 1`] = `"-   "`;
 
+exports[`Table snapshots > three-column table with two data rows > ansi 1`] = `"[1;1H[1mName    [0m [1m Age[0m [1mRole        [0m    [2;1H──────────────────────────    [3;1HAlice      30 engineer        [4;1HBob        25 designer        "`;
+
+exports[`Table snapshots > three-column table with two data rows > plain 1`] = `"Name      Age Role            ──────────────────────────    Alice      30 engineer        Bob        25 designer        "`;
+
+exports[`Table snapshots > truncates long values with ellipsis > ansi 1`] = `"[1;1H[1mName    [0m [1m Age[0m [1mRole        [0m    [2;1H──────────────────────────    [3;1HBarthol…  100 lead-archit…    "`;
+
+exports[`Table snapshots > truncates long values with ellipsis > plain 1`] = `"Name      Age Role            ──────────────────────────    Barthol…  100 lead-archit…    "`;
+
 exports[`Tabs snapshots > first tab active > ansi 1`] = `"[1;1H[1;36m[Overview][0m  Logs   Settings             "`;
 
 exports[`Tabs snapshots > first tab active > plain 1`] = `"[Overview]  Logs   Settings             "`;

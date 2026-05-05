@@ -20,5 +20,8 @@ export type { MultiSelectProps, MultiSelectIndicatorProps } from './multi-select
 export { Tabs } from './tabs.js';
 export type { TabsItem, TabsProps } from './tabs.js';
 
+export { Table } from './table.js';
+export type { TableAlign, TableColumn, TableProps } from './table.js';
+
 export { ProgressBar } from './progress-bar.js';
 export type { ProgressBarProps } from './progress-bar.js';
