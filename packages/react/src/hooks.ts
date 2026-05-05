@@ -79,6 +79,14 @@ export interface StdinHookValue {
    * inactive releases its hold on raw mode; going active reclaims it.
    */
   setActive: (handler: (event: KeyEvent) => void, active: boolean) => void;
+  /**
+   * Subscribe a handler to bracketed-paste payloads (DEC mode 2004).
+   * The handler receives the entire pasted text in one call, with
+   * newlines / control bytes preserved verbatim — never as keystroke
+   * events. Returns an unsubscribe function. Bumps the same refcount
+   * as `subscribe`, so a paste-only app still activates raw mode.
+   */
+  subscribePaste: (handler: (text: string) => void) => () => void;
   /** True when the underlying stdin supports raw mode (typically `stdin.isTTY === true`). */
   isRawModeSupported: boolean;
 }
@@ -115,6 +123,36 @@ export function useStderr(): StderrHookValue {
   const v = useContext(StderrContext);
   if (!v) throw new Error('Pilates: useStderr() must be used inside <render>.');
   return v;
+}
+
+/**
+ * Subscribe to bracketed-paste payloads. The handler receives the entire
+ * pasted text in one call (newlines and control bytes preserved), never as
+ * a flood of keystroke events through `useInput`. Activating this hook
+ * also engages raw mode, so a paste-only app works without an additional
+ * `useInput` call.
+ */
+export function usePaste(handler: (text: string) => void): void {
+  const v = useContext(StdinContext);
+  if (!v) throw new Error('Pilates: usePaste() must be used inside <render>.');
+
+  // Same handler-ref pattern as useInput: keep a stable dispatch wrapper
+  // so the subscribe effect's deps don't churn on every parent render.
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  const dispatchRef = useRef<((text: string) => void) | null>(null);
+  if (dispatchRef.current === null) {
+    dispatchRef.current = (text: string) => handlerRef.current(text);
+  }
+
+  useEffect(() => {
+    const dispatch = dispatchRef.current;
+    if (dispatch === null) return;
+    const unsubscribe = v.subscribePaste(dispatch);
+    return () => {
+      unsubscribe();
+    };
+  }, [v]);
 }
 
 export function useInput(handler: (event: KeyEvent) => void, options: UseInputOptions = {}): void {

@@ -67,13 +67,14 @@ mount with a message that points at the offending tree.
 ## Hooks
 
 ```ts
-import { useApp, useInput, useStdout, useStderr, useWindowSize } from '@pilates/react';
+import { useApp, useInput, usePaste, useStdout, useStderr, useWindowSize } from '@pilates/react';
 
 const { exit } = useApp();                     // exit(error?: Error) tears down the render
 const { columns, rows } = useStdout();         // tracks SIGWINCH; re-renders on resize
 const { columns, rows } = useWindowSize();     // shorthand for just the dimensions
 const { write }        = useStderr();          // direct stderr access for log-style output
 useInput((event) => { /* ... */ });            // subscribe to keystrokes
+usePaste((text) => { /* ... */ });             // subscribe to bracketed-paste payloads
 ```
 
 | Hook | Returns | Notes |
@@ -83,6 +84,7 @@ useInput((event) => { /* ... */ });            // subscribe to keystrokes
 | `useWindowSize()` | `{ columns, rows }` | Convenience over `useStdout()` when you only need dimensions. Same resize behavior. |
 | `useStderr()` | `{ stderr, write }` | Use for log lines that should NOT participate in the diff loop. |
 | `useInput()` | `void` | Subscribe to keystrokes. `event.name` for arrows / specials, `event.ch` for printable, modifiers via `event.ctrl/alt/shift`. Lazy raw-mode lifecycle — stdin is untouched if no useInput is mounted. Pass `{ isActive: false }` to opt a handler out without unsubscribing. |
+| `usePaste()` | `void` | Subscribe to xterm bracketed-paste payloads (DEC mode 2004). The handler receives the entire pasted text in one call (newlines / control bytes preserved), so a multi-line paste does NOT fire Enter on every newline through `useInput`. Activates raw mode on its own; pairs with the lazy `\x1b[?2004h` / `\x1b[?2004l` lifecycle. |
 
 All hooks throw if called outside a `<render>` tree.
 

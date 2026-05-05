@@ -187,3 +187,75 @@ describe('key-parser edge cases', () => {
     expect(events).toEqual([{ ctrl: false, alt: false, shift: false, sequence: '\x1b[99q' }]);
   });
 });
+
+describe('key-parser bracketed paste', () => {
+  it('extracts the text between \\x1b[200~ and \\x1b[201~ as a paste, not events', () => {
+    // Paste content arrives via a separate `pastes` channel — never as
+    // keystroke events. Newlines and control bytes inside the paste must
+    // not turn into Enter / Ctrl-J / etc. presses.
+    const { events, pastes, remainder } = parse('\x1b[200~hello\x1b[201~');
+    expect(events).toEqual([]);
+    expect(pastes).toEqual(['hello']);
+    expect(remainder).toBe('');
+  });
+
+  it('does not interpret control bytes (newline, tab, ESC) inside paste payload', () => {
+    const { events, pastes, remainder } = parse('\x1b[200~line1\nline2\there\x1b[201~');
+    expect(events).toEqual([]);
+    expect(pastes).toEqual(['line1\nline2\there']);
+    expect(remainder).toBe('');
+  });
+
+  it('preserves keystrokes around the paste in a single chunk', () => {
+    // Real shells send `a` + paste + `b` as one chunk under fast typing.
+    const { events, pastes } = parse('a\x1b[200~XY\x1b[201~b');
+    expect(events.map((e) => e.ch)).toEqual(['a', 'b']);
+    expect(pastes).toEqual(['XY']);
+  });
+
+  it('returns an unterminated paste as remainder so the next chunk can complete it', () => {
+    const { events, pastes, remainder } = parse('\x1b[200~partial');
+    expect(events).toEqual([]);
+    expect(pastes).toEqual([]);
+    // Whole run from the start marker forward is held back so the next
+    // parse(remainder + nextChunk) call can find the closing 201~.
+    expect(remainder).toBe('\x1b[200~partial');
+  });
+
+  it('rejoins a paste split across chunks', () => {
+    const first = parse('\x1b[200~hello, ');
+    expect(first.pastes).toEqual([]);
+    expect(first.remainder).toBe('\x1b[200~hello, ');
+    const second = parse(`${first.remainder}world\x1b[201~`);
+    expect(second.events).toEqual([]);
+    expect(second.pastes).toEqual(['hello, world']);
+    expect(second.remainder).toBe('');
+  });
+
+  it('rejoins a paste when the closing marker itself is split across chunks', () => {
+    // The closing marker lands on the boundary: `\x1b[201` ends one chunk,
+    // `~` starts the next. The first chunk has no terminator visible yet.
+    const first = parse('\x1b[200~hi\x1b[201');
+    expect(first.pastes).toEqual([]);
+    expect(first.remainder).toBe('\x1b[200~hi\x1b[201');
+    const second = parse(`${first.remainder}~`);
+    expect(second.pastes).toEqual(['hi']);
+    expect(second.remainder).toBe('');
+  });
+
+  it('emits an empty paste for a zero-length payload', () => {
+    const { pastes } = parse('\x1b[200~\x1b[201~');
+    expect(pastes).toEqual(['']);
+  });
+
+  it('handles two pastes back-to-back in one chunk', () => {
+    const { events, pastes } = parse('\x1b[200~one\x1b[201~\x1b[200~two\x1b[201~');
+    expect(events).toEqual([]);
+    expect(pastes).toEqual(['one', 'two']);
+  });
+
+  it('passes through multi-byte UTF-8 inside a paste payload', () => {
+    const { pastes } = parse('\x1b[200~hi 日本 🎉\x1b[201~');
+    expect(pastes).toEqual(['hi 日本 🎉']);
+  });
+});

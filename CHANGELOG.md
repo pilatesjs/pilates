@@ -42,6 +42,14 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   inline (no `strip-ansi` runtime dep). The widgets package's
   internal `snap()` / `strip()` helpers are now thin re-exports of
   this.
+- `usePaste(handler)` — subscribes to xterm bracketed-paste payloads
+  (DEC mode 2004). The handler receives the entire pasted text as one
+  string (newlines / control bytes preserved), never as a flood of
+  keystroke events through `useInput` — so a multi-line paste no
+  longer fires Enter on every newline. The hook activates raw mode on
+  its own, so a paste-only app works without an additional `useInput`.
+  `render()` writes `\x1b[?2004h` on raw-mode entry and `\x1b[?2004l`
+  on exit, gated on the same TTY check that gates raw mode.
 
 ### Added — `@pilates/widgets` (next minor)
 
@@ -51,6 +59,11 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   cells across the bar at `interval` ms. Custom `fillChar` /
   `emptyChar` and `color` / `trackColor` are supported. Built from
   sibling `<Text>` spans (no nested-Text style inheritance needed).
+- `<TextInput>` consumes bracketed paste via `usePaste` — pasted text
+  inserts at the cursor as a single `onChange` call. CR / LF inside
+  the payload are stripped (single-line input); `<TextArea>` will
+  preserve them. Emoji / ZWJ clusters in the paste survive intact via
+  the existing grapheme-aware cursor model.
 
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 

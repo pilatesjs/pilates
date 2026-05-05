@@ -1,7 +1,27 @@
 import { mountWithInput } from '@pilates/react/test-utils';
-import { createElement, useState } from 'react';
+import { act, createElement, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { TextInput } from './text-input.js';
+
+// Bypass mountWithInput's per-press act() wrapping by emitting raw bytes
+// straight through the fake stdin — but still wrap the emit in act() so
+// any setState the paste triggers commits before subsequent assertions
+// or presses run on stale closures.
+function emitInAct(
+  handle: { fakeStdin: { emit: (event: string, ...args: unknown[]) => boolean } },
+  bytes: string,
+) {
+  const g = globalThis as Record<string, unknown>;
+  const prev = g.IS_REACT_ACT_ENVIRONMENT;
+  g.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    act(() => {
+      handle.fakeStdin.emit('data', bytes);
+    });
+  } finally {
+    g.IS_REACT_ACT_ENVIRONMENT = prev;
+  }
+}
 
 const opts = { width: 20, height: 1 };
 
@@ -530,6 +550,94 @@ describe('TextInput submit', () => {
       opts,
     );
     handle.pressKey('enter');
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+});
+
+describe('TextInput bracketed paste', () => {
+  it('inserts the entire pasted text in one onChange call', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: '', onChangeSpy: onChange }),
+      opts,
+    );
+    emitInAct(handle, '\x1b[200~hello world\x1b[201~');
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith('hello world');
+    handle.unmount();
+  });
+
+  it('inserts a paste at the cursor, splitting existing value', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'AC', onChangeSpy: onChange }),
+      opts,
+    );
+    handle.pressKey('right'); // cursor 0 → 1
+    emitInAct(handle, '\x1b[200~B\x1b[201~');
+    expect(onChange).toHaveBeenLastCalledWith('ABC');
+    handle.unmount();
+  });
+
+  it('strips newlines and carriage returns from the paste payload', () => {
+    // <TextInput> is single-line; embedded \n / \r would visually break the
+    // row. Drop them silently. (<TextArea> later will preserve them.)
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: '', onChangeSpy: onChange }),
+      opts,
+    );
+    emitInAct(handle, '\x1b[200~line1\nline2\r\nline3\x1b[201~');
+    expect(onChange).toHaveBeenCalledWith('line1line2line3');
+    handle.unmount();
+  });
+
+  it('ignores paste when focus=false', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () =>
+        createElement(ControlledTextInput, {
+          initial: 'abc',
+          onChangeSpy: onChange,
+          focus: false,
+        }),
+      opts,
+    );
+    emitInAct(handle, '\x1b[200~XYZ\x1b[201~');
+    expect(onChange).not.toHaveBeenCalled();
+    handle.unmount();
+  });
+
+  it('preserves emoji + ZWJ paste as a single grapheme cluster', () => {
+    // 👨‍👩‍👧 is one user-perceived character (ZWJ family). Pasting it should
+    // not split it mid-cluster, and cursor should land after the whole cluster.
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: '', onChangeSpy: onChange }),
+      opts,
+    );
+    emitInAct(handle, '\x1b[200~hi 👨‍👩‍👧\x1b[201~');
+    expect(onChange).toHaveBeenCalledWith('hi 👨‍👩‍👧');
+    // After paste, typing 'a' should append (not split the family).
+    handle.pressChar('a');
+    expect(onChange).toHaveBeenLastCalledWith('hi 👨‍👩‍👧a');
+    handle.unmount();
+  });
+
+  it('an empty paste payload is a no-op', () => {
+    const onChange = vi.fn<(v: string) => void>();
+    const handle = mountWithInput(
+      null,
+      () => createElement(ControlledTextInput, { initial: 'abc', onChangeSpy: onChange }),
+      opts,
+    );
+    emitInAct(handle, '\x1b[200~\x1b[201~');
     expect(onChange).not.toHaveBeenCalled();
     handle.unmount();
   });

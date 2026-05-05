@@ -2,11 +2,20 @@ import type { KeyEvent } from './hooks.js';
 
 export interface ParseResult {
   events: KeyEvent[];
+  /**
+   * Text payloads delivered via xterm bracketed paste (DEC mode 2004).
+   * Bytes between `\x1b[200~` and `\x1b[201~` are collected verbatim
+   * here — never interpreted as keystrokes — so newlines / control bytes
+   * inside a pasted block don't fire as Enter / Ctrl-J / etc.
+   */
+  pastes: string[];
   remainder: string;
 }
 
 const ASCII_PRINTABLE_MIN = 0x20;
 const ASCII_PRINTABLE_MAX = 0x7e;
+const PASTE_START = '\x1b[200~';
+const PASTE_END = '\x1b[201~';
 
 function isAsciiUppercase(ch: string): boolean {
   return ch.length === 1 && ch >= 'A' && ch <= 'Z';
@@ -14,12 +23,28 @@ function isAsciiUppercase(ch: string): boolean {
 
 export function parse(input: string): ParseResult {
   const events: KeyEvent[] = [];
+  const pastes: string[] = [];
   let i = 0;
   while (i < input.length) {
     const cp = input.codePointAt(i);
     if (cp === undefined) break;
     const ch = String.fromCodePoint(cp);
     const advance = ch.length;
+
+    // Bracketed paste — recognise before the generic CSI branch so the
+    // payload between markers is captured verbatim (no keystroke parsing).
+    if (cp === 0x1b && input.startsWith(PASTE_START, i)) {
+      const payloadStart = i + PASTE_START.length;
+      const end = input.indexOf(PASTE_END, payloadStart);
+      if (end === -1) {
+        // Closing marker not yet in the stream — hold the entire run
+        // (including the start marker) so the next chunk completes it.
+        return { events, pastes, remainder: input.slice(i) };
+      }
+      pastes.push(input.slice(payloadStart, end));
+      i = end + PASTE_END.length;
+      continue;
+    }
 
     if (cp === 0x1b && input[i + 1] === '[') {
       const csiStart = i + 2;
@@ -30,7 +55,7 @@ export function parse(input: string): ParseResult {
         csiEnd++;
       }
       if (csiEnd >= input.length) {
-        return { events, remainder: input.slice(i) };
+        return { events, pastes, remainder: input.slice(i) };
       }
       const params = input.slice(csiStart, csiEnd);
       const final = input[csiEnd]!;
@@ -44,7 +69,7 @@ export function parse(input: string): ParseResult {
 
     if (cp === 0x1b && input[i + 1] === 'O') {
       if (i + 2 >= input.length) {
-        return { events, remainder: input.slice(i) };
+        return { events, pastes, remainder: input.slice(i) };
       }
       const f = input[i + 2]!;
       const sequence = input.slice(i, i + 3);
@@ -64,11 +89,11 @@ export function parse(input: string): ParseResult {
         // Bare ESC at end-of-chunk could prefix a CSI/SS3/Alt sequence whose
         // remaining bytes haven't arrived yet. Hold it as remainder and let the
         // caller decide on a real-Escape timeout (xterm.js / ink behavior).
-        return { events, remainder: input.slice(i) };
+        return { events, pastes, remainder: input.slice(i) };
       }
       const next = input.codePointAt(i + 1);
       if (next === undefined) {
-        return { events, remainder: input.slice(i) };
+        return { events, pastes, remainder: input.slice(i) };
       }
       const nextCh = String.fromCodePoint(next);
       const sequence = `\x1b${nextCh}`;
@@ -164,7 +189,7 @@ export function parse(input: string): ParseResult {
     });
     i += advance;
   }
-  return { events, remainder: '' };
+  return { events, pastes, remainder: '' };
 }
 
 function decodeCsi(params: string, final: string, sequence: string): KeyEvent | null {
