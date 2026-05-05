@@ -107,6 +107,14 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   vertically with content; word-wrap inside lines and fixed-height
   scrolling viewports are deferred to v2. Same `focus` / `focusId` /
   `autoFocus` props as `<TextInput>`.
+- `<MultiSelect>` — checklist sibling of `<Select>`. Reuses `SelectItem`,
+  the same `↑`/`↓`/`Home`/`End` highlight navigation, and the same
+  `disabled` / focus props. Controlled via `selectedKeys: Set<string>`
+  + `onChange(next: Set<string>)`; `Space` toggles the highlighted
+  item, `Enter` calls `onSubmit` with the selected items in items-order.
+  Default 4-cell prefix combines a cursor column (`❯ ` / `  `) with a
+  checkbox column (`☑ ` / `☐ `); custom `indicator` function receives
+  `{ isHighlighted, isSelected, isDisabled }`.
 
 ## 2026-05-03 — `@pilates/react@0.2.2` + `@pilates/widgets@0.1.0-rc.2`
 

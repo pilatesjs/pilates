@@ -9,6 +9,7 @@
 import { mountWithInput, snapshot as snap } from '@pilates/react/test-utils';
 import { createElement, useState } from 'react';
 import { describe, expect, it } from 'vitest';
+import { MultiSelect } from './multi-select.js';
 import { ProgressBar } from './progress-bar.js';
 import { Select, type SelectItem } from './select.js';
 import { Spinner } from './spinner.js';
@@ -61,6 +62,42 @@ describe('Select snapshots', () => {
     const h = mountWithInput(
       0,
       () => createElement(Select, { items: itemsWithDisabled, onSelect: () => {} }),
+      { width: 30, height: 5 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+});
+
+describe('MultiSelect snapshots', () => {
+  it('default — first item highlighted, none selected', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(MultiSelect<string>, {
+          items,
+          selectedKeys: new Set<string>(),
+          onChange: () => {},
+        }),
+      { width: 30, height: 5 },
+    );
+    const s = snap(h.lastWrite());
+    expect(s.ansi).toMatchSnapshot('ansi');
+    expect(s.plain).toMatchSnapshot('plain');
+    h.unmount();
+  });
+
+  it('two selected — checked indicators on Apple and Cherry', () => {
+    const h = mountWithInput(
+      0,
+      () =>
+        createElement(MultiSelect<string>, {
+          items,
+          selectedKeys: new Set(['apple', 'cherry']),
+          onChange: () => {},
+        }),
       { width: 30, height: 5 },
     );
     const s = snap(h.lastWrite());

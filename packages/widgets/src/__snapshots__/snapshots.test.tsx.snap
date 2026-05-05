@@ -1,5 +1,13 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`MultiSelect snapshots > default — first item highlighted, none selected > ansi 1`] = `"[1;1H[36m❯ [0m☐ Apple                     [2;1H                              [3;1H  ☐ Banana                    [4;1H  ☐ Cherry                    [5;1H                              "`;
+
+exports[`MultiSelect snapshots > default — first item highlighted, none selected > plain 1`] = `"❯ ☐ Apple                                                     ☐ Banana                      ☐ Cherry                                                  "`;
+
+exports[`MultiSelect snapshots > two selected — checked indicators on Apple and Cherry > ansi 1`] = `"[1;1H[36m❯ [0m☑ Apple                    [2;1H                              [3;1H  ☐ Banana                    [4;1H  ☑ Cherry                   [5;1H                              "`;
+
+exports[`MultiSelect snapshots > two selected — checked indicators on Apple and Cherry > plain 1`] = `"❯ ☑ Apple                                                    ☐ Banana                      ☑ Cherry                                                 "`;
+
 exports[`ProgressBar snapshots > ASCII custom characters > ansi 1`] = `"[1;1H====------"`;
 
 exports[`ProgressBar snapshots > ASCII custom characters > plain 1`] = `"====------"`;

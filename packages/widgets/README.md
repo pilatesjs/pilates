@@ -5,6 +5,7 @@ Interactive widgets for [Pilates](https://github.com/pilatesjs/pilates) terminal
 - **`<TextInput>`** — single-line text input with cursor, password mask, placeholder
 - **`<TextArea>`** — multi-line text editor with grapheme-aware cursor, paste preserves newlines
 - **`<Select>`** — single-select menu with keyboard navigation
+- **`<MultiSelect>`** — multi-select checklist; Space toggles, Enter submits the selection
 - **`<Spinner>`** — animated progress indicator with built-in frame catalog
 - **`<ProgressBar>`** — determinate or indeterminate progress bar with custom colors and characters
 
@@ -125,6 +126,29 @@ visually).
 ```
 
 **Key bindings:** `↑`/`↓` move (skipping disabled, with wrap-around); `Home`/`End` jump to first/last enabled item; `Enter` calls `onSelect` (no-op if disabled).
+
+## `<MultiSelect>`
+
+```tsx
+<MultiSelect
+  items={[
+    { label: 'Apple', value: 'apple' },
+    { label: 'Banana', value: 'banana' },
+    { label: 'Cherry', value: 'cherry' },
+  ]}
+  selectedKeys={selected}             // Set<string>, controlled
+  onChange={setSelected}              // (next: Set<string>) => void — fires on Space toggle
+  onSubmit={(items) => ...}           // optional, fires on Enter, receives selected items
+  onHighlight={(item) => ...}         // optional
+  initialIndex={0}                    // optional
+  focus={true}                        // optional, default true (ignored when focusId is set)
+  focusId="checks"                    // optional — Tab cycling via useFocus
+  autoFocus                           // optional — paired with focusId
+  indicator={...}                     // optional, custom marker per row
+/>
+```
+
+**Key bindings:** `↑`/`↓` move highlight (skip disabled, wrap-around); `Home`/`End` jump to first/last enabled; `Space` toggles the highlighted item's selection; `Enter` calls `onSubmit(selectedItems)`. The selection set is keyed by `item.key ?? String(item.value)`, and the array passed to `onSubmit` is ordered to match `items`.
 
 ## `<Spinner>`
 
