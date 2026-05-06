@@ -10,7 +10,16 @@ import { PILATES_ERROR_HINTS, type PilatesErrorCode } from './codes.js';
 const PILATES_ERROR_TAG: unique symbol = Symbol.for('pilates.error');
 
 export interface PilatesErrorOptions {
-  /** Wrapped underlying error (ES2022 Error.cause). */
+  /**
+   * Wrapped underlying error (ES2022 Error.cause).
+   *
+   * For Sentry-friendly serialization via `toJSON()`, prefer passing an
+   * `Error` instance — `serializeCause()` flattens it to a plain
+   * `{ name, message, stack }` object. Non-Error causes are passed through
+   * unchanged in `toJSON()`; callers passing arbitrary objects are
+   * responsible for making sure those objects are JSON-serializable
+   * (no circular refs, no functions, no `Map`/`Set` instances).
+   */
   cause?: unknown;
   /**
    * React component stack at the throw point. Set by the reconciler glue
@@ -95,6 +104,12 @@ export function isPilatesError(e: unknown): e is PilatesError {
   );
 }
 
+/**
+ * Flatten an `Error` cause to `{ name, message, stack }` so `JSON.stringify`
+ * never trips on cyclic refs in the cause chain. Non-Error causes are
+ * returned unchanged — see `PilatesErrorOptions.cause` for the
+ * serializability contract on those.
+ */
 function serializeCause(c: unknown): unknown {
   if (c instanceof Error) {
     return { name: c.name, message: c.message, stack: c.stack };
