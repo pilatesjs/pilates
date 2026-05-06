@@ -69,7 +69,11 @@ function buildOurs(spec: SpecNode): Node {
 }
 
 function ourBoxes(node: Node): Box[] {
-  const out: Box[] = [{ ...node.getComputedLayout() }];
+  // Pilates' ComputedLayout includes scrollWidth/scrollHeight (a superset of
+  // Yoga's box). For oracle/property comparisons we use only the four Yoga
+  // fields.
+  const l = node.getComputedLayout();
+  const out: Box[] = [{ left: l.left, top: l.top, width: l.width, height: l.height }];
   for (let i = 0; i < node.getChildCount(); i++) {
     out.push(...ourBoxes(node.getChild(i)!));
   }
@@ -82,7 +86,8 @@ function flowChildBoxes(node: Node): Box[] {
   const out: Box[] = [];
   for (let i = 0; i < node.getChildCount(); i++) {
     const child = node.getChild(i)!;
-    out.push({ ...child.getComputedLayout() });
+    const l = child.getComputedLayout();
+    out.push({ left: l.left, top: l.top, width: l.width, height: l.height });
   }
   return out;
 }

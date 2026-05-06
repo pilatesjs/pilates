@@ -81,6 +81,16 @@ export class Node {
   /** See {@link scrollLeft}. */
   scrollTop = 0;
 
+  /** Read-only view of `_layout.scrollWidth`. See {@link scrollLeft}. */
+  get scrollWidth(): number {
+    return this._layout.scrollWidth;
+  }
+
+  /** Read-only view of `_layout.scrollHeight`. */
+  get scrollHeight(): number {
+    return this._layout.scrollHeight;
+  }
+
   /**
    * Read-only view of this node's style. Mutating the returned object is
    * blocked at the type level — call `setX()` methods to change style so

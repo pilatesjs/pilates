@@ -53,3 +53,47 @@ describe('algorithm — overflow:scroll preserves child natural size', () => {
     expect(child.getComputedLayout().width).toBe(100);
   });
 });
+
+describe('algorithm — scrollWidth / scrollHeight', () => {
+  it('overflow:scroll parent reports content size via scrollWidth/scrollHeight', () => {
+    const parent = Node.create();
+    parent.setWidth(50);
+    parent.setHeight(20);
+    parent.setOverflow('scroll');
+
+    // Two children stacked vertically: total content height = 30.
+    const a = Node.create();
+    a.setWidth(100);
+    a.setHeight(15);
+    parent.insertChild(a, 0);
+    const b = Node.create();
+    b.setWidth(80);
+    b.setHeight(15);
+    parent.insertChild(b, 1);
+
+    parent.calculateLayout();
+
+    // Children stack: viewport is 50×20, content is max(100,80)=100 wide,
+    // 15+15=30 tall.
+    expect(parent.scrollWidth).toBe(100);
+    expect(parent.scrollHeight).toBe(30);
+  });
+
+  it('overflow:visible parent has scrollWidth === width and scrollHeight === height', () => {
+    // For non-overflow nodes, scroll dimensions match viewport — content
+    // never exceeds the box.
+    const parent = Node.create();
+    parent.setWidth(50);
+    parent.setHeight(20);
+
+    const child = Node.create();
+    child.setWidth(30);
+    child.setHeight(10);
+    parent.insertChild(child, 0);
+
+    parent.calculateLayout();
+
+    expect(parent.scrollWidth).toBe(parent.getComputedLayout().width);
+    expect(parent.scrollHeight).toBe(parent.getComputedLayout().height);
+  });
+});
