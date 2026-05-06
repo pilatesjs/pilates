@@ -69,6 +69,19 @@ export class Node {
   readonly _layout: ComputedLayout = defaultLayout();
 
   /**
+   * Horizontal scroll offset. Mutable; defaults to 0. Read by the renderer
+   * when painting children of an `overflow !== 'visible'` node — children's
+   * paint origin is translated by `(-scrollLeft, -scrollTop)`. NOT clamped
+   * by this class — bounds clamping is the consumer's job (`<ScrollView>`
+   * clamps before writing). Direct mutation does not mark the node dirty
+   * because scroll offset is a paint-time concern, not layout.
+   */
+  scrollLeft = 0;
+
+  /** See {@link scrollLeft}. */
+  scrollTop = 0;
+
+  /**
    * Read-only view of this node's style. Mutating the returned object is
    * blocked at the type level — call `setX()` methods to change style so
    * `markDirty()` runs.

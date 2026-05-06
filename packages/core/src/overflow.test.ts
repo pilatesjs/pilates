@@ -37,3 +37,27 @@ describe('Node — setOverflow', () => {
     expect(n.isDirty()).toBe(true);
   });
 });
+
+describe('Node — scrollLeft / scrollTop', () => {
+  it('default scroll offsets are 0', () => {
+    const n = Node.create();
+    expect(n.scrollLeft).toBe(0);
+    expect(n.scrollTop).toBe(0);
+  });
+
+  it('scroll offsets are mutable', () => {
+    const n = Node.create();
+    n.scrollLeft = 5;
+    n.scrollTop = 12;
+    expect(n.scrollLeft).toBe(5);
+    expect(n.scrollTop).toBe(12);
+  });
+
+  it('changing scroll offsets does NOT mark the node dirty (paint-time concern, not layout)', () => {
+    const n = Node.create();
+    n.calculateLayout();
+    expect(n.isDirty()).toBe(false);
+    n.scrollTop = 7;
+    expect(n.isDirty()).toBe(false);
+  });
+});
