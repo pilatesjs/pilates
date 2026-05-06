@@ -11,6 +11,7 @@ import {
 } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
+import { isPilatesError } from './errors/index.js';
 import { FocusProvider, type FocusProviderProps } from './focus.js';
 import {
   AppContext,
@@ -408,7 +409,6 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
     else resolveExit();
   };
 
-  const onUncaughtError = (err: Error) => finishUnmount(err, true);
   const onStreamError = (err: Error) => finishUnmount(err);
 
   // react-reconciler@0.31 takes onUncaughtError + onCaughtError +
@@ -428,12 +428,31 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
     onRecoverable: (err: Error, info: unknown) => void,
   ) => unknown;
   const create14 = reconciler.createContainer as unknown as CreateContainer14;
-  const onCaughtError = (err: Error): void => {
+
+  // react-reconciler@0.31 passes `{ componentStack?: string }` as the second
+  // arg. The @types/react-reconciler surface types it as `unknown`, so we
+  // narrow inside the helper rather than at the callback signature.
+  const attachComponentStack = (error: Error, info: unknown): void => {
+    const stack = (info as { componentStack?: string } | null)?.componentStack;
+    if (isPilatesError(error) && stack && !error.componentStack) {
+      error.componentStack = stack;
+    }
+  };
+
+  const onUncaughtError = (err: Error, info: unknown): void => {
+    attachComponentStack(err, info);
+    finishUnmount(err, true);
+  };
+
+  const onCaughtError = (err: Error, info: unknown): void => {
+    attachComponentStack(err, info);
     // ErrorBoundary already produced a fallback UI. Surface the error to
     // stderr so it isn't silently swallowed.
     stderr.write(`Pilates: caught render error: ${err.message}\n`);
   };
-  const onRecoverableError = (err: Error): void => {
+
+  const onRecoverableError = (err: Error, info: unknown): void => {
+    attachComponentStack(err, info);
     stderr.write(`Pilates: recoverable render error: ${err.message}\n`);
   };
   const handle = create14(

@@ -3,6 +3,7 @@ import type { ContainerNode } from '@pilates/render';
 import { type ReactElement, act, createElement, useState } from 'react';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
+import { isPilatesError } from './errors/index.js';
 import { FocusProvider } from './focus.js';
 import {
   AppContext,
@@ -516,6 +517,15 @@ export function mountWithInput<T>(
   };
   const reconciler = ReactReconciler(buildHostConfig());
   const create14 = reconciler.createContainer as unknown as CreateContainer14;
+  // Mirror render.tsx: copy errorInfo.componentStack onto thrown PilatesErrors
+  // so tests using mountWithInput observe the same stack-attachment behavior
+  // production users get. No-op for non-PilatesError throws.
+  const attachStack = (err: Error, info: unknown): void => {
+    const stack = (info as { componentStack?: string } | null)?.componentStack;
+    if (isPilatesError(err) && stack && !err.componentStack) {
+      err.componentStack = stack;
+    }
+  };
   const handle = create14(
     container,
     LegacyRoot,
@@ -523,9 +533,9 @@ export function mountWithInput<T>(
     false,
     null,
     'pilates',
-    () => {},
-    () => {},
-    () => {},
+    attachStack,
+    attachStack,
+    attachStack,
   );
   const sync = asSync(reconciler);
   // Wrap each reconciler operation in act() so that passive effects (useEffect
