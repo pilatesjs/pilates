@@ -286,6 +286,86 @@ ErrorBoundary catches render-phase errors only (the standard React
 contract). Async errors and event-handler throws need their own try/catch
 or a higher-level hook like `useApp().exit(err)`.
 
+## Error handling
+
+`@pilates/react` throws `PilatesError` for every framework-level invariant.
+Errors carry a stable `code`, optional dev-only `hint`, structured `meta`,
+and a `componentStack` populated by the reconciler when a render-time error
+is caught.
+
+### Discriminating errors
+
+Prefer the `isPilatesError` guard over `instanceof PilatesError`. It uses a
+`Symbol.for('pilates.error')` tag that survives multiple copies of the
+library being loaded into the same process (pnpm hoisting / dual-publish
+edge cases):
+
+```ts
+import { isPilatesError, PilatesErrorCode } from '@pilates/react';
+
+try {
+  // ...
+} catch (e) {
+  if (isPilatesError(e) && e.code === PilatesErrorCode.HookOutsideRender) {
+    // recover
+  }
+}
+```
+
+### SemVer policy
+
+| Surface | Stable? |
+|---|---|
+| `error.code` (the string ID) | **Yes** — renaming a code is a major-version change |
+| `error instanceof PilatesError` / `isPilatesError(e)` | **Yes** |
+| Structured fields: `code`, `meta`, `componentStack`, `ownerStack` | **Yes** — adding new optional fields is non-breaking |
+| `toJSON()` output shape | **Yes** — adding new optional keys is non-breaking |
+| `error.message` text | **No** — may be reworded freely |
+| `error.hint` text and presence | **No** — dev-only, may be reworded freely |
+| Stack-trace formatting | **No** |
+
+This matches the policy used by Node core's error API.
+
+### Error code reference
+
+| Code | Thrown from |
+|---|---|
+| `PILATES_HOOK_OUTSIDE_RENDER` | `useApp`, `useStdout`, `useStderr`, `usePaste`, `useInput`, `useFocus`, `useFocusManager` outside a `render()`-mounted tree |
+| `PILATES_FOCUS_OUTSIDE_PROVIDER` | `useFocus()` outside `<FocusProvider>` |
+| `PILATES_DUPLICATE_FOCUS_ID` | Two simultaneous `useFocus({ id })` calls with the same id |
+| `PILATES_FOCUS_ID_NOT_FOUND` | `useFocusManager().focus(id)` called with an unregistered id |
+| `PILATES_FOCUS_INPUT_BRIDGE_OUTSIDE_PROVIDER` | Internal — indicates a corrupted install if user-visible |
+| `PILATES_UNKNOWN_HOST_TYPE` | JSX with a host element that isn't a Pilates component (e.g. `<div>`) |
+| `PILATES_BARE_STRING_AT_ROOT` | A raw string at the `<render>` root |
+| `PILATES_BARE_STRING_IN_BOX` | A raw string as a `<Box>` child |
+| `PILATES_STRING_FRAGMENT_INVARIANT` | Internal invariant — file an issue if you hit one |
+| `PILATES_INVALID_TEXT_CHILD` | A non-string, non-`<Text>` child of `<Text>` |
+| `PILATES_TEXTINPUT_BAD_PROP` | `<TextInput>` received a malformed prop |
+
+### Format helpers
+
+`formatPilatesError(err)` returns a multi-line string suitable for printing
+into the terminal: `Pilates: <message>` followed by an indented `hint:` line
+(in dev mode) and a `caused by:` chain (recursive on `error.cause`):
+
+```ts
+import { formatPilatesError } from '@pilates/react';
+
+try {
+  // ...
+} catch (e) {
+  console.error(formatPilatesError(e));
+}
+```
+
+### Source maps
+
+Pilates emits `.js.map` alongside its compiled output. Run your app with
+`node --enable-source-maps your-cli.js` to make stack traces point at the
+original `.ts` source rather than the published `dist/` files. Pilates
+deliberately does **not** bundle a runtime `source-map-support` patch: a
+library mutating `Error.prepareStackTrace` is hostile to its host.
+
 ## render() options
 
 ```ts
