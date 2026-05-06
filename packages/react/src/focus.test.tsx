@@ -60,7 +60,7 @@ describe('useFocus — registration & basics', () => {
     }
     const handle = mountWithInput(0, () => <App />, { ...opts, disableFocus: true });
     expect(captured).toBeInstanceOf(Error);
-    expect((captured as Error).message).toMatch(/must be used inside <render>/);
+    expect((captured as Error).message).toMatch(/inside a tree wrapped by <FocusProvider>/);
     handle.unmount();
   });
 
@@ -76,7 +76,7 @@ describe('useFocus — registration & basics', () => {
     }
     const handle = mountWithInput(0, () => <App />, { ...opts, disableFocus: true });
     expect(captured).toBeInstanceOf(Error);
-    expect((captured as Error).message).toMatch(/must be used inside <render>/);
+    expect((captured as Error).message).toMatch(/inside a tree wrapped by <FocusProvider>/);
     handle.unmount();
   });
 

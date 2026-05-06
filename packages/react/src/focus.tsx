@@ -334,8 +334,8 @@ export function useFocus(options: UseFocusOptions = {}): UseFocusValue {
   const ctx = useContext(FocusContext);
   if (!ctx)
     throw new PilatesError(
-      PilatesErrorCode.HookOutsideRender,
-      'useFocus() must be used inside <render>.',
+      PilatesErrorCode.FocusOutsideProvider,
+      'useFocus() must be called inside a tree wrapped by <FocusProvider>.',
       { meta: { hookName: 'useFocus' } },
     );
 
@@ -402,8 +402,8 @@ export function useFocusManager(): UseFocusManagerValue {
   const ctx = useContext(FocusContext);
   if (!ctx)
     throw new PilatesError(
-      PilatesErrorCode.HookOutsideRender,
-      'useFocusManager() must be used inside <render>.',
+      PilatesErrorCode.FocusOutsideProvider,
+      'useFocusManager() must be called inside a tree wrapped by <FocusProvider>.',
       { meta: { hookName: 'useFocusManager' } },
     );
   return {
