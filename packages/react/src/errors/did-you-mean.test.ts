@@ -3,14 +3,14 @@ import { didYouMean } from './did-you-mean.js';
 
 describe('didYouMean — TypeScript-style suggestion heuristic', () => {
   describe('short input (n < 3)', () => {
-    it('returns case-insensitive exact match', () => {
-      expect(didYouMean('Bx', ['Box', 'Text'])).toBeUndefined(); // n=2, no exact
+    it('returns the candidate on case-insensitive exact match', () => {
       expect(didYouMean('Bo', ['Bo', 'Box'])).toBe('Bo');
       expect(didYouMean('bo', ['Bo'])).toBe('Bo');
     });
 
     it('returns undefined when no exact match for n<3', () => {
       expect(didYouMean('Bx', ['Box'])).toBeUndefined();
+      expect(didYouMean('Bx', ['Box', 'Text'])).toBeUndefined();
     });
   });
 

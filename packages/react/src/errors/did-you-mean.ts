@@ -17,15 +17,14 @@ export function didYouMean(input: string, candidates: readonly string[]): string
   }
   const n = input.length;
   const maxLenDiff = Math.min(2, Math.floor(n * 0.34));
-  // maxDist is the largest accepted edit distance (inclusive); we use
-  // `d < bestDist`, so seed bestDist one past the threshold.
-  let bestDist = Math.floor(n * 0.4) + 2;
+  const maxDist = Math.floor(n * 0.4) + 1;
+  let bestDist = Number.POSITIVE_INFINITY;
   let best: string | undefined;
   const lowered = input.toLowerCase();
   for (const c of candidates) {
     if (Math.abs(c.length - n) > maxLenDiff) continue;
     const d = levenshtein(lowered, c.toLowerCase());
-    if (d < bestDist) {
+    if (d <= maxDist && d < bestDist) {
       bestDist = d;
       best = c;
     }
