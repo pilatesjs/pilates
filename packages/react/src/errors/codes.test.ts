@@ -40,6 +40,10 @@ describe('PilatesErrorCode', () => {
 });
 
 describe('PILATES_ERROR_HINTS — dev-only table', () => {
+  it('precondition: NODE_ENV is not production (so the hint table is populated)', () => {
+    expect(process.env.NODE_ENV).not.toBe('production');
+  });
+
   it('contains a non-empty hint for at least each code that has one in the spec', () => {
     expect(PILATES_ERROR_HINTS[PilatesErrorCode.HookOutsideRender]).toMatch(/render/i);
     expect(PILATES_ERROR_HINTS[PilatesErrorCode.UnknownHostType]).toMatch(/host/i);
