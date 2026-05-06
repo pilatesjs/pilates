@@ -9,6 +9,8 @@
  * attrs. Future versions may add inheritance via context.
  */
 
+import type { Overflow } from '@pilates/core';
+
 /**
  * Named ANSI colors plus 24-bit hex strings ('#ff5500') plus 256-color palette
  * indices (0-255).
@@ -102,6 +104,12 @@ export interface LayoutProps {
     left?: number;
   };
   display?: Display;
+  overflow?: Overflow;
+  overflowX?: Overflow;
+  overflowY?: Overflow;
+  /** Initial scroll offset; `<ScrollView>` typically owns this via mutation. */
+  scrollLeft?: number;
+  scrollTop?: number;
 }
 
 /** Visual attributes for borders / text. */

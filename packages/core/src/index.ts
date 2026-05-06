@@ -12,6 +12,7 @@ export type {
   FlexWrap,
   Justify,
   Length,
+  Overflow,
   PositionType,
   Style,
 } from './style.js';
