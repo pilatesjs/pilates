@@ -54,3 +54,19 @@ export type {
   PositionType,
   Wrap,
 } from '@pilates/render';
+
+// Error infrastructure (Phase 1)
+export {
+  PILATES_ERROR_HINTS,
+  PilatesError,
+  PilatesErrorCode,
+  didYouMean,
+  formatPilatesError,
+  isPilatesError,
+  suggestHostTypeReplacement,
+} from './errors/index.js';
+export type {
+  HostTypeSuggestion,
+  PilatesErrorJSON,
+  PilatesErrorOptions,
+} from './errors/index.js';
