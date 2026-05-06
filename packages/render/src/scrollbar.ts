@@ -5,6 +5,8 @@
  * scrollbar UI in a future iteration).
  */
 
+import type { CellStyle, Frame } from './frame.js';
+
 export interface ThumbGeometryInput {
   /** Total content size along the scrolling axis (pixels in CSS; cells here). */
   contentSize: number;
@@ -49,4 +51,47 @@ export function thumbGeometry(input: ThumbGeometryInput): ThumbGeometry {
     thumbStart: Math.min(thumbStart, trackScrollable),
     thumbLength,
   };
+}
+
+export interface PaintScrollbarOpts {
+  orientation: 'vertical' | 'horizontal';
+  /** Track origin + length, in `Frame` coordinates. */
+  gutter: { x: number; y: number; length: number };
+  contentSize: number;
+  viewportSize: number;
+  scrollOffset: number;
+  thumbChar: string;
+  trackChar: string;
+  thumbStyle?: CellStyle;
+  trackStyle?: CellStyle;
+}
+
+const DEFAULT_STYLE: CellStyle = { fg: undefined, bg: undefined, attrs: 0 };
+
+/**
+ * Paint a scrollbar into the frame. Track is filled with `trackChar`;
+ * thumb (computed via `thumbGeometry`) overwrites with `thumbChar`. Used
+ * by the painter when a node has `overflow: scroll` or
+ * `overflow: auto` with overflowing content.
+ */
+export function paintScrollbar(frame: Frame, opts: PaintScrollbarOpts): void {
+  const geom = thumbGeometry({
+    contentSize: opts.contentSize,
+    viewportSize: opts.viewportSize,
+    scrollOffset: opts.scrollOffset,
+    trackLength: opts.gutter.length,
+  });
+  const trackStyle = opts.trackStyle ?? DEFAULT_STYLE;
+  const thumbStyle = opts.thumbStyle ?? DEFAULT_STYLE;
+
+  for (let i = 0; i < opts.gutter.length; i++) {
+    const isThumb = i >= geom.thumbStart && i < geom.thumbStart + geom.thumbLength;
+    const ch = isThumb ? opts.thumbChar : opts.trackChar;
+    const style = isThumb ? thumbStyle : trackStyle;
+    if (opts.orientation === 'vertical') {
+      frame.setGrapheme(opts.gutter.x, opts.gutter.y + i, ch, style);
+    } else {
+      frame.setGrapheme(opts.gutter.x + i, opts.gutter.y, ch, style);
+    }
+  }
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { thumbGeometry } from './scrollbar.js';
+import { Frame } from './frame.js';
+import { paintScrollbar, thumbGeometry } from './scrollbar.js';
 
 describe('thumbGeometry', () => {
   it('thumb spans the full track when content fits', () => {
@@ -65,5 +66,45 @@ describe('thumbGeometry', () => {
     });
     expect(g.thumbStart).toBe(0);
     expect(g.thumbLength).toBe(0);
+  });
+});
+
+describe('paintScrollbar — vertical', () => {
+  it('paints thumb and track in the right gutter', () => {
+    const f = new Frame(5, 4);
+    paintScrollbar(f, {
+      orientation: 'vertical',
+      gutter: { x: 4, y: 0, length: 4 },
+      contentSize: 10,
+      viewportSize: 4,
+      scrollOffset: 0,
+      thumbChar: '█',
+      trackChar: '·',
+    });
+    // viewport=4, content=10 → thumb = round(4 * 4/10) = 2; thumbStart=0.
+    // So column 4: ['█', '█', '·', '·'].
+    expect(f.getCell(4, 0)?.char).toBe('█');
+    expect(f.getCell(4, 1)?.char).toBe('█');
+    expect(f.getCell(4, 2)?.char).toBe('·');
+    expect(f.getCell(4, 3)?.char).toBe('·');
+  });
+});
+
+describe('paintScrollbar — horizontal', () => {
+  it('paints thumb and track in the bottom gutter', () => {
+    const f = new Frame(4, 5);
+    paintScrollbar(f, {
+      orientation: 'horizontal',
+      gutter: { x: 0, y: 4, length: 4 },
+      contentSize: 10,
+      viewportSize: 4,
+      scrollOffset: 0,
+      thumbChar: '█',
+      trackChar: '·',
+    });
+    expect(f.getCell(0, 4)?.char).toBe('█');
+    expect(f.getCell(1, 4)?.char).toBe('█');
+    expect(f.getCell(2, 4)?.char).toBe('·');
+    expect(f.getCell(3, 4)?.char).toBe('·');
   });
 });
