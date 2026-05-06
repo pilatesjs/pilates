@@ -22,7 +22,7 @@ describe('flattenText', () => {
   it('throws if a fragment is something other than TextFragment or TextInstance', () => {
     const bad = { kind: 'box', node: {} } as unknown as TextInstance['fragments'][number];
     expect(() => flattenText(textInst([bad]))).toThrow(
-      /Pilates: <Text> children must be string, number, <Text>, or <Newline>/,
+      /<Text> children must be string, number, <Text>, or <Newline>/,
     );
   });
 });

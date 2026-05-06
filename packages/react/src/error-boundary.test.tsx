@@ -2,6 +2,7 @@ import { Component, type ReactNode, act, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Text } from './components.js';
 import { ErrorBoundary } from './error-boundary.js';
+import { PilatesError, PilatesErrorCode, isPilatesError } from './errors/index.js';
 import { mountWithInput, renderToString } from './test-utils.js';
 
 // Wrap a side-effecting call in React 19's act() so any setState it triggers
@@ -274,6 +275,115 @@ describe('ErrorBoundary — fallback shapes', () => {
       // After reset, children re-render — and since shouldCrash is now false,
       // they render normally.
       expect(stripSGR(handle.lastWrite())).toContain('ok');
+      handle.unmount();
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+});
+
+describe('ErrorBoundary — PilatesError componentStack capture', () => {
+  it('attaches errorInfo.componentStack onto a thrown PilatesError', () => {
+    const origConsoleError = console.error;
+    console.error = () => {};
+    try {
+      let captured: unknown = null;
+      function Bomb(): never {
+        throw new PilatesError(PilatesErrorCode.HookOutsideRender, 'kaboom');
+      }
+      function App() {
+        return (
+          <ErrorBoundary
+            onError={(err) => {
+              captured = err;
+            }}
+          >
+            <Bomb />
+          </ErrorBoundary>
+        );
+      }
+      const handle = mountWithInput(0, () => <App />, { width: 20, height: 1 });
+      expect(isPilatesError(captured)).toBe(true);
+      if (isPilatesError(captured)) {
+        expect(captured.componentStack).toMatch(/Bomb/);
+        expect(captured.componentStack).toMatch(/App/);
+      }
+      handle.unmount();
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+});
+
+describe('ErrorBoundary — default fallback formatting', () => {
+  it('default fallback shows Pilates: <message> for a PilatesError', () => {
+    const origConsoleError = console.error;
+    console.error = () => {};
+    try {
+      function Bomb(): never {
+        throw new PilatesError(
+          PilatesErrorCode.HookOutsideRender,
+          'useApp() must be used inside <render>.',
+        );
+      }
+      const handle = mountWithInput(
+        0,
+        () => (
+          <ErrorBoundary>
+            <Bomb />
+          </ErrorBoundary>
+        ),
+        { width: 80, height: 3 },
+      );
+      expect(handle.lastWrite()).toContain('Pilates:');
+      expect(handle.lastWrite()).toContain('useApp');
+      handle.unmount();
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+
+  it('default fallback appends the hint when present (dev mode)', () => {
+    const origConsoleError = console.error;
+    console.error = () => {};
+    try {
+      function Bomb(): never {
+        throw new PilatesError(PilatesErrorCode.HookOutsideRender, 'x');
+      }
+      const handle = mountWithInput(
+        0,
+        () => (
+          <ErrorBoundary>
+            <Bomb />
+          </ErrorBoundary>
+        ),
+        { width: 200, height: 3 },
+      );
+      // Dev mode (NODE_ENV=test): hint should be present in parens after message.
+      expect(handle.lastWrite()).toMatch(/\(.*render.*\)/i);
+      handle.unmount();
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+
+  it('default fallback uses Render error: prefix for non-PilatesError', () => {
+    const origConsoleError = console.error;
+    console.error = () => {};
+    try {
+      function Bomb(): never {
+        throw new Error('some plain error');
+      }
+      const handle = mountWithInput(
+        0,
+        () => (
+          <ErrorBoundary>
+            <Bomb />
+          </ErrorBoundary>
+        ),
+        { width: 60, height: 3 },
+      );
+      expect(handle.lastWrite()).toContain('Render error: some plain error');
       handle.unmount();
     } finally {
       console.error = origConsoleError;

@@ -3,6 +3,7 @@ import type { RenderNode } from '@pilates/render';
 import { renderToFrame } from '@pilates/render';
 import type { HostConfig } from 'react-reconciler';
 import { DefaultEventPriority, DiscreteEventPriority } from 'react-reconciler/constants.js';
+import { PilatesError, PilatesErrorCode, suggestHostTypeReplacement } from './errors/index.js';
 import type {
   AnyInstance,
   BoxInstance,
@@ -187,7 +188,20 @@ function createInstance(type: string, props: Record<string, unknown>): HostInsta
       parent: null,
     } as TextInstance;
   }
-  throw new Error(`Pilates: unknown host type "${type}"`);
+  {
+    const suggestion = suggestHostTypeReplacement(type);
+    let message: string;
+    if (suggestion?.kind === 'html') {
+      message = `unknown host type "${type}" — Pilates is not HTML; use <${suggestion.component}> instead`;
+    } else if (suggestion?.kind === 'spelling') {
+      message = `unknown host type "${type}" — did you mean "${suggestion.component}"?`;
+    } else {
+      message = `unknown host type "${type}"`;
+    }
+    throw new PilatesError(PilatesErrorCode.UnknownHostType, message, {
+      meta: { received: type, suggestion: suggestion ?? null },
+    });
+  }
 }
 
 function appendChildImpl(parent: HostInstance, child: AnyInstance): void {
@@ -213,14 +227,17 @@ function appendChildImpl(parent: HostInstance, child: AnyInstance): void {
       reflattenAncestors(parent);
       return;
     }
-    throw new Error(
-      `Pilates: <Text> children must be string, number, <Text>, or <Newline>. Got: ${(child as { kind?: string }).kind}`,
+    throw new PilatesError(
+      PilatesErrorCode.InvalidTextChild,
+      `<Text> children must be string, number, <Text>, or <Newline>. Got: ${(child as { kind?: string }).kind}`,
+      { meta: { received: (child as { kind?: string }).kind } },
     );
   }
   // Box parent
   if (child.kind === 'fragment') {
-    throw new Error(
-      'Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.',
+    throw new PilatesError(
+      PilatesErrorCode.BareStringInBox,
+      'bare strings are not allowed as <Box> children. Wrap them in <Text>.',
     );
   }
   parent.node.children = parent.node.children ?? [];
@@ -237,7 +254,10 @@ function finalizeText(instance: HostInstance): void {
 
 function appendChildToContainer(container: RootContainer, child: AnyInstance): void {
   if (child.kind === 'fragment') {
-    throw new Error('Pilates: bare strings are not allowed at the root. Wrap them in <Text>.');
+    throw new PilatesError(
+      PilatesErrorCode.BareStringAtRoot,
+      'bare strings are not allowed at the root. Wrap them in <Text>.',
+    );
   }
   container.root.children = container.root.children ?? [];
   const arr = container.root.children as RenderNode[];
@@ -260,17 +280,23 @@ function insertBeforeImpl(parent: HostInstance, child: AnyInstance, before: AnyI
       reflattenAncestors(parent);
       return;
     }
-    throw new Error(
-      `Pilates: <Text> children must be string, number, <Text>, or <Newline>. Got: ${(child as { kind?: string }).kind}`,
+    throw new PilatesError(
+      PilatesErrorCode.InvalidTextChild,
+      `<Text> children must be string, number, <Text>, or <Newline>. Got: ${(child as { kind?: string }).kind}`,
+      { meta: { received: (child as { kind?: string }).kind } },
     );
   }
   if (child.kind === 'fragment') {
-    throw new Error(
-      'Pilates: bare strings are not allowed as <Box> children. Wrap them in <Text>.',
+    throw new PilatesError(
+      PilatesErrorCode.BareStringInBox,
+      'bare strings are not allowed as <Box> children. Wrap them in <Text>.',
     );
   }
   if (before.kind === 'fragment') {
-    throw new Error('Pilates: invariant — Box children should never be string fragments.');
+    throw new PilatesError(
+      PilatesErrorCode.StringFragmentInvariant,
+      'invariant — Box children should never be string fragments.',
+    );
   }
   parent.node.children ??= [];
   const arr = parent.node.children as RenderNode[];
@@ -287,10 +313,16 @@ function insertBeforeContainerImpl(
   before: AnyInstance,
 ): void {
   if (child.kind === 'fragment') {
-    throw new Error('Pilates: bare strings are not allowed at the root. Wrap them in <Text>.');
+    throw new PilatesError(
+      PilatesErrorCode.BareStringAtRoot,
+      'bare strings are not allowed at the root. Wrap them in <Text>.',
+    );
   }
   if (before.kind === 'fragment') {
-    throw new Error('Pilates: invariant — root children should never be string fragments.');
+    throw new PilatesError(
+      PilatesErrorCode.StringFragmentInvariant,
+      'invariant — root children should never be string fragments.',
+    );
   }
   container.root.children ??= [];
   const arr = container.root.children as RenderNode[];

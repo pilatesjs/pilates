@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { PilatesError, PilatesErrorCode } from './errors/index.js';
 import { useInput } from './hooks.js';
 
 // ---------------------------------------------------------------------------
@@ -182,8 +183,10 @@ export function FocusProvider({
       // duplicate-key behavior. Throw in dev so apps surface the bug; warn
       // only in production where DEV is undefined or false.
       if (process.env.NODE_ENV !== 'production') {
-        throw new Error(
-          `Pilates: useFocus({ id: "${id}" }) — duplicate registration. Each focusable must have a unique id.`,
+        throw new PilatesError(
+          PilatesErrorCode.DuplicateFocusId,
+          `useFocus({ id: "${id}" }) — duplicate registration. Each focusable must have a unique id.`,
+          { meta: { focusId: id } },
         );
       }
       process.stderr.write(
@@ -224,8 +227,10 @@ export function FocusProvider({
     if (!state.isEnabled) return;
     if (!state.registrations.has(id)) {
       if (process.env.NODE_ENV !== 'production') {
-        throw new Error(
-          `Pilates: useFocusManager().focus("${id}") — no focusable with id "${id}" is mounted.`,
+        throw new PilatesError(
+          PilatesErrorCode.FocusIdNotFound,
+          `useFocusManager().focus("${id}") — no focusable with id "${id}" is mounted.`,
+          { meta: { focusId: id } },
         );
       }
       process.stderr.write(
@@ -299,7 +304,11 @@ function FocusInputBridge({
   children?: ReactNode;
 }) {
   const ctx = useContext(FocusContext);
-  if (!ctx) throw new Error('Pilates: FocusInputBridge mounted outside FocusProvider.');
+  if (!ctx)
+    throw new PilatesError(
+      PilatesErrorCode.FocusInputBridgeOutsideProvider,
+      'FocusInputBridge mounted outside FocusProvider.',
+    );
   useInput((event) => {
     if (!ctx.isEnabled) return;
     if (event.name === 'tab' && event.shift) {
@@ -323,7 +332,12 @@ function FocusInputBridge({
 
 export function useFocus(options: UseFocusOptions = {}): UseFocusValue {
   const ctx = useContext(FocusContext);
-  if (!ctx) throw new Error('Pilates: useFocus() must be used inside <render>.');
+  if (!ctx)
+    throw new PilatesError(
+      PilatesErrorCode.FocusOutsideProvider,
+      'useFocus() must be called inside a tree wrapped by <FocusProvider>.',
+      { meta: { hookName: 'useFocus' } },
+    );
 
   const generatedId = useId();
   const id = options.id ?? generatedId;
@@ -386,7 +400,12 @@ export function useFocus(options: UseFocusOptions = {}): UseFocusValue {
 
 export function useFocusManager(): UseFocusManagerValue {
   const ctx = useContext(FocusContext);
-  if (!ctx) throw new Error('Pilates: useFocusManager() must be used inside <render>.');
+  if (!ctx)
+    throw new PilatesError(
+      PilatesErrorCode.FocusOutsideProvider,
+      'useFocusManager() must be called inside a tree wrapped by <FocusProvider>.',
+      { meta: { hookName: 'useFocusManager' } },
+    );
   return {
     focusedId: ctx.focusedId,
     focus: ctx.focus,

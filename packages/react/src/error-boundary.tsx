@@ -1,5 +1,6 @@
 import { Component, type ReactNode, createElement } from 'react';
 import { Text } from './components.js';
+import { isPilatesError } from './errors/index.js';
 
 export interface ErrorBoundaryFallbackProps {
   /** The error caught by the boundary. */
@@ -116,12 +117,24 @@ function resolveFallback(
 }
 
 /**
- * Default fallback — a single bold-red line: "Render error: <message>".
- * Kept layout-trivial (no Box wrapper, no border) so it works in the tightest
- * viewport without eating vertical cells. Consumers wanting a richer
+ * Default fallback — a single bold-red line. For a `PilatesError`, formats as
+ * `Pilates: <message>` plus a `(<hint>)` tail in development (the hint is
+ * empty in production builds). For any other thrown value, falls back to
+ * `Render error: <message>`. Kept layout-trivial (no Box wrapper, no border)
+ * so it works in the tightest viewport without eating vertical cells; Phase
+ * 2's `<ErrorOverview>` renders the full multi-line `formatPilatesError()`
+ * output when given a richer area to paint into. Consumers wanting a richer
  * fallback (border, retry, stack, etc.) should pass their own `fallback`.
  */
 function DefaultFallback({ error }: ErrorBoundaryFallbackProps): ReactNode {
+  if (isPilatesError(error)) {
+    const tail = error.hint ? ` (${error.hint})` : '';
+    return (
+      <Text bold color="red">
+        {`Pilates: ${error.message}${tail}`}
+      </Text>
+    );
+  }
   return (
     <Text bold color="red">
       {`Render error: ${error.message}`}

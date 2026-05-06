@@ -1,3 +1,4 @@
+import { PilatesError, PilatesErrorCode } from './errors/index.js';
 import type { TextInstance } from './reconciler.js';
 
 /**
@@ -20,8 +21,10 @@ export function flattenText(instance: TextInstance): string {
       out += flattenText(f as TextInstance);
     } else {
       const display = k ?? typeof f;
-      throw new Error(
-        `Pilates: <Text> children must be string, number, <Text>, or <Newline>. Got: ${display}`,
+      throw new PilatesError(
+        PilatesErrorCode.InvalidTextChild,
+        `<Text> children must be string, number, <Text>, or <Newline>. Got: ${display}`,
+        { meta: { received: display } },
       );
     }
   }
