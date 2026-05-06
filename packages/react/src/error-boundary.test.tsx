@@ -315,5 +315,81 @@ describe('ErrorBoundary — PilatesError componentStack capture', () => {
   });
 });
 
+describe('ErrorBoundary — default fallback formatting', () => {
+  it('default fallback shows Pilates: <message> for a PilatesError', () => {
+    const origConsoleError = console.error;
+    console.error = () => {};
+    try {
+      function Bomb(): never {
+        throw new PilatesError(
+          PilatesErrorCode.HookOutsideRender,
+          'useApp() must be used inside <render>.',
+        );
+      }
+      const handle = mountWithInput(
+        0,
+        () => (
+          <ErrorBoundary>
+            <Bomb />
+          </ErrorBoundary>
+        ),
+        { width: 80, height: 3 },
+      );
+      expect(handle.lastWrite()).toContain('Pilates:');
+      expect(handle.lastWrite()).toContain('useApp');
+      handle.unmount();
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+
+  it('default fallback appends the hint when present (dev mode)', () => {
+    const origConsoleError = console.error;
+    console.error = () => {};
+    try {
+      function Bomb(): never {
+        throw new PilatesError(PilatesErrorCode.HookOutsideRender, 'x');
+      }
+      const handle = mountWithInput(
+        0,
+        () => (
+          <ErrorBoundary>
+            <Bomb />
+          </ErrorBoundary>
+        ),
+        { width: 200, height: 3 },
+      );
+      // Dev mode (NODE_ENV=test): hint should be present in parens after message.
+      expect(handle.lastWrite()).toMatch(/\(.*render.*\)/i);
+      handle.unmount();
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+
+  it('default fallback uses Render error: prefix for non-PilatesError', () => {
+    const origConsoleError = console.error;
+    console.error = () => {};
+    try {
+      function Bomb(): never {
+        throw new Error('some plain error');
+      }
+      const handle = mountWithInput(
+        0,
+        () => (
+          <ErrorBoundary>
+            <Bomb />
+          </ErrorBoundary>
+        ),
+        { width: 60, height: 3 },
+      );
+      expect(handle.lastWrite()).toContain('Render error: some plain error');
+      handle.unmount();
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+});
+
 // This test references useState to ensure tree-shake doesn't drop it.
 void useState;
