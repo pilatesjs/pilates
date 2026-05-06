@@ -65,4 +65,23 @@ describe('formatPilatesError', () => {
     expect(formatPilatesError(null)).toBe('null');
     expect(formatPilatesError(undefined)).toBe('undefined');
   });
+
+  it('renders [Circular] when a PilatesError is its own cause', () => {
+    const e = new PilatesError(PilatesErrorCode.HookOutsideRender, 'self-ref');
+    e.cause = e;
+    const out = formatPilatesError(e);
+    expect(out).toContain('Pilates: self-ref');
+    expect(out).toContain('[Circular]');
+  });
+
+  it('renders [Circular] for a longer cycle (A → B → A)', () => {
+    const a = new PilatesError(PilatesErrorCode.HookOutsideRender, 'a');
+    const b = new PilatesError(PilatesErrorCode.UnknownHostType, 'b');
+    a.cause = b;
+    b.cause = a;
+    const out = formatPilatesError(a);
+    expect(out).toContain('Pilates: a');
+    expect(out).toContain('Pilates: b');
+    expect(out).toContain('[Circular]');
+  });
 });
