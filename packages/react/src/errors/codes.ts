@@ -12,6 +12,7 @@ export const PilatesErrorCode = {
   // Focus
   FocusOutsideProvider: 'PILATES_FOCUS_OUTSIDE_PROVIDER',
   DuplicateFocusId: 'PILATES_DUPLICATE_FOCUS_ID',
+  FocusIdNotFound: 'PILATES_FOCUS_ID_NOT_FOUND',
   FocusInputBridgeOutsideProvider: 'PILATES_FOCUS_INPUT_BRIDGE_OUTSIDE_PROVIDER',
   // Host config
   UnknownHostType: 'PILATES_UNKNOWN_HOST_TYPE',
@@ -41,6 +42,8 @@ export const PILATES_ERROR_HINTS: Partial<Record<PilatesErrorCode, string>> =
           'useFocus() must be called inside a tree wrapped by <FocusProvider>. The render() helper wires this for you unless you opted out via { focus: false }.',
         [PilatesErrorCode.DuplicateFocusId]:
           'Two components called useFocus({ id }) with the same id at the same time. Focus ids must be unique within a Pilates app — check that you are not rendering the same component twice with a static id.',
+        [PilatesErrorCode.FocusIdNotFound]:
+          'useFocusManager().focus(id) was called with an id that no <useFocus> in the current tree has registered. Check that the focusable is mounted and uses the same id (case-sensitive).',
         [PilatesErrorCode.FocusInputBridgeOutsideProvider]:
           'FocusInputBridge is an internal Pilates component; it should never appear outside <FocusProvider>. If you are seeing this, it likely indicates a corrupted Pilates install.',
         [PilatesErrorCode.UnknownHostType]:

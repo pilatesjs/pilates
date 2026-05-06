@@ -15,6 +15,7 @@ describe('PilatesErrorCode', () => {
     expect(PilatesErrorCode.InvalidTextChild).toBe('PILATES_INVALID_TEXT_CHILD');
     expect(PilatesErrorCode.FocusOutsideProvider).toBe('PILATES_FOCUS_OUTSIDE_PROVIDER');
     expect(PilatesErrorCode.DuplicateFocusId).toBe('PILATES_DUPLICATE_FOCUS_ID');
+    expect(PilatesErrorCode.FocusIdNotFound).toBe('PILATES_FOCUS_ID_NOT_FOUND');
     expect(PilatesErrorCode.FocusInputBridgeOutsideProvider).toBe(
       'PILATES_FOCUS_INPUT_BRIDGE_OUTSIDE_PROVIDER',
     );
