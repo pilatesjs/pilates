@@ -1,5 +1,13 @@
 import { graphemes } from '@pilates/core';
-import { Box, Text, useFocus, useInput, usePaste } from '@pilates/react';
+import {
+  Box,
+  PilatesError,
+  PilatesErrorCode,
+  Text,
+  useFocus,
+  useInput,
+  usePaste,
+} from '@pilates/react';
 import { type JSX, useState } from 'react';
 
 export interface TextInputProps {
@@ -60,8 +68,10 @@ export function TextInput({
   if (mask !== undefined) {
     const maskGs = splitGraphemes(mask);
     if (maskGs.length !== 1) {
-      throw new Error(
+      throw new PilatesError(
+        PilatesErrorCode.TextInputBadProp,
         `TextInput: mask must be a single grapheme, got "${mask}" (${maskGs.length} graphemes)`,
+        { meta: { propName: 'mask', received: mask, graphemeCount: maskGs.length } },
       );
     }
   }
