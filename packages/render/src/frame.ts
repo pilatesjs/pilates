@@ -15,6 +15,7 @@
 
 import { graphemes, stringWidth } from '@pilates/core';
 import { Attr, SGR_RESET, attrsSgr, bgSgr, fgSgr, packAttrs, sgr } from './ansi.js';
+import { type ClipRect, contains, intersect } from './scissor.js';
 import type { Color, TextStyle } from './types.js';
 
 /**
@@ -46,6 +47,7 @@ export class Frame {
   readonly width: number;
   readonly height: number;
   private readonly cells: Cell[];
+  private readonly _scissors: ClipRect[] = [];
 
   constructor(width: number, height: number) {
     this.width = Math.max(0, width | 0);
@@ -64,9 +66,32 @@ export class Frame {
     return x >= 0 && x < this.width && y >= 0 && y < this.height;
   }
 
+  /**
+   * Push a clipping rect onto the scissor stack. Subsequent cell writes are
+   * filtered through the intersection of the current stack — writes outside
+   * the active rect are dropped silently. Pair every push with a `popScissor()`.
+   */
+  pushScissor(rect: ClipRect): void {
+    const top = this._scissors[this._scissors.length - 1];
+    const next = top === undefined ? rect : intersect(top, rect);
+    this._scissors.push(next);
+  }
+
+  /** Pop the most recent scissor. Calling with an empty stack is a no-op. */
+  popScissor(): void {
+    this._scissors.pop();
+  }
+
+  private isVisible(x: number, y: number): boolean {
+    const top = this._scissors[this._scissors.length - 1];
+    if (top === undefined) return true;
+    return contains(top, x, y);
+  }
+
   /** Set a single cell. Caller must respect wide-char invariants. */
   setCell(x: number, y: number, cell: Cell): void {
     if (!this.inBounds(x, y)) return;
+    if (!this.isVisible(x, y)) return;
     this.cells[this.idx(x, y)] = cell;
   }
 
@@ -81,6 +106,7 @@ export class Frame {
    */
   setGrapheme(x: number, y: number, char: string, style: CellStyle): void {
     if (!this.inBounds(x, y)) return;
+    if (!this.isVisible(x, y)) return;
     const w = stringWidth(char);
     if (w === 0) {
       // Zero-width: ignore (combining marks should attach to previous cell;
@@ -96,7 +122,7 @@ export class Frame {
       bg: style.bg,
       attrs: style.attrs,
     };
-    if (cellW === 2 && this.inBounds(x + 1, y)) {
+    if (cellW === 2 && this.inBounds(x + 1, y) && this.isVisible(x + 1, y)) {
       // Continuation cell: empty char, width 0, but inherit style so bg
       // colors paint cleanly.
       this.cells[this.idx(x + 1, y)] = {
