@@ -27,6 +27,7 @@ import {
   type FlexWrap,
   type Justify,
   type Length,
+  type Overflow,
   type PositionType,
   type Style,
   defaultStyle,
@@ -326,6 +327,25 @@ export class Node {
 
   setDisplay(value: Display): void {
     this._style.display = value;
+    this.markDirty();
+  }
+
+  // ─── overflow ──────────────────────────────────────────────────────────
+
+  setOverflow(overflow: Overflow): void {
+    this._style.overflow = overflow;
+    this._style.overflowX = overflow;
+    this._style.overflowY = overflow;
+    this.markDirty();
+  }
+
+  setOverflowX(overflow: Overflow): void {
+    this._style.overflowX = overflow;
+    this.markDirty();
+  }
+
+  setOverflowY(overflow: Overflow): void {
+    this._style.overflowY = overflow;
     this.markDirty();
   }
 
