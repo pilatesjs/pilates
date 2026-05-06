@@ -35,6 +35,8 @@ export type PositionType = 'relative' | 'absolute';
 
 export type Display = 'flex' | 'none';
 
+export type Overflow = 'visible' | 'hidden' | 'scroll' | 'auto';
+
 /** A length value in terminal cells, or 'auto' to size from content / flex. */
 export type Length = number | 'auto';
 
@@ -74,6 +76,17 @@ export interface Style {
   position: [number | undefined, number | undefined, number | undefined, number | undefined];
 
   display: Display;
+
+  /**
+   * CSS `overflow` shorthand. `overflowX` / `overflowY` win when set
+   * individually. `'visible'` — the default — is treated as `'hidden'` at
+   * paint time (terminal cell grids cannot show overflow without corrupting
+   * sibling cells); the keyword exists so migrating code from web/RN reads
+   * naturally.
+   */
+  overflow: Overflow;
+  overflowX: Overflow;
+  overflowY: Overflow;
 
   /**
    * width / height ratio. When set and exactly one of `width` / `height` is a
@@ -116,6 +129,10 @@ export function defaultStyle(): Style {
     position: [undefined, undefined, undefined, undefined],
 
     display: 'flex',
+
+    overflow: 'visible',
+    overflowX: 'visible',
+    overflowY: 'visible',
 
     aspectRatio: undefined,
   };
