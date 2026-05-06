@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
+import { PilatesError, PilatesErrorCode } from './errors/index.js';
 
 export interface AppHookValue {
   exit: (error?: Error) => void;
@@ -98,13 +99,23 @@ export const StdinContext = createContext<StdinHookValue | null>(null);
 
 export function useApp(): AppHookValue {
   const v = useContext(AppContext);
-  if (!v) throw new Error('Pilates: useApp() must be used inside <render>.');
+  if (!v)
+    throw new PilatesError(
+      PilatesErrorCode.HookOutsideRender,
+      'useApp() must be used inside <render>.',
+      { meta: { hookName: 'useApp' } },
+    );
   return v;
 }
 
 export function useStdout(): StdoutHookValue {
   const v = useContext(StdoutContext);
-  if (!v) throw new Error('Pilates: useStdout() must be used inside <render>.');
+  if (!v)
+    throw new PilatesError(
+      PilatesErrorCode.HookOutsideRender,
+      'useStdout() must be used inside <render>.',
+      { meta: { hookName: 'useStdout' } },
+    );
   return v;
 }
 
@@ -121,7 +132,12 @@ export function useWindowSize(): { columns: number; rows: number } {
 
 export function useStderr(): StderrHookValue {
   const v = useContext(StderrContext);
-  if (!v) throw new Error('Pilates: useStderr() must be used inside <render>.');
+  if (!v)
+    throw new PilatesError(
+      PilatesErrorCode.HookOutsideRender,
+      'useStderr() must be used inside <render>.',
+      { meta: { hookName: 'useStderr' } },
+    );
   return v;
 }
 
@@ -134,7 +150,12 @@ export function useStderr(): StderrHookValue {
  */
 export function usePaste(handler: (text: string) => void): void {
   const v = useContext(StdinContext);
-  if (!v) throw new Error('Pilates: usePaste() must be used inside <render>.');
+  if (!v)
+    throw new PilatesError(
+      PilatesErrorCode.HookOutsideRender,
+      'usePaste() must be used inside <render>.',
+      { meta: { hookName: 'usePaste' } },
+    );
 
   // Same handler-ref pattern as useInput: keep a stable dispatch wrapper
   // so the subscribe effect's deps don't churn on every parent render.
@@ -157,7 +178,12 @@ export function usePaste(handler: (text: string) => void): void {
 
 export function useInput(handler: (event: KeyEvent) => void, options: UseInputOptions = {}): void {
   const v = useContext(StdinContext);
-  if (!v) throw new Error('Pilates: useInput() must be used inside <render>.');
+  if (!v)
+    throw new PilatesError(
+      PilatesErrorCode.HookOutsideRender,
+      'useInput() must be used inside <render>.',
+      { meta: { hookName: 'useInput' } },
+    );
   const isActive = options.isActive ?? true;
 
   // Capture the latest handler in a ref so we can subscribe a stable
