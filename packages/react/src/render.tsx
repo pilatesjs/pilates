@@ -3,7 +3,9 @@ import {
   Fragment,
   type ReactElement,
   type ReactNode,
+  createContext,
   createElement,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -27,6 +29,9 @@ import {
 } from './hooks.js';
 import { buildHostConfig } from './host-config.js';
 import { parse as parseKeys } from './key-parser.js';
+import type { MouseEvent } from './mouse-event.js';
+import { collectHits, mouseRegistry } from './mouse-registry.js';
+import type { HitNode } from './mouse-registry.js';
 import type { RootContainer } from './reconciler.js';
 
 export interface RenderOptions {
@@ -116,6 +121,48 @@ function ResizeBridge({
   return createElement(Fragment, null, children);
 }
 
+interface MouseContextValue {
+  hitTestAndBubble: (event: MouseEvent) => void;
+}
+
+const MouseContext = createContext<MouseContextValue | null>(null);
+
+function MouseProvider({
+  container,
+  children,
+}: {
+  container: RootContainer;
+  children?: ReactNode;
+}) {
+  const hitRef = useRef<((event: MouseEvent) => void) | null>(null);
+  if (hitRef.current === null) {
+    hitRef.current = (event: MouseEvent): void => {
+      const hits: HitNode[] = collectHits(container.root, event.col - 1, event.row - 1);
+      hits.sort((a, b) => b.depth - a.depth);
+      let stopped = false;
+      const ev: MouseEvent = {
+        ...event,
+        stopPropagation: () => {
+          stopped = true;
+        },
+      };
+      for (const { node } of hits) {
+        if (stopped) break;
+        const handlers = mouseRegistry.get(node);
+        if (handlers === undefined) continue;
+        const isWheel = event.button === 'wheel-up' || event.button === 'wheel-down';
+        if (isWheel) {
+          handlers.onWheel?.(ev);
+        } else if (event.pressed) {
+          handlers.onClick?.(ev);
+        }
+      }
+    };
+  }
+  const value = useMemo<MouseContextValue>(() => ({ hitTestAndBubble: hitRef.current! }), []);
+  return createElement(MouseContext.Provider, { value }, children);
+}
+
 function StdinProvider({
   stdin,
   children,
@@ -143,6 +190,9 @@ function StdinProvider({
     stableWriteRef.current = (s) => latestWriteRef.current(s);
   }
   const stdoutWrite = stableWriteRef.current;
+  const mouseCtx = useContext(MouseContext);
+  const mouseCtxRef = useRef(mouseCtx);
+  mouseCtxRef.current = mouseCtx;
   const stateRef = useRef<StdinProviderState>({
     subscribers: new Map<(event: KeyEvent) => void, boolean>(),
     pasteSubscribers: new Set<(text: string) => void>(),
@@ -150,6 +200,9 @@ function StdinProvider({
     remainder: '',
     rawModeOn: false,
     escapeTimer: null,
+    mouseSubscribers: new Map<(event: MouseEvent) => void, boolean>(),
+    mouseRefcount: 0,
+    mouseModeOn: false,
   });
   const isRawModeSupported = stdin.isTTY === true;
 
@@ -164,10 +217,14 @@ function StdinProvider({
       }
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       const combined = state.remainder + text;
-      const { events, pastes, remainder } = parseKeys(combined);
+      const { events, mouseEvents, pastes, remainder } = parseKeys(combined);
       state.remainder = remainder;
       for (const event of events) {
         dispatchEvent(state, event);
+      }
+      for (const mev of mouseEvents) {
+        dispatchMouseEvent(state, mev);
+        mouseCtxRef.current?.hitTestAndBubble(mev);
       }
       for (const paste of pastes) {
         dispatchPaste(state, paste);
@@ -186,6 +243,7 @@ function StdinProvider({
         clearTimeout(state.escapeTimer);
         state.escapeTimer = null;
       }
+      releaseMouseMode(stdoutWrite, state);
       if (state.rawModeOn && isRawModeSupported) {
         releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
       }
@@ -241,6 +299,42 @@ function StdinProvider({
           if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
         };
       },
+      subscribeMouseEvent: (handler, initialActive = true) => {
+        const state = stateRef.current;
+        state.mouseSubscribers.set(handler, initialActive);
+        if (initialActive) {
+          state.mouseRefcount += 1;
+          state.refcount += 1; // hold raw mode while mouse mode is active
+          ensureMouseMode(stdin, stdoutWrite, state, isRawModeSupported);
+        }
+        return () => {
+          const wasActive = state.mouseSubscribers.get(handler) === true;
+          state.mouseSubscribers.delete(handler);
+          if (wasActive) {
+            state.mouseRefcount -= 1;
+            state.refcount -= 1;
+            if (state.mouseRefcount === 0) releaseMouseMode(stdoutWrite, state);
+            if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+          }
+        };
+      },
+      setMouseActive: (handler, active) => {
+        const state = stateRef.current;
+        const current = state.mouseSubscribers.get(handler);
+        if (current === undefined) return;
+        if (current === active) return;
+        state.mouseSubscribers.set(handler, active);
+        if (active) {
+          state.mouseRefcount += 1;
+          state.refcount += 1;
+          ensureMouseMode(stdin, stdoutWrite, state, isRawModeSupported);
+        } else {
+          state.mouseRefcount -= 1;
+          state.refcount -= 1;
+          if (state.mouseRefcount === 0) releaseMouseMode(stdoutWrite, state);
+          if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+        }
+      },
     }),
     [stdin, stdoutWrite, isRawModeSupported],
   );
@@ -255,6 +349,10 @@ interface StdinProviderState {
   rawModeOn: boolean;
   /** Pending timer that flushes a held bare ESC as a real Escape event. */
   escapeTimer: ReturnType<typeof setTimeout> | null;
+  // ↓ new mouse fields
+  mouseSubscribers: Map<(event: MouseEvent) => void, boolean>;
+  mouseRefcount: number;
+  mouseModeOn: boolean;
 }
 
 /**
@@ -275,6 +373,37 @@ const PASTE_MODE_DISABLE = '\x1b[?2004l';
  */
 const ESCAPE_DISAMBIGUATION_MS = 50;
 
+const MOUSE_MODE_ENABLE = '\x1b[?1000h\x1b[?1006h';
+const MOUSE_MODE_DISABLE = '\x1b[?1006l\x1b[?1000l';
+
+function ensureMouseMode(
+  stdin: NodeJS.ReadStream,
+  stdoutWrite: (s: string) => boolean,
+  state: StdinProviderState,
+  isRawModeSupported: boolean,
+): void {
+  if (!state.mouseModeOn) {
+    ensureRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+    try {
+      stdoutWrite(MOUSE_MODE_ENABLE);
+      state.mouseModeOn = true;
+    } catch {
+      /* terminal may not support mouse reporting — swallow */
+    }
+  }
+}
+
+function releaseMouseMode(stdoutWrite: (s: string) => boolean, state: StdinProviderState): void {
+  if (state.mouseModeOn) {
+    try {
+      stdoutWrite(MOUSE_MODE_DISABLE);
+    } catch {
+      /* swallow */
+    }
+    state.mouseModeOn = false;
+  }
+}
+
 function dispatchEvent(state: StdinProviderState, event: KeyEvent): void {
   for (const [handler, active] of state.subscribers) {
     if (!active) continue;
@@ -294,6 +423,18 @@ function dispatchPaste(state: StdinProviderState, text: string): void {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`Pilates: usePaste handler threw: ${msg}\n`);
+    }
+  }
+}
+
+function dispatchMouseEvent(state: StdinProviderState, event: MouseEvent): void {
+  for (const [handler, active] of state.mouseSubscribers) {
+    if (!active) continue;
+    try {
+      handler(event);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Pilates: useMouse handler threw: ${msg}\n`);
     }
   }
 }
@@ -491,7 +632,11 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
       createElement(
         ResizeBridge,
         { rootNode, container },
-        createElement(StdinProvider, { stdin }, stdinChildren),
+        createElement(
+          MouseProvider,
+          { container },
+          createElement(StdinProvider, { stdin }, stdinChildren),
+        ),
       ),
     ),
   );
@@ -521,4 +666,4 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   return instance;
 }
 
-export { StdinProvider };
+export { StdinProvider, MouseProvider };

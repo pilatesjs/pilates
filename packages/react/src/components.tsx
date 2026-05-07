@@ -1,5 +1,6 @@
 import type { BorderProps, LayoutProps, TextStyle, Wrap } from '@pilates/render';
 import { type JSX, type ReactNode, type Ref, createElement } from 'react';
+import type { MouseEvent } from './mouse-event.js';
 
 declare global {
   // biome-ignore lint/suspicious/noRedeclare: augmenting the global JSX namespace
@@ -23,6 +24,8 @@ export type BoxProps = LayoutProps &
      * to read computed layout (left / top / width / height) for this Box.
      */
     ref?: Ref<unknown>;
+    onClick?: (event: MouseEvent) => void;
+    onWheel?: (event: MouseEvent) => void;
   };
 
 export type TextProps = TextStyle & {

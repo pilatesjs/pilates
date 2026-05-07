@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef } from 'react';
 import { PilatesError, PilatesErrorCode } from './errors/index.js';
+import type { MouseEvent } from './mouse-event.js';
 
 export interface AppHookValue {
   exit: (error?: Error) => void;
@@ -88,6 +89,20 @@ export interface StdinHookValue {
    * as `subscribe`, so a paste-only app still activates raw mode.
    */
   subscribePaste: (handler: (text: string) => void) => () => void;
+  /**
+   * Subscribe a handler to raw mouse events (button presses, releases, and
+   * wheel ticks). Returns an unsubscribe function. Bumps the mouse-mode
+   * refcount — enabling SGR mouse reporting on the terminal.
+   */
+  subscribeMouseEvent: (
+    handler: (event: MouseEvent) => void,
+    initialActive?: boolean,
+  ) => () => void;
+  /**
+   * Mark a previously-subscribed mouse handler as active or inactive.
+   * Mirrors `setActive` for keyboard handlers.
+   */
+  setMouseActive: (handler: (event: MouseEvent) => void, active: boolean) => void;
   /** True when the underlying stdin supports raw mode (typically `stdin.isTTY === true`). */
   isRawModeSupported: boolean;
 }
@@ -228,5 +243,53 @@ export function useInput(handler: (event: KeyEvent) => void, options: UseInputOp
       return;
     }
     v.setActive(dispatch, isActive);
+  }, [v, isActive]);
+}
+
+export interface UseMouseOptions {
+  /** When false, the handler does not receive mouse events. Defaults to true. */
+  isActive?: boolean;
+}
+
+export function useMouse(
+  handler: (event: MouseEvent) => void,
+  options: UseMouseOptions = {},
+): void {
+  const v = useContext(StdinContext);
+  if (!v)
+    throw new PilatesError(
+      PilatesErrorCode.HookOutsideRender,
+      'useMouse() must be used inside <render>.',
+      { meta: { hookName: 'useMouse' } },
+    );
+  const isActive = options.isActive ?? true;
+
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  const dispatchRef = useRef<((event: MouseEvent) => void) | null>(null);
+  if (dispatchRef.current === null) {
+    dispatchRef.current = (event: MouseEvent) => handlerRef.current(event);
+  }
+
+  const initialActiveRef = useRef(isActive);
+
+  useEffect(() => {
+    const dispatch = dispatchRef.current;
+    if (dispatch === null) return;
+    const unsubscribe = v.subscribeMouseEvent(dispatch, initialActiveRef.current);
+    return () => {
+      unsubscribe();
+    };
+  }, [v]);
+
+  const setActiveMounted = useRef(false);
+  useEffect(() => {
+    const dispatch = dispatchRef.current;
+    if (dispatch === null) return;
+    if (!setActiveMounted.current) {
+      setActiveMounted.current = true;
+      return;
+    }
+    v.setMouseActive(dispatch, isActive);
   }, [v, isActive]);
 }

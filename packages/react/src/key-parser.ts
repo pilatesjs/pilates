@@ -1,7 +1,10 @@
 import type { KeyEvent } from './hooks.js';
+import type { MouseEvent } from './mouse-event.js';
+import { parseSgrMouse } from './mouse-parser.js';
 
 export interface ParseResult {
   events: KeyEvent[];
+  mouseEvents: MouseEvent[];
   /**
    * Text payloads delivered via xterm bracketed paste (DEC mode 2004).
    * Bytes between `\x1b[200~` and `\x1b[201~` are collected verbatim
@@ -23,6 +26,7 @@ function isAsciiUppercase(ch: string): boolean {
 
 export function parse(input: string): ParseResult {
   const events: KeyEvent[] = [];
+  const mouseEvents: MouseEvent[] = [];
   const pastes: string[] = [];
   let i = 0;
   while (i < input.length) {
@@ -39,7 +43,7 @@ export function parse(input: string): ParseResult {
       if (end === -1) {
         // Closing marker not yet in the stream — hold the entire run
         // (including the start marker) so the next chunk completes it.
-        return { events, pastes, remainder: input.slice(i) };
+        return { events, mouseEvents, pastes, remainder: input.slice(i) };
       }
       pastes.push(input.slice(payloadStart, end));
       i = end + PASTE_END.length;
@@ -49,27 +53,41 @@ export function parse(input: string): ParseResult {
     if (cp === 0x1b && input[i + 1] === '[') {
       const csiStart = i + 2;
       let csiEnd = csiStart;
+      const isSgrMouse = input[csiStart] === '<';
+      // Single scan loop for all CSI sequences
       while (csiEnd < input.length) {
         const code = input.charCodeAt(csiEnd);
-        if (code >= 0x40 && code <= 0x7e) break;
+        if (code >= 0x40 && code <= 0x7e) {
+          // For SGR sequences, only M/m (0x4d/0x6d) are valid terminators
+          if (isSgrMouse && code !== 0x4d && code !== 0x6d) {
+            csiEnd++;
+            continue;
+          }
+          break;
+        }
         csiEnd++;
       }
       if (csiEnd >= input.length) {
-        return { events, pastes, remainder: input.slice(i) };
+        return { events, mouseEvents, pastes, remainder: input.slice(i) };
       }
       const params = input.slice(csiStart, csiEnd);
       const final = input[csiEnd]!;
       const sequence = input.slice(i, csiEnd + 1);
-      const ev = decodeCsi(params, final, sequence);
-      if (ev) events.push(ev);
-      else events.push({ ctrl: false, alt: false, shift: false, sequence });
+      if (params.startsWith('<') && (final === 'M' || final === 'm')) {
+        const mev = parseSgrMouse(params.slice(1), final, sequence);
+        if (mev) mouseEvents.push(mev);
+      } else {
+        const ev = decodeCsi(params, final, sequence);
+        if (ev) events.push(ev);
+        else events.push({ ctrl: false, alt: false, shift: false, sequence });
+      }
       i = csiEnd + 1;
       continue;
     }
 
     if (cp === 0x1b && input[i + 1] === 'O') {
       if (i + 2 >= input.length) {
-        return { events, pastes, remainder: input.slice(i) };
+        return { events, mouseEvents, pastes, remainder: input.slice(i) };
       }
       const f = input[i + 2]!;
       const sequence = input.slice(i, i + 3);
@@ -89,11 +107,11 @@ export function parse(input: string): ParseResult {
         // Bare ESC at end-of-chunk could prefix a CSI/SS3/Alt sequence whose
         // remaining bytes haven't arrived yet. Hold it as remainder and let the
         // caller decide on a real-Escape timeout (xterm.js / ink behavior).
-        return { events, pastes, remainder: input.slice(i) };
+        return { events, mouseEvents, pastes, remainder: input.slice(i) };
       }
       const next = input.codePointAt(i + 1);
       if (next === undefined) {
-        return { events, pastes, remainder: input.slice(i) };
+        return { events, mouseEvents, pastes, remainder: input.slice(i) };
       }
       const nextCh = String.fromCodePoint(next);
       const sequence = `\x1b${nextCh}`;
@@ -189,7 +207,7 @@ export function parse(input: string): ParseResult {
     });
     i += advance;
   }
-  return { events, pastes, remainder: '' };
+  return { events, mouseEvents, pastes, remainder: '' };
 }
 
 function decodeCsi(params: string, final: string, sequence: string): KeyEvent | null {
