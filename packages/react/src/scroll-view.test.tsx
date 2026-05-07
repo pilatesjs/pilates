@@ -1,6 +1,8 @@
+import { useRef } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Text } from './components.js';
 import { ScrollView } from './scroll-view.js';
+import type { ScrollViewHandle } from './scroll-view.js';
 import { mountWithInput } from './test-utils.js';
 
 describe('<ScrollView> — basic clipping', () => {
@@ -64,6 +66,98 @@ describe('<ScrollView> — scroll state', () => {
     expect(out).not.toContain('row0');
     expect(out).toContain('row1');
     expect(out).toContain('row2');
+    handle.unmount();
+  });
+});
+
+describe('<ScrollView> — imperative ref API', () => {
+  it('scrollTo jumps to the given offset', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} ref={ref}>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    expect(api).not.toBeNull();
+    api!.scrollTo(1);
+    handle.flush?.();
+    const out = handle.lastWrite();
+    expect(out).toContain('row1');
+    expect(out).toContain('row2');
+    handle.unmount();
+  });
+
+  it('scrollTo clamps to [0, contentSize - viewportSize]', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} ref={ref}>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    api!.scrollTo(999);
+    expect(api!.getScrollOffset()).toBe(1);
+    api!.scrollTo(-5);
+    expect(api!.getScrollOffset()).toBe(0);
+    handle.unmount();
+  });
+
+  it('scrollToEnd / scrollToStart move to the bounds', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} ref={ref}>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
+          <Text>row3</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    api!.scrollToEnd();
+    expect(api!.getScrollOffset()).toBe(2);
+    api!.scrollToStart();
+    expect(api!.getScrollOffset()).toBe(0);
+    handle.unmount();
+  });
+
+  it('scrollBy adds the delta', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} ref={ref}>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
+          <Text>row3</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    api!.scrollBy(1);
+    expect(api!.getScrollOffset()).toBe(1);
+    api!.scrollBy(1);
+    expect(api!.getScrollOffset()).toBe(2);
+    api!.scrollBy(99);
+    expect(api!.getScrollOffset()).toBe(2);
     handle.unmount();
   });
 });

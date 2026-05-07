@@ -21,7 +21,7 @@ describe('useBoxMetrics', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, opts);
-    expect(captured).toEqual({ left: 0, top: 0, width: 20, height: 3 });
+    expect(captured).toEqual({ left: 0, top: 0, width: 20, height: 3, scrollWidth: 20, scrollHeight: 3 });
     handle.unmount();
   });
 
@@ -41,7 +41,7 @@ describe('useBoxMetrics', () => {
     // First render: ref.current === null → metrics === null.
     // Second render (after the post-commit force): metrics is the layout.
     expect(seen[0]).toBeNull();
-    expect(seen[seen.length - 1]).toEqual({ left: 0, top: 0, width: 10, height: 2 });
+    expect(seen[seen.length - 1]).toEqual({ left: 0, top: 0, width: 10, height: 2, scrollWidth: 10, scrollHeight: 2 });
     handle.unmount();
   });
 

@@ -38,6 +38,8 @@ export function renderToFrame(tree: RenderNode): Frame {
       top: lo.top,
       width: lo.width,
       height: lo.height,
+      scrollWidth: coreNode.scrollWidth,
+      scrollHeight: coreNode.scrollHeight,
     };
   }
   return frame;
@@ -48,6 +50,8 @@ export interface ComputedLayout {
   top: number;
   width: number;
   height: number;
+  scrollWidth: number;
+  scrollHeight: number;
 }
 
 /**

@@ -423,6 +423,13 @@ export interface InputMountHandle<T> extends MountHandle<T> {
   pressCtrl(ch: string): void;
   /** The fake stdin used by this mount — for lifecycle assertions. */
   fakeStdin: FakeStdin;
+  /**
+   * Flush any pending synchronous work and passive effects. Useful after
+   * calling imperative API methods (e.g. `ref.scrollTo(...)`) that
+   * schedule state updates outside of `act()`, so the resulting visual
+   * update commits before assertions on `lastWrite()`.
+   */
+  flush(): void;
 }
 
 /**
@@ -560,6 +567,16 @@ export function mountWithInput<T>(
   withAct(() => {
     sync.updateContainerSync(createElement(Wrapper, { initial }), handle, null, null);
     sync.flushSyncWork();
+    drainPassive(sync);
+    // Re-render the entire tree so that parent components which capture
+    // `ref.current` during their render body see the now-populated refs.
+    // Layout effects (useImperativeHandle) ran in the first flushSyncWork
+    // above; this second pass lets ancestor renders read those values.
+    // Visual output is identical so the diff is empty and no ANSI write
+    // is emitted — write-count assertions in other tests are unaffected.
+    sync.updateContainerSync(createElement(Wrapper, { initial }), handle, null, null);
+    sync.flushSyncWork();
+    drainPassive(sync);
   });
 
   const press = (event: Partial<KeyEvent>): void => {
@@ -595,6 +612,16 @@ export function mountWithInput<T>(
     pressChar: (ch: string) => press({ ch }),
     pressCtrl: (ch: string) => press({ ch, ctrl: true }),
     fakeStdin,
+    flush: () => {
+      withAct(() => {
+        // Clear prevFrame so the next resetAfterCommit produces a full
+        // repaint rather than a diff. This lets callers use lastWrite()
+        // to see the full current frame after flushing.
+        container.prevFrame = null;
+        sync.flushSyncWork();
+        drainPassive(sync);
+      });
+    },
   };
 }
 

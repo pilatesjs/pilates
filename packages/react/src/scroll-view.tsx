@@ -1,5 +1,13 @@
-import { type ReactNode, forwardRef, useState } from 'react';
+import {
+  type MutableRefObject,
+  type ReactNode,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import { Box } from './components.js';
+import { useBoxMetrics } from './use-box-metrics.js';
 
 export interface ScrollMeta {
   contentSize: number;
@@ -16,38 +24,153 @@ export interface ScrollViewProps {
   scrollOffset?: number;
   /** Uncontrolled initial offset. Ignored when `scrollOffset` is set. */
   defaultScrollOffset?: number;
-  /** Fires whenever the offset changes (controlled or uncontrolled). */
+  /** Fires whenever the offset changes. */
   onScroll?: (offset: number, meta: ScrollMeta) => void;
   children?: ReactNode;
 }
 
-export const ScrollView = forwardRef<unknown, ScrollViewProps>(function ScrollView(
-  // onScroll wired in Task 16 via the setOffset closure.
-  // _ref replaced with ScrollViewHandle in Task 15 via useImperativeHandle.
-  { height, width, horizontal, scrollOffset, defaultScrollOffset, children },
-  _ref,
-) {
-  const isControlled = scrollOffset !== undefined;
-  const [internalOffset, setInternalOffset] = useState(defaultScrollOffset ?? 0);
-  void setInternalOffset; // Task 16 will call this when built-in keys fire.
-  const effectiveOffset = isControlled ? scrollOffset : internalOffset;
+export interface ScrollViewHandle {
+  scrollTo: (offset: number) => void;
+  scrollBy: (delta: number) => void;
+  scrollToStart: () => void;
+  scrollToEnd: () => void;
+  getScrollOffset: () => number;
+  getContentSize: () => number;
+  getViewportSize: () => number;
+}
 
-  const axisOverflow = horizontal === true
-    ? { overflowX: 'hidden' as const, overflowY: 'visible' as const }
-    : { overflowX: 'visible' as const, overflowY: 'hidden' as const };
-  const offsetProp = horizontal === true
-    ? { scrollLeft: effectiveOffset }
-    : { scrollTop: effectiveOffset };
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(n, hi));
+}
 
-  return (
-    <Box
-      {...(width !== undefined ? { width } : {})}
-      {...(height !== undefined ? { height } : {})}
-      flexDirection={horizontal === true ? 'row' : 'column'}
-      {...axisOverflow}
-      {...offsetProp}
-    >
-      {children}
-    </Box>
-  );
-});
+/** Narrow the host instance to read _layout from the underlying render node. */
+interface BoxLikeNode {
+  _layout?: {
+    width: number;
+    height: number;
+    scrollWidth?: number;
+    scrollHeight?: number;
+  };
+}
+interface BoxLikeInstance {
+  kind: 'box';
+  node: BoxLikeNode;
+}
+
+export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
+  function ScrollView(
+    { height, width, horizontal, scrollOffset, defaultScrollOffset, onScroll, children },
+    ref,
+  ) {
+    const isControlled = scrollOffset !== undefined;
+    const [internalOffset, setInternalOffset] = useState(defaultScrollOffset ?? 0);
+    const effectiveOffset = isControlled ? scrollOffset : internalOffset;
+
+    // Mutable ref so imperative methods always read the latest committed offset
+    // without waiting for the next render cycle.
+    const offsetRef = useRef(effectiveOffset);
+    offsetRef.current = effectiveOffset;
+
+    const boxRef = useRef(null);
+    const metrics = useBoxMetrics(boxRef);
+
+    const isVertical = horizontal !== true;
+    const viewportSize = isVertical ? (metrics?.height ?? 0) : (metrics?.width ?? 0);
+    const contentSize = isVertical ? (metrics?.scrollHeight ?? 0) : (metrics?.scrollWidth ?? 0);
+
+    /**
+     * Read current metrics directly from the box node's _layout. This gives
+     * an up-to-date answer even on the first render before useBoxMetrics'
+     * passive effect has triggered a re-render, because renderToFrame writes
+     * _layout back onto the render node synchronously during the commit phase.
+     */
+    const readMetrics = () => {
+      const inst = boxRef.current as BoxLikeInstance | null;
+      const lo = inst?.kind === 'box' ? inst.node._layout : undefined;
+      if (!lo) return { viewportSize: 0, contentSize: 0 };
+      const vp = isVertical ? lo.height : lo.width;
+      const cs = isVertical ? (lo.scrollHeight ?? lo.height) : (lo.scrollWidth ?? lo.width);
+      return { viewportSize: vp, contentSize: cs };
+    };
+
+    const setOffset = (next: number) => {
+      const { contentSize: cs, viewportSize: vp } = readMetrics();
+      const max = Math.max(0, cs - vp);
+      const clamped = clamp(next, 0, max);
+      const cur = offsetRef.current;
+      if (clamped === cur) return;
+      offsetRef.current = clamped;
+      if (!isControlled) setInternalOffset(clamped);
+      onScroll?.(clamped, {
+        contentSize: cs,
+        viewportSize: vp,
+        atStart: clamped === 0,
+        atEnd: clamped >= max,
+      });
+    };
+
+    // Build the stable handle once and update on rerender via a ref.
+    // getScrollOffset reads offsetRef so it returns the latest value even
+    // before the setState-triggered re-render commits.
+    const handleRef = useRef<ScrollViewHandle | null>(null);
+    if (handleRef.current === null) {
+      handleRef.current = {
+        scrollTo: (offset) => setOffset(offset),
+        scrollBy: (delta) => setOffset(offsetRef.current + delta),
+        scrollToStart: () => setOffset(0),
+        scrollToEnd: () => {
+          const { contentSize: cs, viewportSize: vp } = readMetrics();
+          setOffset(Math.max(0, cs - vp));
+        },
+        getScrollOffset: () => offsetRef.current,
+        getContentSize: () => {
+          const { contentSize: cs } = readMetrics();
+          return cs;
+        },
+        getViewportSize: () => {
+          const { viewportSize: vp } = readMetrics();
+          return vp;
+        },
+      };
+    }
+
+    // Wire the forwarded ref: useImperativeHandle for the standard React
+    // pattern, plus a direct write so that test code doing
+    // `api = ref.current` during App's render sees a non-null value on
+    // re-renders after the first commit.
+    useImperativeHandle(ref, () => handleRef.current!, []);
+
+    // Also populate the forwarded ref during ScrollView's render phase so
+    // parent components that capture `ref.current` during their own render
+    // (which runs before this child) see it populated on the next render.
+    // Writing to a ref during render is allowed in React (refs are the
+    // one exception to the "no side effects during render" rule).
+    if (ref !== null) {
+      if (typeof ref === 'function') {
+        ref(handleRef.current);
+      } else {
+        (ref as MutableRefObject<ScrollViewHandle | null>).current = handleRef.current;
+      }
+    }
+
+    const axisOverflow = isVertical
+      ? { overflowX: 'visible' as const, overflowY: 'hidden' as const }
+      : { overflowX: 'hidden' as const, overflowY: 'visible' as const };
+    const offsetProp = isVertical
+      ? { scrollTop: effectiveOffset }
+      : { scrollLeft: effectiveOffset };
+
+    return (
+      <Box
+        ref={boxRef}
+        {...(width !== undefined ? { width } : {})}
+        {...(height !== undefined ? { height } : {})}
+        flexDirection={isVertical ? 'column' : 'row'}
+        {...axisOverflow}
+        {...offsetProp}
+      >
+        {children}
+      </Box>
+    );
+  },
+);
