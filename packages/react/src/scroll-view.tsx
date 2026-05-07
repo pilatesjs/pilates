@@ -22,12 +22,14 @@ export interface ScrollViewProps {
 }
 
 export const ScrollView = forwardRef<unknown, ScrollViewProps>(function ScrollView(
+  // onScroll wired in Task 16 via the setOffset closure.
+  // _ref replaced with ScrollViewHandle in Task 15 via useImperativeHandle.
   { height, width, horizontal, scrollOffset, defaultScrollOffset, children },
   _ref,
 ) {
   const isControlled = scrollOffset !== undefined;
   const [internalOffset, setInternalOffset] = useState(defaultScrollOffset ?? 0);
-  void setInternalOffset;
+  void setInternalOffset; // Task 16 will call this when built-in keys fire.
   const effectiveOffset = isControlled ? scrollOffset : internalOffset;
 
   const axisOverflow = horizontal === true
