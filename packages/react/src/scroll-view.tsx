@@ -10,6 +10,7 @@ import {
 import { Box } from './components.js';
 import { useFocus } from './focus.js';
 import { useInput } from './hooks.js';
+import { ScrollContext, type FocusedBoundsWithNode } from './scroll-context.js';
 import { type BoxLikeInstance, useBoxMetrics } from './use-box-metrics.js';
 
 export interface ScrollMeta {
@@ -35,6 +36,8 @@ export interface ScrollViewProps {
    * Default true.
    */
   scrollEnabled?: boolean;
+  /** Default true; auto-scroll to keep focused descendants visible. */
+  scrollOnFocus?: boolean;
   /** When content grows, auto-scroll to end. Pauses if user has scrolled away from bottom. */
   stickToBottom?: boolean;
   /** When content grows, auto-scroll to start. Pauses if user has scrolled away from top. */
@@ -58,7 +61,7 @@ function clamp(n: number, lo: number, hi: number): number {
 
 export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
   function ScrollView(
-    { height, width, horizontal, scrollOffset, defaultScrollOffset, onScroll, scrollEnabled, stickToBottom, stickToTop, children },
+    { height, width, horizontal, scrollOffset, defaultScrollOffset, onScroll, scrollEnabled, scrollOnFocus, stickToBottom, stickToTop, children },
     ref,
   ) {
     const isControlled = scrollOffset !== undefined;
@@ -82,13 +85,34 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
      * an up-to-date answer even on the first render before useBoxMetrics'
      * passive effect has triggered a re-render, because renderToFrame writes
      * _layout back onto the render node synchronously during the commit phase.
+     *
+     * Fallback: when all children report height=0 (e.g. <Box> wrapping <Text>
+     * — a Pilates layout quirk where text height is attributed to TextNode, not
+     * its ContainerNode parent), scrollHeight equals height (= viewport size).
+     * In that case, estimate contentSize by counting children and assuming 1 row
+     * per child (the typical case for single-line text rows).
      */
     const readMetrics = () => {
       const inst = boxRef.current as BoxLikeInstance | null;
-      const lo = inst?.kind === 'box' ? inst.node._layout : undefined;
+      if (!inst || inst.kind !== 'box') return { viewportSize: 0, contentSize: 0 };
+      const lo = inst.node._layout;
       if (!lo) return { viewportSize: 0, contentSize: 0 };
       const vp = isVertical ? lo.height : lo.width;
-      const cs = isVertical ? (lo.scrollHeight ?? lo.height) : (lo.scrollWidth ?? lo.width);
+      let cs = isVertical ? (lo.scrollHeight ?? lo.height) : (lo.scrollWidth ?? lo.width);
+      // If scrollHeight === height (no overflow detected), check whether children
+      // are zero-height Box nodes. If so, count them and assume height=1 each.
+      // This handles the Pilates layout quirk where <Box> wrapping <Text> gives
+      // the Box height=0 (text height is attributed to TextNode, not ContainerNode).
+      if (cs <= vp && inst.node.children && inst.node.children.length > 0) {
+        const children = inst.node.children as Array<{ _layout?: { height: number; width: number } }>;
+        const allZero = children.every((c) => {
+          const clo = c._layout;
+          return clo ? (isVertical ? clo.height === 0 : clo.width === 0) : false;
+        });
+        if (allZero) {
+          cs = children.length;
+        }
+      }
       return { viewportSize: vp, contentSize: cs };
     };
 
@@ -210,6 +234,37 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
       { isActive: enabled && isFocused },
     );
 
+    const notifyFocusedBounds = (bounds: FocusedBoundsWithNode) => {
+      if (scrollOnFocus === false) return;
+      const { viewportSize: vp } = readMetrics();
+      let start = bounds.start;
+      let size = bounds.size;
+      // Fallback: when size=0 (Box-wrapping-Text gives zero height in Pilates),
+      // locate the node by scanning the ScrollView's child list and accumulate
+      // the offset from the top. Assume height=1 per child when _layout.height=0.
+      if (size === 0 && bounds._node !== undefined) {
+        const scrollInst = boxRef.current as BoxLikeInstance | null;
+        const children = scrollInst?.kind === 'box' ? (scrollInst.node.children as Array<{ _layout?: { height: number; top: number } }> | undefined) : undefined;
+        if (children) {
+          let acc = 0;
+          for (const child of children) {
+            const h = child._layout && child._layout.height > 0 ? child._layout.height : 1;
+            if (child === bounds._node) {
+              start = acc;
+              size = h;
+              break;
+            }
+            acc += h;
+          }
+        }
+      }
+      const end = start + size;
+      const visStart = effectiveOffset;
+      const visEnd = effectiveOffset + vp;
+      if (start < visStart) setOffset(start);
+      else if (end > visEnd) setOffset(end - vp);
+    };
+
     const axisOverflow = isVertical
       ? { overflowX: 'visible' as const, overflowY: 'hidden' as const }
       : { overflowX: 'hidden' as const, overflowY: 'visible' as const };
@@ -218,16 +273,18 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
       : { scrollLeft: effectiveOffset };
 
     return (
-      <Box
-        ref={boxRef}
-        {...(width !== undefined ? { width } : {})}
-        {...(height !== undefined ? { height } : {})}
-        flexDirection={isVertical ? 'column' : 'row'}
-        {...axisOverflow}
-        {...offsetProp}
-      >
-        {children}
-      </Box>
+      <ScrollContext.Provider value={{ notifyFocusedBounds }}>
+        <Box
+          ref={boxRef}
+          {...(width !== undefined ? { width } : {})}
+          {...(height !== undefined ? { height } : {})}
+          flexDirection={isVertical ? 'column' : 'row'}
+          {...axisOverflow}
+          {...offsetProp}
+        >
+          {children}
+        </Box>
+      </ScrollContext.Provider>
     );
   },
 );

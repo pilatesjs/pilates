@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { describe, expect, it } from 'vitest';
-import { Text } from './components.js';
+import { Box, Text } from './components.js';
+import { useFocus } from './focus.js';
+import { useScrollIntoFocus } from './scroll-context.js';
 import { ScrollView } from './scroll-view.js';
 import type { ScrollViewHandle } from './scroll-view.js';
 import { mountWithInput } from './test-utils.js';
@@ -290,6 +292,74 @@ describe('<ScrollView> — stickToBottom', () => {
     const out = handle.lastWrite();
     expect(out).toContain('row0');
     expect(out).not.toContain('row11');
+    handle.unmount();
+  });
+});
+
+describe('<ScrollView> — scrollOnFocus / scrollIntoView via useScrollIntoFocus', () => {
+  it('focusing a descendant outside the viewport auto-scrolls to make it visible', () => {
+    let api: ScrollViewHandle | null = null;
+    let focusRow3: (() => void) | null = null;
+    function Item({ id, index }: { id: string; index: number }) {
+      const boxRef = useRef(null);
+      const f = useFocus({ id });
+      useScrollIntoFocus(f.isFocused, boxRef);
+      if (id === 'row3') focusRow3 = f.focus;
+      return (
+        <Box ref={boxRef}>
+          <Text>{id}</Text>
+        </Box>
+      );
+    }
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} ref={ref}>
+          <Item id="row0" index={0} />
+          <Item id="row1" index={1} />
+          <Item id="row2" index={2} />
+          <Item id="row3" index={3} />
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    expect(api!.getScrollOffset()).toBe(0);
+    focusRow3!();
+    handle.flush?.();
+    // row3 is at index 3, viewport is 2 rows → must scroll to offset at least 2
+    expect(api!.getScrollOffset()).toBeGreaterThanOrEqual(2);
+    handle.unmount();
+  });
+
+  it('scrollOnFocus={false} disables auto-scroll', () => {
+    let api: ScrollViewHandle | null = null;
+    let focusRow3: (() => void) | null = null;
+    function Item({ id }: { id: string }) {
+      const boxRef = useRef(null);
+      const f = useFocus({ id });
+      useScrollIntoFocus(f.isFocused, boxRef);
+      if (id === 'row3') focusRow3 = f.focus;
+      return (
+        <Box ref={boxRef}>
+          <Text>{id}</Text>
+        </Box>
+      );
+    }
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} scrollOnFocus={false} ref={ref}>
+          <Item id="row0" /><Item id="row1" />
+          <Item id="row2" /><Item id="row3" />
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    focusRow3!();
+    handle.flush?.();
+    expect(api!.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 });
