@@ -17,7 +17,8 @@ import {
 } from './hooks.js';
 import { buildHostConfig } from './host-config.js';
 import type { RootContainer } from './reconciler.js';
-import { StdinProvider } from './render.js';
+import type { MouseButton } from './mouse-event.js';
+import { MouseProvider, StdinProvider } from './render.js';
 
 export interface RenderToStringOptions {
   width: number;
@@ -409,6 +410,35 @@ function eventToBytes(event: Partial<KeyEvent>): string {
 }
 
 // ---------------------------------------------------------------------------
+// encodeSgrMouseBytes — encode a mouse event as an SGR escape sequence
+// ---------------------------------------------------------------------------
+
+function encodeSgrMouseBytes(opts: {
+  button: MouseButton;
+  col: number;
+  row: number;
+  pressed?: boolean;
+  ctrl?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+}): string {
+  let pb = 0;
+  switch (opts.button) {
+    case 'left':       pb = 0;  break;
+    case 'middle':     pb = 1;  break;
+    case 'right':      pb = 2;  break;
+    case 'wheel-up':   pb = 64; break;
+    case 'wheel-down': pb = 65; break;
+    case 'none':       pb = 35; break;
+  }
+  if (opts.shift === true) pb |= 0x04;
+  if (opts.alt   === true) pb |= 0x08;
+  if (opts.ctrl  === true) pb |= 0x10;
+  const final = (opts.pressed ?? true) ? 'M' : 'm';
+  return `\x1b[<${pb};${opts.col};${opts.row}${final}`;
+}
+
+// ---------------------------------------------------------------------------
 // InputMountHandle + mountWithInput
 // ---------------------------------------------------------------------------
 
@@ -430,6 +460,16 @@ export interface InputMountHandle<T> extends MountHandle<T> {
    * update commits before assertions on `lastWrite()`.
    */
   flush(): void;
+  /** Dispatch a synthetic mouse event through the real SGR parser chain. */
+  sendMouseEvent(opts: {
+    button: MouseButton;
+    col: number;
+    row: number;
+    pressed?: boolean;
+    ctrl?: boolean;
+    alt?: boolean;
+    shift?: boolean;
+  }): void;
 }
 
 /**
@@ -503,9 +543,13 @@ export function mountWithInput<T>(
           StderrContext.Provider,
           { value: stderrValue },
           createElement(
-            StdinProvider,
-            { stdin: fakeStdin as unknown as NodeJS.ReadStream },
-            disableFocus ? innerEl : createElement(FocusProvider, null, innerEl),
+            MouseProvider,
+            { container },
+            createElement(
+              StdinProvider,
+              { stdin: fakeStdin as unknown as NodeJS.ReadStream },
+              disableFocus ? innerEl : createElement(FocusProvider, null, innerEl),
+            ),
           ),
         ),
       ),
@@ -631,6 +675,13 @@ export function mountWithInput<T>(
           container.prevFrame = null;
           sync.flushSyncWork();
         }
+      });
+    },
+    sendMouseEvent: (opts) => {
+      withAct(() => {
+        const bytes = encodeSgrMouseBytes(opts);
+        fakeStdin.emit('data', bytes);
+        sync.flushSyncWork();
       });
     },
   };
