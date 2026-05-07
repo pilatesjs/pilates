@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { Box } from './components.js';
+import type { MouseEvent } from './mouse-event.js';
 import { useFocus } from './focus.js';
 import { useInput } from './hooks.js';
 import { type FocusedBounds, type FocusedBoundsWithNode, ScrollContext } from './scroll-context.js';
@@ -305,6 +306,11 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(function
         flexDirection={isVertical ? 'column' : 'row'}
         {...axisOverflow}
         {...offsetProp}
+        onWheel={(e: MouseEvent) => {
+          e.stopPropagation();
+          if (e.button === 'wheel-up') setOffset(offsetRef.current - 1);
+          if (e.button === 'wheel-down') setOffset(offsetRef.current + 1);
+        }}
       >
         {children}
       </Box>
