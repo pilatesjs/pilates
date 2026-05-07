@@ -3,6 +3,7 @@ import {
   type ReactNode,
   forwardRef,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -34,6 +35,10 @@ export interface ScrollViewProps {
    * Default true.
    */
   scrollEnabled?: boolean;
+  /** When content grows, auto-scroll to end. Pauses if user has scrolled away from bottom. */
+  stickToBottom?: boolean;
+  /** When content grows, auto-scroll to start. Pauses if user has scrolled away from top. */
+  stickToTop?: boolean;
   children?: ReactNode;
 }
 
@@ -53,7 +58,7 @@ function clamp(n: number, lo: number, hi: number): number {
 
 export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
   function ScrollView(
-    { height, width, horizontal, scrollOffset, defaultScrollOffset, onScroll, scrollEnabled, children },
+    { height, width, horizontal, scrollOffset, defaultScrollOffset, onScroll, scrollEnabled, stickToBottom, stickToTop, children },
     ref,
   ) {
     const isControlled = scrollOffset !== undefined;
@@ -94,6 +99,11 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
       const cur = offsetRef.current;
       if (clamped === cur) return;
       offsetRef.current = clamped;
+      // Update stick-tracking refs immediately so that if the next render is
+      // triggered by external state (e.g. stickToBottom content growth), we
+      // use the position set by THIS call rather than the last effect run.
+      wasAtEndRef.current = clamped >= max;
+      wasAtStartRef.current = clamped === 0;
       if (!isControlled) setInternalOffset(clamped);
       onScroll?.(clamped, {
         contentSize: cs,
@@ -102,6 +112,26 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
         atEnd: clamped >= max,
       });
     };
+
+    const prevContentSizeRef = useRef(0);
+    const wasAtEndRef = useRef(true);
+    const wasAtStartRef = useRef(true);
+
+    useLayoutEffect(() => {
+      const { contentSize: cs, viewportSize: vp } = readMetrics();
+      const grew = cs > prevContentSizeRef.current;
+      if (grew) {
+        if (stickToBottom && wasAtEndRef.current) {
+          setOffset(Math.max(0, cs - vp));
+        } else if (stickToTop && wasAtStartRef.current) {
+          setOffset(0);
+        }
+      }
+      prevContentSizeRef.current = cs;
+      const max = Math.max(0, cs - vp);
+      wasAtEndRef.current = effectiveOffset >= max;
+      wasAtStartRef.current = effectiveOffset === 0;
+    });
 
     // Build the stable handle once and update on rerender via a ref.
     // getScrollOffset reads offsetRef so it returns the latest value even

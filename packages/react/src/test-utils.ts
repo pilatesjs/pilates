@@ -614,12 +614,33 @@ export function mountWithInput<T>(
     fakeStdin,
     flush: () => {
       withAct(() => {
-        // Clear prevFrame so the next resetAfterCommit produces a full
-        // repaint rather than a diff. This lets callers use lastWrite()
-        // to see the full current frame after flushing.
-        container.prevFrame = null;
-        sync.flushSyncWork();
-        drainPassive(sync);
+        // Temporarily replace onFlush so that every commit during this flush
+        // produces a full repaint: after each write, we reset prevFrame to null
+        // so the next resetAfterCommit diffs against null (= full frame).
+        // This is necessary for effects (e.g. stickToBottom) that call setState
+        // because React commits the resulting update synchronously inside
+        // flushPassiveEffects, after prevFrame has already been set by the
+        // previous resetAfterCommit.
+        const realOnFlush = container.onFlush;
+        container.onFlush = (ansi) => {
+          realOnFlush(ansi);
+          container.prevFrame = null;
+        };
+        try {
+          container.prevFrame = null;
+          sync.flushSyncWork();
+          for (let i = 0; i < 8; i++) {
+            if (!sync.flushPassiveEffects()) break;
+            sync.flushSyncWork();
+          }
+        } finally {
+          container.onFlush = realOnFlush;
+          // After all commits, restore prevFrame to the actual current frame
+          // so subsequent non-flush operations (like pressKey) diff correctly.
+          // Re-render without clearing prevFrame to capture the real frame.
+          container.prevFrame = null;
+          sync.flushSyncWork();
+        }
       });
     },
   };

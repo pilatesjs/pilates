@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Text } from './components.js';
 import { ScrollView } from './scroll-view.js';
@@ -239,6 +239,57 @@ describe('<ScrollView> — built-in keys', () => {
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
     handle.pressKey('down');
     expect(api!.getScrollOffset()).toBe(0);
+    handle.unmount();
+  });
+});
+
+describe('<ScrollView> — stickToBottom', () => {
+  it('appending content auto-scrolls to end', () => {
+    let setItems: ((n: number) => void) | null = null;
+    function App() {
+      const [n, set] = useState(3);
+      setItems = set;
+      const items = [];
+      for (let i = 0; i < n; i++) items.push(<Text key={i}>{`row${i}`}</Text>);
+      return (
+        <ScrollView height={2} stickToBottom>
+          {items}
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    setItems!(8);
+    handle.flush?.();
+    const out = handle.lastWrite();
+    expect(out).toContain('row6');
+    expect(out).toContain('row7');
+    expect(out).not.toContain('row0');
+    handle.unmount();
+  });
+
+  it('after user scrolls away, append does NOT auto-scroll', () => {
+    let setItems: ((n: number) => void) | null = null;
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      const [n, set] = useState(8);
+      setItems = set;
+      const items = [];
+      for (let i = 0; i < n; i++) items.push(<Text key={i}>{`row${i}`}</Text>);
+      return (
+        <ScrollView height={2} stickToBottom ref={ref}>
+          {items}
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    api!.scrollToStart();
+    setItems!(12);
+    handle.flush?.();
+    const out = handle.lastWrite();
+    expect(out).toContain('row0');
+    expect(out).not.toContain('row11');
     handle.unmount();
   });
 });
