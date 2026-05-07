@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Box, Text } from './components.js';
 import { useFocus } from './focus.js';
@@ -74,10 +74,10 @@ describe('<ScrollView> — scroll state', () => {
 
 describe('<ScrollView> — imperative ref API', () => {
   it('scrollTo jumps to the given offset', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} ref={ref}>
           <Text>row0</Text>
@@ -87,6 +87,7 @@ describe('<ScrollView> — imperative ref API', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    const api = scrollRef.current;
     expect(api).not.toBeNull();
     api!.scrollTo(1);
     handle.flush?.();
@@ -97,10 +98,10 @@ describe('<ScrollView> — imperative ref API', () => {
   });
 
   it('scrollTo clamps to [0, contentSize - viewportSize]', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} ref={ref}>
           <Text>row0</Text>
@@ -110,18 +111,19 @@ describe('<ScrollView> — imperative ref API', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
-    api!.scrollTo(999);
-    expect(api!.getScrollOffset()).toBe(1);
-    api!.scrollTo(-5);
-    expect(api!.getScrollOffset()).toBe(0);
+    const api = scrollRef.current!;
+    api.scrollTo(999);
+    expect(api.getScrollOffset()).toBe(1);
+    api.scrollTo(-5);
+    expect(api.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 
   it('scrollToEnd / scrollToStart move to the bounds', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} ref={ref}>
           <Text>row0</Text>
@@ -132,18 +134,19 @@ describe('<ScrollView> — imperative ref API', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
-    api!.scrollToEnd();
-    expect(api!.getScrollOffset()).toBe(2);
-    api!.scrollToStart();
-    expect(api!.getScrollOffset()).toBe(0);
+    const api = scrollRef.current!;
+    api.scrollToEnd();
+    expect(api.getScrollOffset()).toBe(2);
+    api.scrollToStart();
+    expect(api.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 
   it('scrollBy adds the delta', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} ref={ref}>
           <Text>row0</Text>
@@ -154,26 +157,27 @@ describe('<ScrollView> — imperative ref API', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
-    api!.scrollBy(1);
-    expect(api!.getScrollOffset()).toBe(1);
-    api!.scrollBy(1);
-    expect(api!.getScrollOffset()).toBe(2);
-    api!.scrollBy(99);
-    expect(api!.getScrollOffset()).toBe(2);
+    const api = scrollRef.current!;
+    api.scrollBy(1);
+    expect(api.getScrollOffset()).toBe(1);
+    api.scrollBy(1);
+    expect(api.getScrollOffset()).toBe(2);
+    api.scrollBy(99);
+    expect(api.getScrollOffset()).toBe(2);
     // Lower-bound clamp: scrollBy with a large negative delta from a scrolled
     // position must not go below 0.
-    api!.scrollBy(-999);
-    expect(api!.getScrollOffset()).toBe(0);
+    api.scrollBy(-999);
+    expect(api.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 });
 
 describe('<ScrollView> — built-in keys', () => {
   it('arrow Down advances by 1 line when focused', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} ref={ref}>
           <Text>row0</Text>
@@ -184,16 +188,17 @@ describe('<ScrollView> — built-in keys', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    const api = scrollRef.current!;
     handle.pressKey('down');
-    expect(api!.getScrollOffset()).toBe(1);
+    expect(api.getScrollOffset()).toBe(1);
     handle.unmount();
   });
 
   it('PgDn advances by viewport - 1', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={3} ref={ref}>
           <Text>row0</Text>
@@ -208,16 +213,17 @@ describe('<ScrollView> — built-in keys', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 8 });
+    const api = scrollRef.current!;
     handle.pressKey('pageDown');
-    expect(api!.getScrollOffset()).toBe(2); // viewport=3, step=2
+    expect(api.getScrollOffset()).toBe(2); // viewport=3, step=2
     handle.unmount();
   });
 
   it('Home / End jump to bounds', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} ref={ref}>
           <Text>row0</Text>
@@ -228,18 +234,19 @@ describe('<ScrollView> — built-in keys', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    const api = scrollRef.current!;
     handle.pressKey('end');
-    expect(api!.getScrollOffset()).toBe(2);
+    expect(api.getScrollOffset()).toBe(2);
     handle.pressKey('home');
-    expect(api!.getScrollOffset()).toBe(0);
+    expect(api.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 
   it('scrollEnabled={false} disables built-in keys', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} scrollEnabled={false} ref={ref}>
           <Text>row0</Text>
@@ -249,8 +256,9 @@ describe('<ScrollView> — built-in keys', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    const api = scrollRef.current!;
     handle.pressKey('down');
-    expect(api!.getScrollOffset()).toBe(0);
+    expect(api.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 });
@@ -281,10 +289,10 @@ describe('<ScrollView> — stickToBottom', () => {
 
   it('after user scrolls away, append does NOT auto-scroll', () => {
     let setItems: ((n: number) => void) | null = null;
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       const [n, set] = useState(8);
       setItems = set;
       const items = [];
@@ -296,7 +304,8 @@ describe('<ScrollView> — stickToBottom', () => {
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
-    api!.scrollToStart();
+    const api = scrollRef.current!;
+    api.scrollToStart();
     setItems!(12);
     handle.flush?.();
     const out = handle.lastWrite();
@@ -308,7 +317,7 @@ describe('<ScrollView> — stickToBottom', () => {
 
 describe('<ScrollView> — scrollOnFocus / scrollIntoView via useScrollIntoFocus', () => {
   it('focusing a descendant outside the viewport auto-scrolls to make it visible', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     let focusRow3: (() => void) | null = null;
     function Item({ id, index }: { id: string; index: number }) {
       const boxRef = useRef(null);
@@ -323,7 +332,7 @@ describe('<ScrollView> — scrollOnFocus / scrollIntoView via useScrollIntoFocus
     }
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} ref={ref}>
           <Item id="row0" index={0} />
@@ -334,16 +343,17 @@ describe('<ScrollView> — scrollOnFocus / scrollIntoView via useScrollIntoFocus
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
-    expect(api!.getScrollOffset()).toBe(0);
+    const api = scrollRef.current!;
+    expect(api.getScrollOffset()).toBe(0);
     focusRow3!();
     handle.flush?.();
     // row3 is at index 3, viewport is 2 rows → must scroll to offset at least 2
-    expect(api!.getScrollOffset()).toBeGreaterThanOrEqual(2);
+    expect(api.getScrollOffset()).toBeGreaterThanOrEqual(2);
     handle.unmount();
   });
 
   it('scrollOnFocus={false} disables auto-scroll', () => {
-    let api: ScrollViewHandle | null = null;
+    let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
     let focusRow3: (() => void) | null = null;
     function Item({ id }: { id: string }) {
       const boxRef = useRef(null);
@@ -358,7 +368,7 @@ describe('<ScrollView> — scrollOnFocus / scrollIntoView via useScrollIntoFocus
     }
     function App() {
       const ref = useRef<ScrollViewHandle>(null);
-      api = ref.current;
+      scrollRef = ref;
       return (
         <ScrollView height={2} scrollOnFocus={false} ref={ref}>
           <Item id="row0" />
@@ -369,9 +379,10 @@ describe('<ScrollView> — scrollOnFocus / scrollIntoView via useScrollIntoFocus
       );
     }
     const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    const api = scrollRef.current!;
     focusRow3!();
     handle.flush?.();
-    expect(api!.getScrollOffset()).toBe(0);
+    expect(api.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 });
