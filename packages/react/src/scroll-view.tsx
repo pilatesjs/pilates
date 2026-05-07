@@ -10,7 +10,7 @@ import {
 import { Box } from './components.js';
 import { useFocus } from './focus.js';
 import { useInput } from './hooks.js';
-import { ScrollContext, type FocusedBoundsWithNode } from './scroll-context.js';
+import { ScrollContext, type FocusedBounds, type FocusedBoundsWithNode } from './scroll-context.js';
 import { type BoxLikeInstance, useBoxMetrics } from './use-box-metrics.js';
 
 export interface ScrollMeta {
@@ -234,7 +234,8 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
       { isActive: enabled && isFocused },
     );
 
-    const notifyFocusedBounds = (bounds: FocusedBoundsWithNode) => {
+    const notifyFocusedBounds = (bounds: FocusedBounds) => {
+      const bwn = bounds as FocusedBoundsWithNode;
       if (scrollOnFocus === false) return;
       const { viewportSize: vp } = readMetrics();
       let start = bounds.start;
@@ -242,14 +243,14 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
       // Fallback: when size=0 (Box-wrapping-Text gives zero height in Pilates),
       // locate the node by scanning the ScrollView's child list and accumulate
       // the offset from the top. Assume height=1 per child when _layout.height=0.
-      if (size === 0 && bounds._node !== undefined) {
+      if (size === 0 && bwn._node !== undefined) {
         const scrollInst = boxRef.current as BoxLikeInstance | null;
         const children = scrollInst?.kind === 'box' ? (scrollInst.node.children as Array<{ _layout?: { height: number; top: number } }> | undefined) : undefined;
         if (children) {
           let acc = 0;
           for (const child of children) {
             const h = child._layout && child._layout.height > 0 ? child._layout.height : 1;
-            if (child === bounds._node) {
+            if (child === bwn._node) {
               start = acc;
               size = h;
               break;

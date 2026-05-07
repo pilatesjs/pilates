@@ -13,7 +13,7 @@ export interface FocusedBoundsWithNode extends FocusedBounds {
 }
 
 export interface ScrollContextValue {
-  notifyFocusedBounds: (bounds: FocusedBoundsWithNode) => void;
+  notifyFocusedBounds: (bounds: FocusedBounds) => void;
 }
 
 export const ScrollContext: Context<ScrollContextValue> = createContext<ScrollContextValue>({
@@ -56,6 +56,7 @@ export function useScrollIntoFocus(
     if (!inst || inst.kind !== 'box') return;
     const lo = inst.node._layout;
     if (!lo) return;
-    ctx.notifyFocusedBounds({ start: lo.top, size: lo.height, _node: inst.node });
+    const b: FocusedBoundsWithNode = { start: lo.top, size: lo.height, _node: inst.node };
+    ctx.notifyFocusedBounds(b);
   }, [isFocused, ctx, nodeRef]);
 }
