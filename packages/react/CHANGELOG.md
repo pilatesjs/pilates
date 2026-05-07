@@ -6,6 +6,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.3.0] — 2026-05-07
+
+### Mouse support
+
+- **Added** `onClick` / `onWheel` props on `<Box>` — deepest-first bubbling with `stopPropagation`.
+- **Added** `useMouse(handler, options?)` hook for raw mouse events (button presses, releases, wheel ticks).
+- **Added** SGR mouse encoding (`?1000h?1006h`) — automatically enabled/disabled as a ref-counted pair with raw mode.
+- **Added** `<ScrollView>` responds to wheel events independently of `scrollEnabled` (keyboard nav flag). Nested `ScrollView`s isolate via `stopPropagation`.
+- **Added** `sendMouseEvent` helper on `InputMountHandle` (test-utils) for integration testing.
+- **Added** Exports: `useMouse`, `UseMouseOptions`, `MouseButton`, `MouseEvent`.
+
 ### Scrolling (Track 1 P2)
 
 - **Added** `<ScrollView>` component — viewport into content larger than the visible area. Vertical by default; `horizontal` flips axis.
