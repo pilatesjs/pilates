@@ -269,3 +269,35 @@ describe('key-parser bracketed paste', () => {
     expect(pastes).toEqual(['hi 日本 🎉']);
   });
 });
+
+describe('key-parser SGR mouse sequences', () => {
+  it('routes a left-click press to mouseEvents, not events', () => {
+    const result = parse('\x1b[<0;5;3M');
+    expect(result.events).toHaveLength(0);
+    expect(result.mouseEvents).toHaveLength(1);
+    expect(result.mouseEvents[0]).toMatchObject({ button: 'left', col: 5, row: 3, pressed: true });
+  });
+
+  it('routes wheel-up to mouseEvents', () => {
+    const { mouseEvents } = parse('\x1b[<64;10;2M');
+    expect(mouseEvents[0]).toMatchObject({ button: 'wheel-up' });
+  });
+
+  it('parses mouse sequence followed by a regular keypress', () => {
+    const { events, mouseEvents } = parse('\x1b[<0;1;1Ma');
+    expect(mouseEvents).toHaveLength(1);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.ch).toBe('a');
+  });
+
+  it('drops a malformed SGR sequence without adding a KeyEvent', () => {
+    const { events, mouseEvents } = parse('\x1b[<x;y;zM');
+    expect(mouseEvents).toHaveLength(0);
+    expect(events).toHaveLength(0);
+  });
+
+  it('empty mouseEvents on normal input', () => {
+    const { mouseEvents } = parse('hello');
+    expect(mouseEvents).toHaveLength(0);
+  });
+});
