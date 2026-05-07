@@ -1,6 +1,7 @@
 import { applyDiff, diff } from '@pilates/diff';
-import type { RenderNode } from '@pilates/render';
+import type { ContainerNode, RenderNode } from '@pilates/render';
 import { renderToFrame } from '@pilates/render';
+import { setMouseHandlers } from './mouse-registry.js';
 import type { HostConfig } from 'react-reconciler';
 import { DefaultEventPriority, DiscreteEventPriority } from 'react-reconciler/constants.js';
 import { PilatesError, PilatesErrorCode, suggestHostTypeReplacement } from './errors/index.js';
@@ -124,7 +125,7 @@ export function buildHostConfig(): PilatesHostConfig {
       // holds a reference to this exact object, so reassigning
       // instance.node would orphan the new value.
       const cleaned = defined(newProps);
-      const { children: _ignored, ...rest } = cleaned;
+      const { children: _c, onClick: _oc, onWheel: _ow, ...rest } = cleaned;
       const target = instance.node as Record<string, unknown>;
       const preserved = instance.kind === 'box' ? 'children' : 'text';
       // Clear all old props except the structural field.
@@ -134,6 +135,9 @@ export function buildHostConfig(): PilatesHostConfig {
       // Apply the cleaned new prop set.
       for (const k of Object.keys(rest)) {
         target[k] = rest[k];
+      }
+      if (instance.kind === 'box') {
+        setMouseHandlers(instance.node as ContainerNode, cleaned);
       }
     }) as unknown as PilatesHostConfig['commitUpdate'] & object,
     commitTextUpdate: (instance, _oldText, newText) => {
@@ -176,8 +180,13 @@ export function buildHostConfig(): PilatesHostConfig {
 function createInstance(type: string, props: Record<string, unknown>): HostInstance {
   const cleaned = defined(props);
   if (type === 'pilates-box') {
-    const { children: _ignored, ...rest } = cleaned;
-    return { kind: 'box', node: { ...rest, children: [] } as RenderNode } as BoxInstance;
+    const { children: _c, onClick: _oc, onWheel: _ow, ...rest } = cleaned;
+    const instance: BoxInstance = {
+      kind: 'box',
+      node: { ...rest, children: [] } as RenderNode,
+    };
+    setMouseHandlers(instance.node as ContainerNode, cleaned);
+    return instance;
   }
   if (type === 'pilates-text') {
     const { children: _ignored, ...rest } = cleaned;
