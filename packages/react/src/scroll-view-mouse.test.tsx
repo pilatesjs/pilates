@@ -62,9 +62,9 @@ describe('ScrollView wheel scrolling', () => {
     expect(handle.getScrollOffset()).toBe(1);
   });
 
-  it('does not scroll when scrollEnabled is false and no onWheel', () => {
+  it('wheel scrolling works even when scrollEnabled is false (wheel is independent of keyboard nav)', () => {
     let scrollRef: RefObject<ScrollViewHandle | null> = { current: null };
-    const { flush } = mountWithInput(
+    const { sendMouseEvent, flush } = mountWithInput(
       null,
       () => {
         const ref = useRef<ScrollViewHandle>(null);
@@ -81,7 +81,9 @@ describe('ScrollView wheel scrolling', () => {
       { width: 20, height: 5 },
     );
     flush();
-    expect(scrollRef.current!.getScrollOffset()).toBe(0);
+    sendMouseEvent({ button: 'wheel-down', col: 1, row: 1 });
+    flush();
+    expect(scrollRef.current!.getScrollOffset()).toBe(1);
   });
 
   it('nested ScrollViews: inner consumes wheel, outer does not scroll', () => {
