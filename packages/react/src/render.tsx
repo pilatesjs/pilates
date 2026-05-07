@@ -378,8 +378,8 @@ const PASTE_MODE_DISABLE = '\x1b[?2004l';
  */
 const ESCAPE_DISAMBIGUATION_MS = 50;
 
-const MOUSE_MODE_ENABLE  = '\x1b[?1006h';
-const MOUSE_MODE_DISABLE = '\x1b[?1006l';
+const MOUSE_MODE_ENABLE  = '\x1b[?1000h\x1b[?1006h';
+const MOUSE_MODE_DISABLE = '\x1b[?1006l\x1b[?1000l';
 
 function ensureMouseMode(
   stdin: NodeJS.ReadStream,

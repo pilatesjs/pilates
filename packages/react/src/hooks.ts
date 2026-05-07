@@ -90,8 +90,8 @@ export interface StdinHookValue {
    */
   subscribePaste: (handler: (text: string) => void) => () => void;
   /**
-   * Subscribe a handler to raw mouse events (all positions + buttons,
-   * including moves). Returns an unsubscribe function. Bumps the mouse-mode
+   * Subscribe a handler to raw mouse events (button presses, releases, and
+   * wheel ticks). Returns an unsubscribe function. Bumps the mouse-mode
    * refcount — enabling SGR mouse reporting on the terminal.
    */
   subscribeMouseEvent: (
