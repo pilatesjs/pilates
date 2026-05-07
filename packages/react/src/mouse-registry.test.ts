@@ -105,10 +105,10 @@ describe('collectHits', () => {
   });
 
   it('skips text nodes (nodes with a text property)', () => {
-    // A TextNode has a `text` property; collectHits should not recurse into it.
     const textNode = { text: 'hello' } as unknown as ContainerNode;
     const parent = makeNode({ left: 0, top: 0, width: 20, height: 10 }, [textNode]);
-    // Should not throw even though textNode has no children
-    expect(() => collectHits(parent, 5, 5)).not.toThrow();
+    const hits = collectHits(parent, 5, 5);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.node).toBe(parent);
   });
 });
