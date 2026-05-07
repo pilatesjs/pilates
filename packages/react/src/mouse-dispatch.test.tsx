@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
 import { createElement } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { Box } from './components.js';
 import type { MouseEvent } from './mouse-event.js';
 import { mountWithInput } from './test-utils.js';
@@ -139,7 +139,8 @@ describe('onWheel on <Box>', () => {
     const wheelHandler = vi.fn();
     const { sendMouseEvent } = mountWithInput(
       null,
-      () => createElement(Box, { onClick: clickHandler, onWheel: wheelHandler, width: 20, height: 10 }),
+      () =>
+        createElement(Box, { onClick: clickHandler, onWheel: wheelHandler, width: 20, height: 10 }),
       { width: 40, height: 20 },
     );
     sendMouseEvent({ button: 'wheel-up', col: 1, row: 1 });

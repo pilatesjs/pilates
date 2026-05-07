@@ -5,7 +5,15 @@ export { Box, Newline, Spacer, Text } from './components.js';
 export type { BoxProps, TextProps } from './components.js';
 
 // Hooks
-export { useApp, useInput, useMouse, usePaste, useStdout, useStderr, useWindowSize } from './hooks.js';
+export {
+  useApp,
+  useInput,
+  useMouse,
+  usePaste,
+  useStdout,
+  useStderr,
+  useWindowSize,
+} from './hooks.js';
 export type {
   AppHookValue,
   KeyEvent,

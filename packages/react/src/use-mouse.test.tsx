@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
+import { describe, expect, it } from 'vitest';
 import { Box } from './components.js';
 import { useMouse } from './hooks.js';
 import type { MouseEvent } from './mouse-event.js';
@@ -9,14 +9,12 @@ describe('useMouse', () => {
   it('receives a mouse event emitted to stdin', () => {
     const received: MouseEvent[] = [];
     function App() {
-      useMouse((e) => { received.push(e); });
+      useMouse((e) => {
+        received.push(e);
+      });
       return createElement(Box, { width: 5, height: 5 });
     }
-    const { fakeStdin } = mountWithInput(
-      null,
-      () => createElement(App),
-      { width: 40, height: 20 },
-    );
+    const { fakeStdin } = mountWithInput(null, () => createElement(App), { width: 40, height: 20 });
     // Left press at col=1, row=1 (SGR: \x1b[<0;1;1M)
     fakeStdin.emit('data', '\x1b[<0;1;1M');
     expect(received).toHaveLength(1);
@@ -29,14 +27,12 @@ describe('useMouse', () => {
   it('receives events at positions outside any rendered box', () => {
     const received: MouseEvent[] = [];
     function App() {
-      useMouse((e) => { received.push(e); });
+      useMouse((e) => {
+        received.push(e);
+      });
       return createElement(Box, { width: 5, height: 5 });
     }
-    const { fakeStdin } = mountWithInput(
-      null,
-      () => createElement(App),
-      { width: 40, height: 20 },
-    );
+    const { fakeStdin } = mountWithInput(null, () => createElement(App), { width: 40, height: 20 });
     // Far outside any box
     fakeStdin.emit('data', '\x1b[<0;99;99M');
     expect(received).toHaveLength(1);
@@ -45,14 +41,12 @@ describe('useMouse', () => {
   it('receives wheel-up events', () => {
     const received: MouseEvent[] = [];
     function App() {
-      useMouse((e) => { received.push(e); });
+      useMouse((e) => {
+        received.push(e);
+      });
       return createElement(Box, { width: 5, height: 5 });
     }
-    const { fakeStdin } = mountWithInput(
-      null,
-      () => createElement(App),
-      { width: 40, height: 20 },
-    );
+    const { fakeStdin } = mountWithInput(null, () => createElement(App), { width: 40, height: 20 });
     fakeStdin.emit('data', '\x1b[<64;1;1M');
     expect(received[0]!.button).toBe('wheel-up');
   });
@@ -60,7 +54,12 @@ describe('useMouse', () => {
   it('stops receiving when isActive becomes false', () => {
     const received: MouseEvent[] = [];
     function App({ active }: { active: boolean }) {
-      useMouse((e) => { received.push(e); }, { isActive: active });
+      useMouse(
+        (e) => {
+          received.push(e);
+        },
+        { isActive: active },
+      );
       return createElement(Box, { width: 5, height: 5 });
     }
     const { fakeStdin, setState } = mountWithInput(
@@ -76,7 +75,12 @@ describe('useMouse', () => {
   it('resumes receiving when isActive becomes true again', () => {
     const received: MouseEvent[] = [];
     function App({ active }: { active: boolean }) {
-      useMouse((e) => { received.push(e); }, { isActive: active });
+      useMouse(
+        (e) => {
+          received.push(e);
+        },
+        { isActive: active },
+      );
       return createElement(Box, { width: 5, height: 5 });
     }
     const { fakeStdin, setState } = mountWithInput(

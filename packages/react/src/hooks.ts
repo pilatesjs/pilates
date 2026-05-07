@@ -251,7 +251,10 @@ export interface UseMouseOptions {
   isActive?: boolean;
 }
 
-export function useMouse(handler: (event: MouseEvent) => void, options: UseMouseOptions = {}): void {
+export function useMouse(
+  handler: (event: MouseEvent) => void,
+  options: UseMouseOptions = {},
+): void {
   const v = useContext(StdinContext);
   if (!v)
     throw new PilatesError(

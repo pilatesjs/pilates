@@ -1,10 +1,4 @@
-export type MouseButton =
-  | 'left'
-  | 'middle'
-  | 'right'
-  | 'wheel-up'
-  | 'wheel-down'
-  | 'none'; // mouse-move, no button pressed
+export type MouseButton = 'left' | 'middle' | 'right' | 'wheel-up' | 'wheel-down' | 'none'; // mouse-move, no button pressed
 
 export interface MouseEvent {
   /** 1-based terminal column (leftmost = 1). */

@@ -9,12 +9,9 @@ export interface MouseHandlers {
 
 export const mouseRegistry = new WeakMap<ContainerNode, MouseHandlers>();
 
-export function setMouseHandlers(
-  node: ContainerNode,
-  props: Record<string, unknown>,
-): void {
-  const onClick = props['onClick'] as MouseHandlers['onClick'] | undefined;
-  const onWheel = props['onWheel'] as MouseHandlers['onWheel'] | undefined;
+export function setMouseHandlers(node: ContainerNode, props: Record<string, unknown>): void {
+  const onClick = props.onClick as MouseHandlers['onClick'] | undefined;
+  const onWheel = props.onWheel as MouseHandlers['onWheel'] | undefined;
   if (onClick !== undefined || onWheel !== undefined) {
     const handlers: MouseHandlers = {};
     if (onClick !== undefined) handlers.onClick = onClick;
@@ -39,12 +36,7 @@ export function collectHits(
 ): HitNode[] {
   const lo = (root as ContainerNode & { _layout?: ComputedLayout })._layout;
   if (lo !== undefined) {
-    if (
-      col >= lo.left &&
-      col < lo.left + lo.width &&
-      row >= lo.top &&
-      row < lo.top + lo.height
-    ) {
+    if (col >= lo.left && col < lo.left + lo.width && row >= lo.top && row < lo.top + lo.height) {
       acc.push({ node: root, depth });
     }
   }

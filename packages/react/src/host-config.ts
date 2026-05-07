@@ -1,10 +1,10 @@
 import { applyDiff, diff } from '@pilates/diff';
 import type { ContainerNode, RenderNode } from '@pilates/render';
 import { renderToFrame } from '@pilates/render';
-import { setMouseHandlers } from './mouse-registry.js';
 import type { HostConfig } from 'react-reconciler';
 import { DefaultEventPriority, DiscreteEventPriority } from 'react-reconciler/constants.js';
 import { PilatesError, PilatesErrorCode, suggestHostTypeReplacement } from './errors/index.js';
+import { setMouseHandlers } from './mouse-registry.js';
 import type {
   AnyInstance,
   BoxInstance,

@@ -8,9 +8,9 @@ import {
   useState,
 } from 'react';
 import { Box } from './components.js';
-import type { MouseEvent } from './mouse-event.js';
 import { useFocus } from './focus.js';
 import { useInput } from './hooks.js';
+import type { MouseEvent } from './mouse-event.js';
 import { type FocusedBounds, type FocusedBoundsWithNode, ScrollContext } from './scroll-context.js';
 import { type BoxLikeInstance, useBoxMetrics } from './use-box-metrics.js';
 

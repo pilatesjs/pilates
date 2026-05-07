@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
 import type { ContainerNode } from '@pilates/render';
+import { describe, expect, it } from 'vitest';
 import { collectHits, mouseRegistry, setMouseHandlers } from './mouse-registry.js';
 
 const noop = (): void => {};

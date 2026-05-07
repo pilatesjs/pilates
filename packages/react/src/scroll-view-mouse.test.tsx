@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
 import { type RefObject, createElement, useRef } from 'react';
-import type { ScrollViewHandle } from './scroll-view.js';
-import { ScrollView } from './scroll-view.js';
+import { describe, expect, it } from 'vitest';
 import { Box } from './components.js';
 import { Text } from './components.js';
+import type { ScrollViewHandle } from './scroll-view.js';
+import { ScrollView } from './scroll-view.js';
 import { mountWithInput } from './test-utils.js';
 
 describe('ScrollView wheel scrolling', () => {

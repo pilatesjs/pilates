@@ -4,7 +4,15 @@ import { parseSgrMouse } from './mouse-parser.js';
 describe('parseSgrMouse', () => {
   it('parses a left-button press', () => {
     const ev = parseSgrMouse('0;5;3', 'M', '\x1b[<0;5;3M');
-    expect(ev).toMatchObject({ button: 'left', col: 5, row: 3, pressed: true, ctrl: false, alt: false, shift: false });
+    expect(ev).toMatchObject({
+      button: 'left',
+      col: 5,
+      row: 3,
+      pressed: true,
+      ctrl: false,
+      alt: false,
+      shift: false,
+    });
     expect(ev?.sequence).toBe('\x1b[<0;5;3M');
   });
 
@@ -42,7 +50,11 @@ describe('parseSgrMouse', () => {
   });
 
   it('decodes ctrl modifier (bit 4 = 0x10)', () => {
-    expect(parseSgrMouse('16;5;3', 'M', '')).toMatchObject({ shift: false, alt: false, ctrl: true });
+    expect(parseSgrMouse('16;5;3', 'M', '')).toMatchObject({
+      shift: false,
+      alt: false,
+      ctrl: true,
+    });
   });
 
   it('decodes combined modifiers (ctrl+shift = 0x14)', () => {

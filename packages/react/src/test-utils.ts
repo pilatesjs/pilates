@@ -16,8 +16,8 @@ import {
   type StdoutHookValue,
 } from './hooks.js';
 import { buildHostConfig } from './host-config.js';
-import type { RootContainer } from './reconciler.js';
 import type { MouseButton } from './mouse-event.js';
+import type { RootContainer } from './reconciler.js';
 import { MouseProvider, StdinProvider } from './render.js';
 
 export interface RenderToStringOptions {
@@ -424,16 +424,28 @@ function encodeSgrMouseBytes(opts: {
 }): string {
   let pb = 0;
   switch (opts.button) {
-    case 'left':       pb = 0;  break;
-    case 'middle':     pb = 1;  break;
-    case 'right':      pb = 2;  break;
-    case 'wheel-up':   pb = 64; break;
-    case 'wheel-down': pb = 65; break;
-    case 'none':       pb = 35; break;
+    case 'left':
+      pb = 0;
+      break;
+    case 'middle':
+      pb = 1;
+      break;
+    case 'right':
+      pb = 2;
+      break;
+    case 'wheel-up':
+      pb = 64;
+      break;
+    case 'wheel-down':
+      pb = 65;
+      break;
+    case 'none':
+      pb = 35;
+      break;
   }
   if (opts.shift === true) pb |= 0x04;
-  if (opts.alt   === true) pb |= 0x08;
-  if (opts.ctrl  === true) pb |= 0x10;
+  if (opts.alt === true) pb |= 0x08;
+  if (opts.ctrl === true) pb |= 0x10;
   const final = (opts.pressed ?? true) ? 'M' : 'm';
   return `\x1b[<${pb};${opts.col};${opts.row}${final}`;
 }

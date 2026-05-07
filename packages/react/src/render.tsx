@@ -1,5 +1,4 @@
 import type { ContainerNode } from '@pilates/render';
-import type { MouseEvent } from './mouse-event.js';
 import {
   Fragment,
   type ReactElement,
@@ -12,8 +11,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { collectHits, mouseRegistry } from './mouse-registry.js';
-import type { HitNode } from './mouse-registry.js';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
 import { isPilatesError } from './errors/index.js';
@@ -32,6 +29,9 @@ import {
 } from './hooks.js';
 import { buildHostConfig } from './host-config.js';
 import { parse as parseKeys } from './key-parser.js';
+import type { MouseEvent } from './mouse-event.js';
+import { collectHits, mouseRegistry } from './mouse-registry.js';
+import type { HitNode } from './mouse-registry.js';
 import type { RootContainer } from './reconciler.js';
 
 export interface RenderOptions {
@@ -137,16 +137,14 @@ function MouseProvider({
   const hitRef = useRef<((event: MouseEvent) => void) | null>(null);
   if (hitRef.current === null) {
     hitRef.current = (event: MouseEvent): void => {
-      const hits: HitNode[] = collectHits(
-        container.root,
-        event.col - 1,
-        event.row - 1,
-      );
+      const hits: HitNode[] = collectHits(container.root, event.col - 1, event.row - 1);
       hits.sort((a, b) => b.depth - a.depth);
       let stopped = false;
       const ev: MouseEvent = {
         ...event,
-        stopPropagation: () => { stopped = true; },
+        stopPropagation: () => {
+          stopped = true;
+        },
       };
       for (const { node } of hits) {
         if (stopped) break;
@@ -161,10 +159,7 @@ function MouseProvider({
       }
     };
   }
-  const value = useMemo<MouseContextValue>(
-    () => ({ hitTestAndBubble: hitRef.current! }),
-    [],
-  );
+  const value = useMemo<MouseContextValue>(() => ({ hitTestAndBubble: hitRef.current! }), []);
   return createElement(MouseContext.Provider, { value }, children);
 }
 
@@ -378,7 +373,7 @@ const PASTE_MODE_DISABLE = '\x1b[?2004l';
  */
 const ESCAPE_DISAMBIGUATION_MS = 50;
 
-const MOUSE_MODE_ENABLE  = '\x1b[?1000h\x1b[?1006h';
+const MOUSE_MODE_ENABLE = '\x1b[?1000h\x1b[?1006h';
 const MOUSE_MODE_DISABLE = '\x1b[?1006l\x1b[?1000l';
 
 function ensureMouseMode(
@@ -398,10 +393,7 @@ function ensureMouseMode(
   }
 }
 
-function releaseMouseMode(
-  stdoutWrite: (s: string) => boolean,
-  state: StdinProviderState,
-): void {
+function releaseMouseMode(stdoutWrite: (s: string) => boolean, state: StdinProviderState): void {
   if (state.mouseModeOn) {
     try {
       stdoutWrite(MOUSE_MODE_DISABLE);
