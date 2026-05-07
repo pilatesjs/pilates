@@ -159,3 +159,69 @@ describe('onWheel on <Box>', () => {
     expect(wheelHandler).not.toHaveBeenCalled();
   });
 });
+
+describe('right-click (button="right")', () => {
+  it('fires onClick when right-clicked inside the box', () => {
+    const handler = vi.fn();
+    const { sendMouseEvent } = mountWithInput(
+      null,
+      () => createElement(Box, { onClick: handler, width: 20, height: 10 }),
+      { width: 40, height: 20 },
+    );
+    sendMouseEvent({ button: 'right', col: 1, row: 1 });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]![0].button).toBe('right');
+  });
+
+  it('does not fire onClick on right-click release', () => {
+    const handler = vi.fn();
+    const { sendMouseEvent } = mountWithInput(
+      null,
+      () => createElement(Box, { onClick: handler, width: 20, height: 10 }),
+      { width: 40, height: 20 },
+    );
+    sendMouseEvent({ button: 'right', col: 1, row: 1, pressed: false });
+    expect(handler).not.toHaveBeenCalled();
+  });
+});
+
+describe('middle-click (button="middle")', () => {
+  it('fires onClick when middle-clicked inside the box', () => {
+    const handler = vi.fn();
+    const { sendMouseEvent } = mountWithInput(
+      null,
+      () => createElement(Box, { onClick: handler, width: 20, height: 10 }),
+      { width: 40, height: 20 },
+    );
+    sendMouseEvent({ button: 'middle', col: 1, row: 1 });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler.mock.calls[0]![0].button).toBe('middle');
+  });
+});
+
+describe('release events never fire onClick', () => {
+  it('does not fire onClick for left/right/middle releases', () => {
+    const handler = vi.fn();
+    const { sendMouseEvent } = mountWithInput(
+      null,
+      () => createElement(Box, { onClick: handler, width: 20, height: 10 }),
+      { width: 40, height: 20 },
+    );
+    for (const button of ['left', 'right', 'middle'] as const) {
+      sendMouseEvent({ button, col: 1, row: 1, pressed: false });
+    }
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it('fires once on press but not on subsequent release', () => {
+    const handler = vi.fn();
+    const { sendMouseEvent } = mountWithInput(
+      null,
+      () => createElement(Box, { onClick: handler, width: 20, height: 10 }),
+      { width: 40, height: 20 },
+    );
+    sendMouseEvent({ button: 'left', col: 1, row: 1, pressed: true });
+    sendMouseEvent({ button: 'left', col: 1, row: 1, pressed: false });
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
