@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react';
 import { Box } from './components.js';
-import { useBoxMetrics } from './use-box-metrics.js';
+import { type BoxLikeInstance, useBoxMetrics } from './use-box-metrics.js';
 
 export interface ScrollMeta {
   contentSize: number;
@@ -41,20 +41,6 @@ export interface ScrollViewHandle {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(n, hi));
-}
-
-/** Narrow the host instance to read _layout from the underlying render node. */
-interface BoxLikeNode {
-  _layout?: {
-    width: number;
-    height: number;
-    scrollWidth?: number;
-    scrollHeight?: number;
-  };
-}
-interface BoxLikeInstance {
-  kind: 'box';
-  node: BoxLikeNode;
 }
 
 export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
@@ -145,6 +131,8 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
     // (which runs before this child) see it populated on the next render.
     // Writing to a ref during render is allowed in React (refs are the
     // one exception to the "no side effects during render" rule).
+    // Safe under Pilates's synchronous renderer: no tearing risk.
+    // Allows test code and parent renders to read ref.current synchronously.
     if (ref !== null) {
       if (typeof ref === 'function') {
         ref(handleRef.current);

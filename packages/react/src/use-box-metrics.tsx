@@ -29,8 +29,11 @@ export interface BoxMetrics {
  * export the `BoxInstance` type publicly to avoid coupling consumers to the
  * internal shape; here we narrow just enough to read the underlying
  * RenderNode's `_layout` field.
+ *
+ * Exported (not part of the public API surface) so that sibling internals
+ * like `scroll-view.tsx` can reuse the same narrowing without duplicating it.
  */
-interface BoxLikeInstance {
+export interface BoxLikeInstance {
   kind: 'box';
   node: ContainerNode & { _layout?: BoxMetrics };
 }

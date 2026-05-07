@@ -158,6 +158,10 @@ describe('<ScrollView> — imperative ref API', () => {
     expect(api!.getScrollOffset()).toBe(2);
     api!.scrollBy(99);
     expect(api!.getScrollOffset()).toBe(2);
+    // Lower-bound clamp: scrollBy with a large negative delta from a scrolled
+    // position must not go below 0.
+    api!.scrollBy(-999);
+    expect(api!.getScrollOffset()).toBe(0);
     handle.unmount();
   });
 });
