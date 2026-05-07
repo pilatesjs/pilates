@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from 'react';
+import { type RefObject, useRef, useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Box, Text } from './components.js';
 import { useFocus } from './focus.js';
