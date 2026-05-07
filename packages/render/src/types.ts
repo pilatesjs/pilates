@@ -10,6 +10,7 @@
  */
 
 import type { Overflow } from '@pilates/core';
+export type { Overflow };
 
 /**
  * Named ANSI colors plus 24-bit hex strings ('#ff5500') plus 256-color palette
