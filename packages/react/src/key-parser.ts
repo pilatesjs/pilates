@@ -53,37 +53,29 @@ export function parse(input: string): ParseResult {
     if (cp === 0x1b && input[i + 1] === '[') {
       const csiStart = i + 2;
       let csiEnd = csiStart;
-
-      // Check if this is an SGR mouse sequence (starts with '<')
       const isSgrMouse = input[csiStart] === '<';
-
-      if (isSgrMouse) {
-        // For SGR sequences, look specifically for 'M' or 'm' as the final byte
-        while (csiEnd < input.length) {
-          const code = input.charCodeAt(csiEnd);
-          if (code === 0x4d || code === 0x6d) break; // 'M' or 'm'
-          csiEnd++;
+      // Single scan loop for all CSI sequences
+      while (csiEnd < input.length) {
+        const code = input.charCodeAt(csiEnd);
+        if (code >= 0x40 && code <= 0x7e) {
+          // For SGR sequences, only M/m (0x4d/0x6d) are valid terminators
+          if (isSgrMouse && code !== 0x4d && code !== 0x6d) {
+            csiEnd++;
+            continue;
+          }
+          break;
         }
-      } else {
-        // For regular CSI sequences, look for first byte in 0x40-0x7e range
-        while (csiEnd < input.length) {
-          const code = input.charCodeAt(csiEnd);
-          if (code >= 0x40 && code <= 0x7e) break;
-          csiEnd++;
-        }
+        csiEnd++;
       }
-
       if (csiEnd >= input.length) {
         return { events, mouseEvents, pastes, remainder: input.slice(i) };
       }
       const params = input.slice(csiStart, csiEnd);
       const final = input[csiEnd]!;
       const sequence = input.slice(i, csiEnd + 1);
-      if (isSgrMouse) {
-        // SGR mouse sequence
+      if (params.startsWith('<') && (final === 'M' || final === 'm')) {
         const mev = parseSgrMouse(params.slice(1), final, sequence);
         if (mev) mouseEvents.push(mev);
-        // malformed or unrecognized SGR sequence: drop silently
       } else {
         const ev = decodeCsi(params, final, sequence);
         if (ev) events.push(ev);
