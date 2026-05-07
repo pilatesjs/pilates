@@ -259,8 +259,8 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
         }
       }
       const end = start + size;
-      const visStart = effectiveOffset;
-      const visEnd = effectiveOffset + vp;
+      const visStart = offsetRef.current;
+      const visEnd = offsetRef.current + vp;
       if (start < visStart) setOffset(start);
       else if (end > visEnd) setOffset(end - vp);
     };
