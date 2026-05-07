@@ -4,12 +4,16 @@ import {
   Fragment,
   type ReactElement,
   type ReactNode,
+  createContext,
   createElement,
+  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { collectHits, mouseRegistry } from './mouse-registry.js';
+import type { HitNode } from './mouse-registry.js';
 import ReactReconciler from 'react-reconciler';
 import { LegacyRoot } from 'react-reconciler/constants.js';
 import { isPilatesError } from './errors/index.js';
@@ -117,6 +121,53 @@ function ResizeBridge({
   return createElement(Fragment, null, children);
 }
 
+interface MouseContextValue {
+  hitTestAndBubble: (event: MouseEvent) => void;
+}
+
+const MouseContext = createContext<MouseContextValue | null>(null);
+
+function MouseProvider({
+  container,
+  children,
+}: {
+  container: RootContainer;
+  children?: ReactNode;
+}) {
+  const hitRef = useRef<((event: MouseEvent) => void) | null>(null);
+  if (hitRef.current === null) {
+    hitRef.current = (event: MouseEvent): void => {
+      const hits: HitNode[] = collectHits(
+        container.root,
+        event.col - 1,
+        event.row - 1,
+      );
+      hits.sort((a, b) => b.depth - a.depth);
+      let stopped = false;
+      const ev: MouseEvent = {
+        ...event,
+        stopPropagation: () => { stopped = true; },
+      };
+      for (const { node } of hits) {
+        if (stopped) break;
+        const handlers = mouseRegistry.get(node);
+        if (handlers === undefined) continue;
+        const isWheel = event.button === 'wheel-up' || event.button === 'wheel-down';
+        if (isWheel) {
+          handlers.onWheel?.(ev);
+        } else if (event.pressed) {
+          handlers.onClick?.(ev);
+        }
+      }
+    };
+  }
+  const value = useMemo<MouseContextValue>(
+    () => ({ hitTestAndBubble: hitRef.current! }),
+    [],
+  );
+  return createElement(MouseContext.Provider, { value }, children);
+}
+
 function StdinProvider({
   stdin,
   children,
@@ -144,6 +195,9 @@ function StdinProvider({
     stableWriteRef.current = (s) => latestWriteRef.current(s);
   }
   const stdoutWrite = stableWriteRef.current;
+  const mouseCtx = useContext(MouseContext);
+  const mouseCtxRef = useRef(mouseCtx);
+  mouseCtxRef.current = mouseCtx;
   const stateRef = useRef<StdinProviderState>({
     subscribers: new Map<(event: KeyEvent) => void, boolean>(),
     pasteSubscribers: new Set<(text: string) => void>(),
@@ -175,6 +229,7 @@ function StdinProvider({
       }
       for (const mev of mouseEvents) {
         dispatchMouseEvent(state, mev);
+        mouseCtxRef.current?.hitTestAndBubble(mev);
       }
       for (const paste of pastes) {
         dispatchPaste(state, paste);
@@ -585,7 +640,11 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
       createElement(
         ResizeBridge,
         { rootNode, container },
-        createElement(StdinProvider, { stdin }, stdinChildren),
+        createElement(
+          MouseProvider,
+          { container },
+          createElement(StdinProvider, { stdin }, stdinChildren),
+        ),
       ),
     ),
   );
@@ -615,4 +674,4 @@ export function render(element: ReactElement, options: RenderOptions = {}): Rend
   return instance;
 }
 
-export { StdinProvider };
+export { StdinProvider, MouseProvider };
