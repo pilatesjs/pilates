@@ -7,6 +7,8 @@ import {
   useState,
 } from 'react';
 import { Box } from './components.js';
+import { useFocus } from './focus.js';
+import { useInput } from './hooks.js';
 import { type BoxLikeInstance, useBoxMetrics } from './use-box-metrics.js';
 
 export interface ScrollMeta {
@@ -26,6 +28,12 @@ export interface ScrollViewProps {
   defaultScrollOffset?: number;
   /** Fires whenever the offset changes. */
   onScroll?: (offset: number, meta: ScrollMeta) => void;
+  /**
+   * When false, disables built-in keyboard navigation (arrow keys, PgUp/PgDn,
+   * Home/End). Also removes this ScrollView from the Tab focus cycle.
+   * Default true.
+   */
+  scrollEnabled?: boolean;
   children?: ReactNode;
 }
 
@@ -45,7 +53,7 @@ function clamp(n: number, lo: number, hi: number): number {
 
 export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
   function ScrollView(
-    { height, width, horizontal, scrollOffset, defaultScrollOffset, onScroll, children },
+    { height, width, horizontal, scrollOffset, defaultScrollOffset, onScroll, scrollEnabled, children },
     ref,
   ) {
     const isControlled = scrollOffset !== undefined;
@@ -140,6 +148,37 @@ export const ScrollView = forwardRef<ScrollViewHandle, ScrollViewProps>(
         (ref as MutableRefObject<ScrollViewHandle | null>).current = handleRef.current;
       }
     }
+
+    // Built-in keyboard navigation. Registers with the focus manager so
+    // Tab cycling works; auto-focuses on mount when nothing else holds focus.
+    const enabled = scrollEnabled !== false;
+    const { isFocused } = useFocus({ autoFocus: enabled, isActive: enabled });
+
+    useInput(
+      (event) => {
+        const lineKey = isVertical ? event.name === 'down' : event.name === 'right';
+        const lineKeyBack = isVertical ? event.name === 'up' : event.name === 'left';
+        if (lineKey) { setOffset(offsetRef.current + 1); return; }
+        if (lineKeyBack) { setOffset(offsetRef.current - 1); return; }
+        if (event.name === 'pageDown') {
+          const { viewportSize: vp } = readMetrics();
+          setOffset(offsetRef.current + Math.max(1, vp - 1));
+          return;
+        }
+        if (event.name === 'pageUp') {
+          const { viewportSize: vp } = readMetrics();
+          setOffset(offsetRef.current - Math.max(1, vp - 1));
+          return;
+        }
+        if (event.name === 'home') { setOffset(0); return; }
+        if (event.name === 'end') {
+          const { contentSize: cs, viewportSize: vp } = readMetrics();
+          setOffset(Math.max(0, cs - vp));
+          return;
+        }
+      },
+      { isActive: enabled && isFocused },
+    );
 
     const axisOverflow = isVertical
       ? { overflowX: 'visible' as const, overflowY: 'hidden' as const }

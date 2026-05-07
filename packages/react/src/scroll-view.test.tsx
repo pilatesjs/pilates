@@ -165,3 +165,80 @@ describe('<ScrollView> — imperative ref API', () => {
     handle.unmount();
   });
 });
+
+describe('<ScrollView> — built-in keys', () => {
+  it('arrow Down advances by 1 line when focused', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} ref={ref}>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
+          <Text>row3</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    handle.pressKey('down');
+    expect(api!.getScrollOffset()).toBe(1);
+    handle.unmount();
+  });
+
+  it('PgDn advances by viewport - 1', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={3} ref={ref}>
+          <Text>row0</Text><Text>row1</Text><Text>row2</Text>
+          <Text>row3</Text><Text>row4</Text><Text>row5</Text>
+          <Text>row6</Text><Text>row7</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 8 });
+    handle.pressKey('pageDown');
+    expect(api!.getScrollOffset()).toBe(2); // viewport=3, step=2
+    handle.unmount();
+  });
+
+  it('Home / End jump to bounds', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} ref={ref}>
+          <Text>row0</Text><Text>row1</Text><Text>row2</Text><Text>row3</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    handle.pressKey('end');
+    expect(api!.getScrollOffset()).toBe(2);
+    handle.pressKey('home');
+    expect(api!.getScrollOffset()).toBe(0);
+    handle.unmount();
+  });
+
+  it('scrollEnabled={false} disables built-in keys', () => {
+    let api: ScrollViewHandle | null = null;
+    function App() {
+      const ref = useRef<ScrollViewHandle>(null);
+      api = ref.current;
+      return (
+        <ScrollView height={2} scrollEnabled={false} ref={ref}>
+          <Text>row0</Text><Text>row1</Text><Text>row2</Text>
+        </ScrollView>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, { width: 20, height: 5 });
+    handle.pressKey('down');
+    expect(api!.getScrollOffset()).toBe(0);
+    handle.unmount();
+  });
+});
