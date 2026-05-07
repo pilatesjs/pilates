@@ -6,6 +6,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [1.0.0-rc.3] — 2026-05-07
+
 ### Scissor clipping + scrollbar (Track 1 P2 prep)
 
 - **Added** Internal scissor-rect stack on `Frame`: `pushScissor` / `popScissor`. Nested scissors intersect.
