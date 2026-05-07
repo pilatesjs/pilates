@@ -1,4 +1,5 @@
 import type { ContainerNode } from '@pilates/render';
+import type { MouseEvent } from './mouse-event.js';
 import {
   Fragment,
   type ReactElement,
@@ -150,6 +151,9 @@ function StdinProvider({
     remainder: '',
     rawModeOn: false,
     escapeTimer: null,
+    mouseSubscribers: new Map<(event: MouseEvent) => void, boolean>(),
+    mouseRefcount: 0,
+    mouseModeOn: false,
   });
   const isRawModeSupported = stdin.isTTY === true;
 
@@ -164,10 +168,13 @@ function StdinProvider({
       }
       const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
       const combined = state.remainder + text;
-      const { events, pastes, remainder } = parseKeys(combined);
+      const { events, mouseEvents, pastes, remainder } = parseKeys(combined);
       state.remainder = remainder;
       for (const event of events) {
         dispatchEvent(state, event);
+      }
+      for (const mev of mouseEvents) {
+        dispatchMouseEvent(state, mev);
       }
       for (const paste of pastes) {
         dispatchPaste(state, paste);
@@ -186,6 +193,7 @@ function StdinProvider({
         clearTimeout(state.escapeTimer);
         state.escapeTimer = null;
       }
+      releaseMouseMode(stdoutWrite, state);
       if (state.rawModeOn && isRawModeSupported) {
         releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
       }
@@ -241,6 +249,42 @@ function StdinProvider({
           if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
         };
       },
+      subscribeMouseEvent: (handler, initialActive = true) => {
+        const state = stateRef.current;
+        state.mouseSubscribers.set(handler, initialActive);
+        if (initialActive) {
+          state.mouseRefcount += 1;
+          state.refcount += 1; // hold raw mode while mouse mode is active
+          ensureMouseMode(stdin, stdoutWrite, state, isRawModeSupported);
+        }
+        return () => {
+          const wasActive = state.mouseSubscribers.get(handler) === true;
+          state.mouseSubscribers.delete(handler);
+          if (wasActive) {
+            state.mouseRefcount -= 1;
+            state.refcount -= 1;
+            if (state.mouseRefcount === 0) releaseMouseMode(stdoutWrite, state);
+            if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+          }
+        };
+      },
+      setMouseActive: (handler, active) => {
+        const state = stateRef.current;
+        const current = state.mouseSubscribers.get(handler);
+        if (current === undefined) return;
+        if (current === active) return;
+        state.mouseSubscribers.set(handler, active);
+        if (active) {
+          state.mouseRefcount += 1;
+          state.refcount += 1;
+          ensureMouseMode(stdin, stdoutWrite, state, isRawModeSupported);
+        } else {
+          state.mouseRefcount -= 1;
+          state.refcount -= 1;
+          if (state.mouseRefcount === 0) releaseMouseMode(stdoutWrite, state);
+          if (state.refcount === 0) releaseRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+        }
+      },
     }),
     [stdin, stdoutWrite, isRawModeSupported],
   );
@@ -255,6 +299,10 @@ interface StdinProviderState {
   rawModeOn: boolean;
   /** Pending timer that flushes a held bare ESC as a real Escape event. */
   escapeTimer: ReturnType<typeof setTimeout> | null;
+  // ↓ new mouse fields
+  mouseSubscribers: Map<(event: MouseEvent) => void, boolean>;
+  mouseRefcount: number;
+  mouseModeOn: boolean;
 }
 
 /**
@@ -275,6 +323,40 @@ const PASTE_MODE_DISABLE = '\x1b[?2004l';
  */
 const ESCAPE_DISAMBIGUATION_MS = 50;
 
+const MOUSE_MODE_ENABLE  = '\x1b[?1006h';
+const MOUSE_MODE_DISABLE = '\x1b[?1006l';
+
+function ensureMouseMode(
+  stdin: NodeJS.ReadStream,
+  stdoutWrite: (s: string) => boolean,
+  state: StdinProviderState,
+  isRawModeSupported: boolean,
+): void {
+  if (!state.mouseModeOn) {
+    ensureRawMode(stdin, stdoutWrite, state, isRawModeSupported);
+    try {
+      stdoutWrite(MOUSE_MODE_ENABLE);
+      state.mouseModeOn = true;
+    } catch {
+      /* terminal may not support mouse reporting — swallow */
+    }
+  }
+}
+
+function releaseMouseMode(
+  stdoutWrite: (s: string) => boolean,
+  state: StdinProviderState,
+): void {
+  if (state.mouseModeOn) {
+    try {
+      stdoutWrite(MOUSE_MODE_DISABLE);
+    } catch {
+      /* swallow */
+    }
+    state.mouseModeOn = false;
+  }
+}
+
 function dispatchEvent(state: StdinProviderState, event: KeyEvent): void {
   for (const [handler, active] of state.subscribers) {
     if (!active) continue;
@@ -294,6 +376,18 @@ function dispatchPaste(state: StdinProviderState, text: string): void {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       process.stderr.write(`Pilates: usePaste handler threw: ${msg}\n`);
+    }
+  }
+}
+
+function dispatchMouseEvent(state: StdinProviderState, event: MouseEvent): void {
+  for (const [handler, active] of state.mouseSubscribers) {
+    if (!active) continue;
+    try {
+      handler(event);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`Pilates: useMouse handler threw: ${msg}\n`);
     }
   }
 }
