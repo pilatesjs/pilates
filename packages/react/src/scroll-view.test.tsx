@@ -196,9 +196,14 @@ describe('<ScrollView> — built-in keys', () => {
       api = ref.current;
       return (
         <ScrollView height={3} ref={ref}>
-          <Text>row0</Text><Text>row1</Text><Text>row2</Text>
-          <Text>row3</Text><Text>row4</Text><Text>row5</Text>
-          <Text>row6</Text><Text>row7</Text>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
+          <Text>row3</Text>
+          <Text>row4</Text>
+          <Text>row5</Text>
+          <Text>row6</Text>
+          <Text>row7</Text>
         </ScrollView>
       );
     }
@@ -215,7 +220,10 @@ describe('<ScrollView> — built-in keys', () => {
       api = ref.current;
       return (
         <ScrollView height={2} ref={ref}>
-          <Text>row0</Text><Text>row1</Text><Text>row2</Text><Text>row3</Text>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
+          <Text>row3</Text>
         </ScrollView>
       );
     }
@@ -234,7 +242,9 @@ describe('<ScrollView> — built-in keys', () => {
       api = ref.current;
       return (
         <ScrollView height={2} scrollEnabled={false} ref={ref}>
-          <Text>row0</Text><Text>row1</Text><Text>row2</Text>
+          <Text>row0</Text>
+          <Text>row1</Text>
+          <Text>row2</Text>
         </ScrollView>
       );
     }
@@ -351,8 +361,10 @@ describe('<ScrollView> — scrollOnFocus / scrollIntoView via useScrollIntoFocus
       api = ref.current;
       return (
         <ScrollView height={2} scrollOnFocus={false} ref={ref}>
-          <Item id="row0" /><Item id="row1" />
-          <Item id="row2" /><Item id="row3" />
+          <Item id="row0" />
+          <Item id="row1" />
+          <Item id="row2" />
+          <Item id="row3" />
         </ScrollView>
       );
     }

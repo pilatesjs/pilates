@@ -1,4 +1,4 @@
-import { type Context, createContext, type RefObject, useContext, useEffect } from 'react';
+import { type Context, type RefObject, createContext, useContext, useEffect } from 'react';
 
 export interface FocusedBounds {
   start: number;
@@ -45,10 +45,7 @@ interface BoxHostInstance {
  * parent Box), the node reference is forwarded alongside the zero bounds so
  * `<ScrollView>` can locate the item by scanning its child list.
  */
-export function useScrollIntoFocus(
-  isFocused: boolean,
-  nodeRef: RefObject<unknown>,
-): void {
+export function useScrollIntoFocus(isFocused: boolean, nodeRef: RefObject<unknown>): void {
   const ctx = useContext(ScrollContext);
   useEffect(() => {
     if (!isFocused) return;
