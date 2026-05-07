@@ -28,6 +28,7 @@ export type {
   Justify,
   LayoutProps,
   NamedColor,
+  Overflow,
   PositionType,
   RenderNode,
   RenderOptions,

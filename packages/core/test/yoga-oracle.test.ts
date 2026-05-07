@@ -181,7 +181,10 @@ function buildYoga(spec: SpecNode): import('yoga-layout').Node {
 }
 
 function ourBoxes(node: Node): Box[] {
-  const out: Box[] = [{ ...node.getComputedLayout() }];
+  // Pilates' ComputedLayout includes scrollWidth/scrollHeight (a superset of
+  // Yoga's box). For the oracle we compare only the four Yoga fields.
+  const l = node.getComputedLayout();
+  const out: Box[] = [{ left: l.left, top: l.top, width: l.width, height: l.height }];
   for (let i = 0; i < node.getChildCount(); i++) {
     out.push(...ourBoxes(node.getChild(i)!));
   }

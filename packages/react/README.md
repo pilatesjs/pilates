@@ -366,6 +366,116 @@ original `.ts` source rather than the published `dist/` files. Pilates
 deliberately does **not** bundle a runtime `source-map-support` patch: a
 library mutating `Error.prepareStackTrace` is hostile to its host.
 
+## Scrolling
+
+`<ScrollView>` is a viewport into content larger than its visible area.
+Vertical by default; pass `horizontal` for a horizontal scroller.
+
+```tsx
+import { ScrollView, Text } from '@pilates/react';
+
+function Logs({ lines }: { lines: string[] }) {
+  return (
+    <ScrollView height={10} stickToBottom>
+      {lines.map((line, i) => <Text key={i}>{line}</Text>)}
+    </ScrollView>
+  );
+}
+```
+
+| Prop | Description |
+|---|---|
+| `height` / `width` | Viewport size in cells. Required on the scrolling axis. |
+| `horizontal` | When true, scrolls X instead of Y. Default false. |
+| `scrollOffset` / `defaultScrollOffset` | Controlled / uncontrolled scroll position. |
+| `onScroll` | `(offset, meta) => void`. Fires on every change. |
+| `stickToBottom` / `stickToTop` | Auto-scroll to edge when content grows. Pauses while user is scrolled away from edge. |
+| `scrollEnabled` | Default true. Built-in arrow / PgUp / PgDn / Home / End keys when focused. |
+| `scrollOnFocus` | Default true. Auto-scroll to keep focused descendants visible. |
+
+### Imperative API via ref
+
+```tsx
+const ref = useRef<ScrollViewHandle>(null);
+ref.current?.scrollTo(50);
+ref.current?.scrollToEnd();
+ref.current?.scrollBy(-3);
+```
+
+`scrollTo` clamps to `[0, contentSize - viewportSize]`. The full handle:
+`scrollTo`, `scrollBy`, `scrollToStart`, `scrollToEnd`, `getScrollOffset`,
+`getContentSize`, `getViewportSize`.
+
+### Focus integration
+
+Focusable descendants opt in to auto-scroll-into-view by calling `useScrollIntoFocus(isFocused, boxRef)`:
+
+```tsx
+import { useFocus, useScrollIntoFocus, Box } from '@pilates/react';
+
+function Item({ id }: { id: string }) {
+  const ref = useRef(null);
+  const focus = useFocus({ id });
+  useScrollIntoFocus(focus.isFocused, ref);
+  return <Box ref={ref}>{/* ... */}</Box>;
+}
+```
+
+When the parent `<ScrollView>` has `scrollOnFocus` true (the default),
+focusing the item scrolls just enough to make its bounds visible.
+
+### CSS-level overflow on `<Box>`
+
+If you only need clipping (no scrolling), set `overflow` on `<Box>` directly:
+
+```tsx
+<Box overflow="hidden" width={20} height={5}>
+  {/* content is clipped to 20×5 */}
+</Box>
+```
+
+Values: `'visible'` (default), `'hidden'`, `'scroll'`, `'auto'`. Per-axis: `overflowX` / `overflowY` win over the shorthand.
+
+## render() options
+
+| Code | Thrown from |
+|---|---|
+| `PILATES_HOOK_OUTSIDE_RENDER` | `useApp`, `useStdout`, `useStderr`, `usePaste`, `useInput`, `useFocus`, `useFocusManager` outside a `render()`-mounted tree |
+| `PILATES_FOCUS_OUTSIDE_PROVIDER` | `useFocus()` outside `<FocusProvider>` |
+| `PILATES_DUPLICATE_FOCUS_ID` | Two simultaneous `useFocus({ id })` calls with the same id |
+| `PILATES_FOCUS_ID_NOT_FOUND` | `useFocusManager().focus(id)` called with an unregistered id |
+| `PILATES_FOCUS_INPUT_BRIDGE_OUTSIDE_PROVIDER` | Internal — indicates a corrupted install if user-visible |
+| `PILATES_UNKNOWN_HOST_TYPE` | JSX with a host element that isn't a Pilates component (e.g. `<div>`) |
+| `PILATES_BARE_STRING_AT_ROOT` | A raw string at the `<render>` root |
+| `PILATES_BARE_STRING_IN_BOX` | A raw string as a `<Box>` child |
+| `PILATES_STRING_FRAGMENT_INVARIANT` | Internal invariant — file an issue if you hit one |
+| `PILATES_INVALID_TEXT_CHILD` | A non-string, non-`<Text>` child of `<Text>` |
+| `PILATES_TEXTINPUT_BAD_PROP` | `<TextInput>` received a malformed prop |
+
+### Format helpers
+
+`formatPilatesError(err)` returns a multi-line string suitable for printing
+into the terminal: `Pilates: <message>` followed by an indented `hint:` line
+(in dev mode) and a `caused by:` chain (recursive on `error.cause`):
+
+```ts
+import { formatPilatesError } from '@pilates/react';
+
+try {
+  // ...
+} catch (e) {
+  console.error(formatPilatesError(e));
+}
+```
+
+### Source maps
+
+Pilates emits `.js.map` alongside its compiled output. Run your app with
+`node --enable-source-maps your-cli.js` to make stack traces point at the
+original `.ts` source rather than the published `dist/` files. Pilates
+deliberately does **not** bundle a runtime `source-map-support` patch: a
+library mutating `Error.prepareStackTrace` is hostile to its host.
+
 ## render() options
 
 ```ts

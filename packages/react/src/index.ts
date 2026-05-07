@@ -70,3 +70,9 @@ export type {
   PilatesErrorJSON,
   PilatesErrorOptions,
 } from './errors/index.js';
+
+// Scrolling (Track 1 P2)
+export { ScrollView } from './scroll-view.js';
+export type { ScrollViewProps, ScrollViewHandle, ScrollMeta } from './scroll-view.js';
+export { useScrollIntoFocus } from './scroll-context.js';
+export type { FocusedBounds, ScrollContextValue } from './scroll-context.js';

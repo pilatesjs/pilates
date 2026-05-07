@@ -18,6 +18,8 @@ import type { Node } from '@pilates/core';
 import { borderChars, hasBorder } from './borders.js';
 import type { Bridge } from './build.js';
 import { type CellStyle, type Frame, type Rect, styleToCellStyle } from './frame.js';
+import type { ClipRect } from './scissor.js';
+import { paintScrollbar } from './scrollbar.js';
 import {
   type Color,
   type ContainerNode,
@@ -47,14 +49,90 @@ function paintNode(
 
   if (spec === undefined) return;
 
+  // Paint self (border, text) BEFORE clipping, so the border stays unclipped.
   if (isTextNode(spec)) {
     paintText(frame, spec, rect);
   } else {
     paintContainer(frame, spec, rect);
   }
 
-  for (let i = 0; i < node.getChildCount(); i++) {
-    paintNode(frame, node.getChild(i)!, source, x, y);
+  // Determine effective overflow per axis. Style defaults are 'visible'.
+  const ox = node.style.overflowX;
+  const oy = node.style.overflowY;
+  const clipsX = ox !== 'visible';
+  const clipsY = oy !== 'visible';
+  const clips = clipsX || clipsY;
+
+  if (clips) {
+    // A scrollbar gutter consumes one cell on the relevant edge. Both
+    // 'scroll' and 'auto' reserve the gutter only when the content
+    // actually overflows the viewport on that axis. Strict CSS would
+    // always reserve the gutter for 'scroll', but in a terminal cell grid
+    // an unused gutter is just wasted display space.
+    const showVScroll = (oy === 'scroll' || oy === 'auto') && node.scrollHeight > layout.height;
+    const showHScroll = (ox === 'scroll' || ox === 'auto') && node.scrollWidth > layout.width;
+    const gutterRight = showVScroll ? 1 : 0;
+    const gutterBottom = showHScroll ? 1 : 0;
+
+    // Content rect = viewport box minus scrollbar gutters. Border/padding
+    // are already baked into the layout.left/top of children, so the
+    // scissor only needs to mask the visible viewport in absolute frame
+    // coordinates.
+    const contentRect: ClipRect = {
+      left: x,
+      top: y,
+      width: Math.max(0, layout.width - gutterRight),
+      height: Math.max(0, layout.height - gutterBottom),
+    };
+
+    frame.pushScissor(contentRect);
+    // Translate child paint origin by (-scrollLeft, -scrollTop). The painter
+    // walks children with absolute (parentX, parentY); subtract here so the
+    // child's `parentX + layout.left` lands at the scrolled position.
+    const childParentX = x - node.scrollLeft;
+    const childParentY = y - node.scrollTop;
+    for (let i = 0; i < node.getChildCount(); i++) {
+      paintNode(frame, node.getChild(i)!, source, childParentX, childParentY);
+    }
+    frame.popScissor();
+
+    // Scrollbars paint OUTSIDE the scissor so their gutter (which lies
+    // within the parent rect but outside the content rect) is not clipped.
+    if (showVScroll && layout.height - gutterBottom > 0) {
+      paintScrollbar(frame, {
+        orientation: 'vertical',
+        gutter: {
+          x: x + layout.width - 1,
+          y,
+          length: layout.height - gutterBottom,
+        },
+        contentSize: node.scrollHeight,
+        viewportSize: layout.height - gutterBottom,
+        scrollOffset: node.scrollTop,
+        thumbChar: '█',
+        trackChar: ' ',
+      });
+    }
+    if (showHScroll && layout.width - gutterRight > 0) {
+      paintScrollbar(frame, {
+        orientation: 'horizontal',
+        gutter: {
+          x,
+          y: y + layout.height - 1,
+          length: layout.width - gutterRight,
+        },
+        contentSize: node.scrollWidth,
+        viewportSize: layout.width - gutterRight,
+        scrollOffset: node.scrollLeft,
+        thumbChar: '█',
+        trackChar: ' ',
+      });
+    }
+  } else {
+    // No clipping: walk children with the existing parentX/parentY.
+    for (let i = 0; i < node.getChildCount(); i++) {
+      paintNode(frame, node.getChild(i)!, source, x, y);
+    }
   }
 }
 

@@ -26,7 +26,14 @@ describe('Node — defaults', () => {
   });
 
   it('starts with zeroed computed layout', () => {
-    expect(Node.create().getComputedLayout()).toEqual({ left: 0, top: 0, width: 0, height: 0 });
+    expect(Node.create().getComputedLayout()).toEqual({
+      left: 0,
+      top: 0,
+      width: 0,
+      height: 0,
+      scrollWidth: 0,
+      scrollHeight: 0,
+    });
   });
 
   it('starts dirty (never been laid out)', () => {
@@ -290,6 +297,13 @@ describe('Node — layout entry points', () => {
     n.setWidth(40);
     n.setHeight(10);
     n.calculateLayout();
-    expect(n.getComputedLayout()).toEqual({ left: 0, top: 0, width: 40, height: 10 });
+    expect(n.getComputedLayout()).toEqual({
+      left: 0,
+      top: 0,
+      width: 40,
+      height: 10,
+      scrollWidth: 40,
+      scrollHeight: 10,
+    });
   });
 });

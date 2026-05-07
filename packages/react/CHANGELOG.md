@@ -6,6 +6,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Scrolling (Track 1 P2)
+
+- **Added** `<ScrollView>` component — viewport into content larger than the visible area. Vertical by default; `horizontal` flips axis.
+- **Added** Controlled (`scrollOffset`) and uncontrolled (`defaultScrollOffset`) scroll state, `onScroll(offset, meta)` callback, `stickToBottom` / `stickToTop` auto-scroll-to-edge semantics.
+- **Added** Built-in keys (arrow / PgUp / PgDn / Home / End) when focused. `scrollEnabled={false}` disables.
+- **Added** Imperative ref API: `scrollTo`, `scrollBy`, `scrollToStart`, `scrollToEnd`, `getScrollOffset`, `getContentSize`, `getViewportSize`.
+- **Added** `useScrollIntoFocus(isFocused, boxRef)` — focusable descendants opt in to auto-scroll-when-focused. `scrollOnFocus={false}` disables.
+- **Added** `overflow` / `overflowX` / `overflowY` props on `<Box>`. Values: `'visible' | 'hidden' | 'scroll' | 'auto'`.
+- **Added** Re-exports: `ScrollView`, `ScrollViewProps`, `ScrollViewHandle`, `ScrollMeta`, `useScrollIntoFocus`, `FocusedBounds`, `ScrollContextValue`.
+
 ### Errors (new public surface)
 
 - **Added** `PilatesError` class with `.code`, dev-only `.hint`,

@@ -85,6 +85,11 @@ function applyLayoutProps(node: Node, spec: RenderNode): void {
     if (spec.position.left !== undefined) node.setPosition(Edge.Left, spec.position.left);
   }
   if (spec.display) node.setDisplay(spec.display);
+  if (spec.overflow !== undefined) node.setOverflow(spec.overflow);
+  if (spec.overflowX !== undefined) node.setOverflowX(spec.overflowX);
+  if (spec.overflowY !== undefined) node.setOverflowY(spec.overflowY);
+  if (spec.scrollLeft !== undefined) node.scrollLeft = spec.scrollLeft;
+  if (spec.scrollTop !== undefined) node.scrollTop = spec.scrollTop;
 }
 
 function applyEdgeValue(value: EdgeValue | undefined, set: (edge: Edge, n: number) => void): void {

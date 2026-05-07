@@ -11,6 +11,16 @@ export interface BoxMetrics {
   width: number;
   /** Height in cells. */
   height: number;
+  /**
+   * Total scrollable content width in cells. Equal to `width` when content
+   * does not overflow horizontally.
+   */
+  scrollWidth: number;
+  /**
+   * Total scrollable content height in cells. Equal to `height` when content
+   * does not overflow vertically.
+   */
+  scrollHeight: number;
 }
 
 /**
@@ -19,8 +29,11 @@ export interface BoxMetrics {
  * export the `BoxInstance` type publicly to avoid coupling consumers to the
  * internal shape; here we narrow just enough to read the underlying
  * RenderNode's `_layout` field.
+ *
+ * Exported (not part of the public API surface) so that sibling internals
+ * like `scroll-view.tsx` can reuse the same narrowing without duplicating it.
  */
-interface BoxLikeInstance {
+export interface BoxLikeInstance {
   kind: 'box';
   node: ContainerNode & { _layout?: BoxMetrics };
 }
@@ -61,7 +74,9 @@ export function useBoxMetrics(ref: RefObject<unknown>): BoxMetrics | null {
   useEffect(() => {
     const inst = ref.current as BoxLikeInstance | null;
     const layout = inst?.kind === 'box' ? inst.node._layout : undefined;
-    const key = layout ? `${layout.left},${layout.top},${layout.width},${layout.height}` : 'null';
+    const key = layout
+      ? `${layout.left},${layout.top},${layout.width},${layout.height},${layout.scrollWidth},${layout.scrollHeight}`
+      : 'null';
     if (lastKeyRef.current !== key) {
       lastKeyRef.current = key;
       force((n) => n + 1);
@@ -74,5 +89,12 @@ export function useBoxMetrics(ref: RefObject<unknown>): BoxMetrics | null {
   if (!layout) return null;
   // Return a fresh object so consumers comparing by identity see a change
   // (e.g., Object.is checks in their own useEffect deps).
-  return { left: layout.left, top: layout.top, width: layout.width, height: layout.height };
+  return {
+    left: layout.left,
+    top: layout.top,
+    width: layout.width,
+    height: layout.height,
+    scrollWidth: layout.scrollWidth ?? layout.width,
+    scrollHeight: layout.scrollHeight ?? layout.height,
+  };
 }

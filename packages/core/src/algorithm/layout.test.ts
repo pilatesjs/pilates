@@ -19,7 +19,10 @@ import type { ComputedLayout } from '../layout.js';
 import { Node } from '../node.js';
 
 function box(left: number, top: number, width: number, height: number): ComputedLayout {
-  return { left, top, width, height };
+  // Tests in this file use containers whose children fit inside the parent
+  // box, so scrollWidth/scrollHeight collapse to width/height. Tests that
+  // exercise the overflow contract live in `overflow.test.ts`.
+  return { left, top, width, height, scrollWidth: width, scrollHeight: height };
 }
 
 describe('layout — leaf root', () => {

@@ -18,3 +18,10 @@ describe('@pilates/react public surface — error infrastructure', () => {
     expect(typeof Pilates.didYouMean).toBe('function');
   });
 });
+
+describe('@pilates/react public surface — scrolling', () => {
+  it('re-exports ScrollView and useScrollIntoFocus', () => {
+    expect(typeof Pilates.ScrollView).toBe('object'); // forwardRef result
+    expect(typeof Pilates.useScrollIntoFocus).toBe('function');
+  });
+});

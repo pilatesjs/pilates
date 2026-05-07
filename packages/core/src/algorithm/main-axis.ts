@@ -149,8 +149,15 @@ function layoutFlexFlow(node: Node, visible: readonly Node[]): void {
   const lines = packIntoLines(items, innerMain, gapMain, node.style.flexWrap);
 
   // Step 3: distribute slack within each line.
+  // When the parent has `overflow !== 'visible'` on the main axis, the
+  // children are allowed to exceed the inner main size (the renderer clips
+  // and scrolls) — flex-shrink is suppressed so children retain their
+  // natural size. Flex-grow still applies (children may legitimately grow
+  // to fill the viewport when content is smaller than the box).
+  const mainOverflow = main === 'row' ? node.style.overflowX : node.style.overflowY;
+  const allowMainOverflow = mainOverflow !== 'visible';
   for (const line of lines) {
-    distributeFlexInLine(line, innerMain, main);
+    distributeFlexInLine(line, innerMain, main, allowMainOverflow);
   }
 
   // Step 4: each line's cross size.
@@ -391,14 +398,19 @@ function makeLine(items: FlexItem[], hypotheticalMain: number): FlexLine {
 
 // ─── step 3: distribute flex-grow / flex-shrink within a line ───────────
 
-function distributeFlexInLine(line: FlexLine, innerMain: number, main: Axis): void {
+function distributeFlexInLine(
+  line: FlexLine,
+  innerMain: number,
+  main: Axis,
+  allowMainOverflow = false,
+): void {
   // `line.hypotheticalMain` already includes the gap budget — both
   // singleLine() and packIntoLines() accumulate gaps into it as they
   // build the line — so the slack is just inner - hypothetical.
   const remaining = innerMain - line.hypotheticalMain;
   if (remaining > 0) {
     distributeGrow(line.items, remaining, main);
-  } else if (remaining < 0) {
+  } else if (remaining < 0 && !allowMainOverflow) {
     distributeShrink(line.items, -remaining, main);
   }
 }

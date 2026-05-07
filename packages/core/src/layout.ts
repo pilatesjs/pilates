@@ -10,8 +10,16 @@ export interface ComputedLayout {
   top: number;
   width: number;
   height: number;
+  /**
+   * Natural content width. For nodes with `overflow !== 'visible'`, this
+   * is the bounding box of children unbounded by the parent's content
+   * width. For non-overflow nodes, equals the node's own `width`.
+   */
+  scrollWidth: number;
+  /** See {@link scrollWidth}. */
+  scrollHeight: number;
 }
 
 export function defaultLayout(): ComputedLayout {
-  return { left: 0, top: 0, width: 0, height: 0 };
+  return { left: 0, top: 0, width: 0, height: 0, scrollWidth: 0, scrollHeight: 0 };
 }
