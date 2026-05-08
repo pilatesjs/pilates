@@ -15,12 +15,6 @@ describe('MeasureCache', () => {
     availableHeight: 10,
     heightMode: MeasureMode.AtMost,
   };
-  const KEY_C = {
-    availableWidth: 30,
-    widthMode: MeasureMode.Undefined,
-    availableHeight: 7,
-    heightMode: MeasureMode.Undefined,
-  };
 
   it('returns undefined on empty cache', () => {
     const c = new MeasureCache();
@@ -87,12 +81,12 @@ describe('MeasureCache', () => {
     expect(c.lookup(KEY_B)).toBeUndefined();
   });
 
-  it('treats Infinity as a valid availableWidth/Height key value', () => {
+  it('treats Number.POSITIVE_INFINITY as a valid availableWidth/Height key value', () => {
     const c = new MeasureCache();
     const inf = {
-      availableWidth: Infinity,
+      availableWidth: Number.POSITIVE_INFINITY,
       widthMode: MeasureMode.Undefined,
-      availableHeight: Infinity,
+      availableHeight: Number.POSITIVE_INFINITY,
       heightMode: MeasureMode.Undefined,
     };
     c.store(inf, { width: 5, height: 5 });
