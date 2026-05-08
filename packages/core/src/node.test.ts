@@ -393,3 +393,33 @@ describe('Node — measure cache integration', () => {
     );
   });
 });
+
+describe('Node — measure cache hit during calculateLayout', () => {
+  it('two layout passes on the same tree result in cache hits on the second pass', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(50);
+
+    const leaf = Node.create();
+    let measureCalls = 0;
+    leaf.setMeasureFunc((w, _wm, h, _hm) => {
+      measureCalls++;
+      return { width: Math.min(20, w), height: Math.min(3, h) };
+    });
+    root.insertChild(leaf, 0);
+
+    root.calculateLayout(100, 50);
+    const callsAfterFirst = measureCalls;
+    expect(callsAfterFirst).toBeGreaterThan(0);
+
+    // Force a re-layout by marking the root dirty (simulates a parent-only
+    // change that doesn't touch the leaf's cache).
+    root.setWidth(100);
+    root.calculateLayout(100, 50);
+
+    // Pass-2 measureCalls should be 0 — the leaf wasn't dirtied; its
+    // measure cache should hit on every input combination it saw on pass 1.
+    const callsOnPass2 = measureCalls - callsAfterFirst;
+    expect(callsOnPass2).toBe(0);
+  });
+});
