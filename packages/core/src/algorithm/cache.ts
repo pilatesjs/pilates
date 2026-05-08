@@ -123,6 +123,92 @@ export class MeasureCache {
   }
 }
 
+/** @internal */
+export interface LayoutCacheKey {
+  availableWidth: number;
+  widthMode: MeasureMode;
+  availableHeight: number;
+  heightMode: MeasureMode;
+  // parentDirection deliberately NOT keyed — Yoga (LayoutResults.h) and
+  // Taffy (tree/cache.rs) both treat it as implicit in available
+  // {width,height} since flex algorithms reorient at each parent.
+  // Differential mode catches divergence if this assumption is ever wrong.
+}
+
+/** @internal */
+export interface CachedChildLayout {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  scrollWidth: number;
+  scrollHeight: number;
+}
+
+/** @internal */
+export interface LayoutCacheValue {
+  width: number;
+  height: number;
+  scrollWidth: number;
+  scrollHeight: number;
+  childLayouts: CachedChildLayout[];
+}
+
+/**
+ * Single-slot per-node layout cache. Matches Yoga's `cachedLayout`
+ * (single overwrite-on-write) and Taffy's 1-slot layout-cache. Internal
+ * nodes' final-pass keys converge to one stable input once the parent's
+ * flex distribution has settled, so additional slots would be dead memory.
+ *
+ * Lazy-allocated by the algorithm in `algorithm/main-axis.ts` and
+ * `algorithm/index.ts` only on nodes that actually go through the
+ * `layoutChildren` recursion. Cleared by `Node.markDirty()` (which fires
+ * on every style/tree mutation).
+ *
+ * Hit/miss counters are always-on (same rationale as `MeasureCache`).
+ *
+ * @internal
+ */
+export class LayoutCache {
+  private slot: (LayoutCacheKey & { value: LayoutCacheValue }) | undefined = undefined;
+
+  /** @internal */
+  hits = 0;
+  /** @internal */
+  misses = 0;
+
+  lookup(key: LayoutCacheKey): LayoutCacheValue | undefined {
+    const slot = this.slot;
+    if (
+      slot !== undefined &&
+      slot.availableWidth === key.availableWidth &&
+      slot.widthMode === key.widthMode &&
+      slot.availableHeight === key.availableHeight &&
+      slot.heightMode === key.heightMode
+    ) {
+      this.hits++;
+      return slot.value;
+    }
+    this.misses++;
+    return undefined;
+  }
+
+  /**
+   * Store `value` for `key`. Single-slot — replaces the previous entry
+   * unconditionally. Caller must construct a fresh `LayoutCacheValue` per
+   * store; this method does NOT deep-clone for performance, so any
+   * subsequent mutation of `value` is visible through `lookup`. The
+   * algorithm builds new values per layout pass so the contract holds.
+   */
+  store(key: LayoutCacheKey, value: LayoutCacheValue): void {
+    this.slot = { ...key, value };
+  }
+
+  clear(): void {
+    this.slot = undefined;
+  }
+}
+
 /**
  * Pre-order traversal returning a flat array of layout snapshots, one per
  * node. Used by differential mode to capture and compare the entire tree's
