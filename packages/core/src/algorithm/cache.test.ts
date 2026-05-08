@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { MeasureMode } from '../measure-func.js';
 import { Node } from '../node.js';
-import { MeasureCache } from './cache.js';
-import { clearAllCaches, diffLayouts, markDirtyDeep, snapshotTreeLayouts } from './cache.js';
+import {
+  MeasureCache,
+  clearAllCaches,
+  diffLayouts,
+  markDirtyDeep,
+  snapshotTreeLayouts,
+} from './cache.js';
 
 describe('MeasureCache', () => {
   const KEY_A = {
