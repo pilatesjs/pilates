@@ -427,6 +427,10 @@ export class Node {
    */
   markDirty(): void {
     this._dirty = true;
+    // Optional-chain: only fires on leaves with a measure func installed.
+    // Ancestor nodes (containers with children) cannot have a MeasureCache
+    // because setMeasureFunc rejects nodes with children; the optional-chain
+    // is a deliberate no-op as we propagate dirty up the tree.
     this._measureCache?.clear();
     if (this._parent !== null && !this._parent._dirty) this._parent.markDirty();
   }

@@ -110,6 +110,12 @@ export class MeasureCache {
     }
   }
 
+  /**
+   * Drop every cached entry. The `hits`/`misses` counters are
+   * deliberately preserved across `clear()` calls — they're lifetime
+   * diagnostics, not per-pass metrics, and zeroing them would mask the
+   * total-pressure picture during bench runs.
+   */
   clear(): void {
     this.slots.length = 0;
   }

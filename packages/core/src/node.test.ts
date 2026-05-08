@@ -386,5 +386,10 @@ describe('Node — measure cache integration', () => {
         heightMode: 'at-most',
       }),
     ).toBeUndefined();
+    // The cache instance itself must remain — `setMeasureFunc(null)`
+    // calls `clear()`, not delete; this pins the contract.
+    expect((n as unknown as { _measureCache?: MeasureCache })._measureCache).toBeInstanceOf(
+      MeasureCache,
+    );
   });
 });
