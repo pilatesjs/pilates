@@ -1,8 +1,7 @@
 /**
  * Compares the latest `bench/RESULTS.md` numbers against
- * `bench/thresholds.json`. Phase 1 (this script): warn-only — exits 0
- * even on regression but prints a clear notice. Phase 2 will flip to
- * exit-non-zero.
+ * `bench/thresholds.json`. Exits non-zero if any threshold is exceeded
+ * (Phase 2: fail-on-regression).
  *
  * Usage: `pnpm bench:budgets` (after running `pnpm bench`).
  */
@@ -86,11 +85,10 @@ function main(): void {
     return;
   }
 
-  process.stderr.write('=== bench budget WARNINGS (Phase 1: warn-only) ===\n');
+  process.stderr.write('=== bench budget violations ===\n');
   for (const v of violations) process.stderr.write(`  ${v}\n`);
   process.stderr.write(`(${violations.length} violation${violations.length === 1 ? '' : 's'})\n`);
-  // Phase 1 — do NOT exit non-zero. Phase 2 will change this to:
-  //   process.exit(1);
+  process.exit(1);
 }
 
 main();
