@@ -1,6 +1,6 @@
 # Pilates benchmark results
 
-Generated: 2026-04-29 · Node v22.21.0 · win32/x64
+Generated: 2026-05-08 · Node v22.21.0 · win32/x64
 
 Reproduce: `pnpm bench`. Numbers vary by machine — relative
 positions are the interesting signal.
@@ -12,6 +12,8 @@ positions are the interesting signal.
 | **tiny** | 10 nodes, 1 level |
 | **realistic** | ~100 nodes, 3-4 levels |
 | **stress** | ~1000 nodes, 2 levels |
+| **big** | ~5000 nodes, 2 levels (50 × 100) |
+| **huge** | ~10000 nodes, 2 levels (100 × 100) |
 
 ## tiny
 
@@ -19,9 +21,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 2.0µs | 497.8k ops/s | 0 |
-| @pilates/render (full) | 24.8µs | 40.3k ops/s | 0 |
-| yoga-layout (WASM) | 29.3µs | 34.1k ops/s | 0 |
+| @pilates/core (layout) | 1.9µs | 529.1k ops/s | 0 |
+| @pilates/render (full) | 76.4µs | 13.1k ops/s | 0 |
+| yoga-layout (WASM) | 29.0µs | 34.5k ops/s | 0 |
 
 ## realistic
 
@@ -29,9 +31,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 54.6µs | 18.3k ops/s | 0 |
-| @pilates/render (full) | 125.5µs | 8.0k ops/s | 0 |
-| yoga-layout (WASM) | 434.8µs | 2.3k ops/s | 0 |
+| @pilates/core (layout) | 58.3µs | 17.1k ops/s | 0 |
+| @pilates/render (full) | 319.8µs | 3.1k ops/s | 0 |
+| yoga-layout (WASM) | 488.7µs | 2.0k ops/s | 0 |
 
 ## stress
 
@@ -39,9 +41,29 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 228.6µs | 4.4k ops/s | 0 |
-| @pilates/render (full) | 819.6µs | 1.2k ops/s | 0 |
-| yoga-layout (WASM) | 2.65ms | 377 ops/s | 0 |
+| @pilates/core (layout) | 259.7µs | 3.9k ops/s | 0 |
+| @pilates/render (full) | 1.74ms | 574 ops/s | 0 |
+| yoga-layout (WASM) | 2.73ms | 366 ops/s | 0 |
+
+## big
+
+> ~5000 nodes, 2 levels (50 × 100)
+
+| Engine | Mean latency | Throughput | Samples |
+|---|---:|---:|---:|
+| @pilates/core (layout) | 1.38ms | 727 ops/s | 0 |
+| @pilates/render (full) | 7.47ms | 134 ops/s | 0 |
+| yoga-layout (WASM) | 13.0ms | 77 ops/s | 0 |
+
+## huge
+
+> ~10000 nodes, 2 levels (100 × 100)
+
+| Engine | Mean latency | Throughput | Samples |
+|---|---:|---:|---:|
+| @pilates/core (layout) | 3.91ms | 255 ops/s | 0 |
+| @pilates/render (full) | 23.8ms | 42 ops/s | 0 |
+| yoga-layout (WASM) | 25.9ms | 39 ops/s | 0 |
 
 ## What's measured
 
