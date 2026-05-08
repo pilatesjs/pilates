@@ -131,6 +131,17 @@ export function layoutChildren(node: Node, useCache = false): void {
   // roundLayout will run afterwards: the cache stores post-rounded values
   // that were computed with different ancestor absolute coordinates, so
   // re-rounding after restore would give wrong results for deep descendants.
+  //
+  // Implication for performance: inner-node caches only get READS on root
+  // cache hits (which require root clean — `markDirty()` propagates up,
+  // so any descendant mutation dirties root). On any cold root pass the
+  // cache is fully bypassed for reads (writes still happen via
+  // `computeScrollSizes`). The hot-relayout workload (mutate one leaf
+  // per frame) thus DOES NOT benefit from the layout cache at this layer
+  // — it only benefits from the measure cache. The layout cache wins on
+  // identical-input replays (e.g. external code calling calculateLayout
+  // multiple times without mutation, or terminal-resize sequences that
+  // return to a prior size).
   if (useCache && !node.isDirty() && node._layoutCache !== undefined) {
     const key = {
       availableWidth: node.layout.width,

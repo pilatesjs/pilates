@@ -33,6 +33,57 @@ describe('calculateLayout — layout cache hit', () => {
   });
 });
 
+describe('calculateLayout — rounding correctness on cache hit + ancestor mutation', () => {
+  it('cached and cold paths agree after an ancestor width mutation', () => {
+    // Regression test for the rounding-after-restore bug the fuzzer
+    // caught at run 116 during P2-T4: layout cache stores post-rounded
+    // values that were computed with specific ancestor absolute
+    // coordinates. If an ancestor's position changes, deep descendants'
+    // absolute coordinates shift, and re-rounding after a restore would
+    // produce different integer cells than a fresh recompute. This pins
+    // the case so a future regression of the useCache-guard would fire
+    // here, not just probabilistically in the fuzzer.
+    function buildTree(): {
+      root: Node;
+      mid: Node;
+      leaf: Node;
+    } {
+      const root = Node.create();
+      root.setFlexDirection('row');
+      const mid = Node.create();
+      mid.setFlex(1);
+      mid.setFlexDirection('row');
+      const leaf = Node.create();
+      leaf.setFlex(1);
+      mid.insertChild(leaf, 0);
+      root.insertChild(mid, 0);
+      return { root, mid, leaf };
+    }
+
+    // Cached path: prime the cache with a layout pass at width 20, then
+    // mutate root width to 1 (shifts ancestor absolute coordinates).
+    const cached = buildTree();
+    cached.root.setWidth(20);
+    cached.root.setHeight(10);
+    cached.root.calculateLayout(20, 10);
+    cached.root.setWidth(1);
+    cached.root.calculateLayout(1, 10);
+
+    // Cold path: same sequence, but build a fresh tree (no cache).
+    const cold = buildTree();
+    cold.root.setWidth(20);
+    cold.root.setHeight(10);
+    cold.root.calculateLayout(20, 10);
+    cold.root.setWidth(1);
+    cold.root.calculateLayout(1, 10);
+
+    expect(cached.leaf.layout.width).toBe(cold.leaf.layout.width);
+    expect(cached.leaf.layout.height).toBe(cold.leaf.layout.height);
+    expect(cached.leaf.layout.left).toBe(cold.leaf.layout.left);
+    expect(cached.leaf.layout.top).toBe(cold.leaf.layout.top);
+  });
+});
+
 describe('calculateLayout — differential mode', () => {
   it('produces correct layout regardless of differential setting', () => {
     // Sanity test only. The differential wrapper reads
