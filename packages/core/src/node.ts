@@ -16,7 +16,7 @@
  *   - `dirty`     — set on style/tree mutation; consumed by the algorithm.
  */
 
-import { MeasureCache } from './algorithm/cache.js';
+import { type LayoutCache, MeasureCache } from './algorithm/cache.js';
 import { calculateLayout as runCalculateLayout } from './algorithm/index.js';
 import { Edge } from './edge.js';
 import { type ComputedLayout, defaultLayout } from './layout.js';
@@ -126,6 +126,16 @@ export class Node {
    * @internal
    */
   _measureCache?: MeasureCache;
+
+  /**
+   * Lazy-allocated layout-cache. Created the first time `layoutChildren`
+   * (or `calculateLayout` at the root) stores a result. Cleared by
+   * `markDirty()`. Read by `layoutChildren` and the root
+   * `calculateLayout` path in `algorithm/`.
+   *
+   * @internal
+   */
+  _layoutCache?: LayoutCache;
 
   /** Construct via `Node.create()` to mirror Yoga's factory style. */
   static create(): Node {
@@ -432,6 +442,7 @@ export class Node {
     // because setMeasureFunc rejects nodes with children; the optional-chain
     // is a deliberate no-op as we propagate dirty up the tree.
     this._measureCache?.clear();
+    this._layoutCache?.clear();
     if (this._parent !== null && !this._parent._dirty) this._parent.markDirty();
   }
 

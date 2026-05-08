@@ -10,7 +10,7 @@
  * automatically by `markDirty()`. Consumers never interact with the
  * cache directly — it is `@internal`.
  *
- * Phase 2 will add `LayoutCache` here.
+ * Phase 2 added `LayoutCache` here (P2-T1).
  *
  * @internal
  */
@@ -240,14 +240,15 @@ export function snapshotTreeLayouts(root: Node): ComputedLayout[] {
 }
 
 /**
- * Recursively clear `_measureCache` on every node in the subtree.
- * (Phase 2 will also clear `_layoutCache` here.) Used by differential
- * mode and the fuzzer to force the cold path.
+ * Recursively clear `_measureCache` and `_layoutCache` on every node in
+ * the subtree. Used by differential mode and the fuzzer to force the cold
+ * path.
  *
  * @internal
  */
 export function clearAllCaches(root: Node): void {
   root._measureCache?.clear();
+  root._layoutCache?.clear();
   for (let i = 0; i < root.getChildCount(); i++) clearAllCaches(root.getChild(i)!);
 }
 
