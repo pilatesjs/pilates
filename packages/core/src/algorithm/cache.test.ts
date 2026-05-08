@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MeasureMode } from '../measure-func.js';
+import { Node } from '../node.js';
 import { MeasureCache } from './cache.js';
+import { clearAllCaches, diffLayouts, markDirtyDeep, snapshotTreeLayouts } from './cache.js';
 
 describe('MeasureCache', () => {
   const KEY_A = {
@@ -128,5 +130,119 @@ describe('MeasureCache', () => {
     c.lookup(KEY_A);
     expect(c.hits).toBe(2);
     expect(c.misses).toBe(1);
+  });
+});
+
+describe('snapshotTreeLayouts', () => {
+  it('returns a flat array in pre-order with all six layout fields per node', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(50);
+    const child = Node.create();
+    child.setWidth(40);
+    child.setHeight(20);
+    root.insertChild(child, 0);
+    root.calculateLayout(100, 50);
+
+    const snap = snapshotTreeLayouts(root);
+    expect(snap).toHaveLength(2); // root + child
+    expect(snap[0]).toEqual({
+      left: 0,
+      top: 0,
+      width: 100,
+      height: 50,
+      scrollWidth: 100,
+      scrollHeight: 50,
+    });
+    expect(snap[1]).toEqual({
+      left: 0,
+      top: 0,
+      width: 40,
+      height: 20,
+      scrollWidth: 40,
+      scrollHeight: 20,
+    });
+  });
+});
+
+describe('clearAllCaches', () => {
+  it('clears _measureCache on every node in the subtree', () => {
+    const root = Node.create();
+    const leaf = Node.create();
+    leaf.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    root.insertChild(leaf, 0);
+    root.calculateLayout(100, 50);
+    leaf._measureCache!.store(
+      { availableWidth: 7, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
+      { width: 7, height: 3 },
+    );
+    expect(
+      leaf._measureCache!.lookup({
+        availableWidth: 7,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeDefined();
+
+    clearAllCaches(root);
+    expect(
+      leaf._measureCache!.lookup({
+        availableWidth: 7,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe('markDirtyDeep', () => {
+  it('marks every node in the subtree dirty', () => {
+    const root = Node.create();
+    const child = Node.create();
+    const grand = Node.create();
+    root.insertChild(child, 0);
+    child.insertChild(grand, 0);
+    root.calculateLayout(100, 50);
+
+    expect(root.isDirty()).toBe(false);
+    expect(child.isDirty()).toBe(false);
+    expect(grand.isDirty()).toBe(false);
+
+    markDirtyDeep(root);
+    expect(root.isDirty()).toBe(true);
+    expect(child.isDirty()).toBe(true);
+    expect(grand.isDirty()).toBe(true);
+  });
+});
+
+describe('diffLayouts', () => {
+  it('returns empty string when snapshots match', () => {
+    const a = [{ left: 0, top: 0, width: 10, height: 5, scrollWidth: 10, scrollHeight: 5 }];
+    const b = [{ left: 0, top: 0, width: 10, height: 5, scrollWidth: 10, scrollHeight: 5 }];
+    expect(diffLayouts(a, b)).toBe('');
+  });
+
+  it('describes the first divergent node', () => {
+    const a = [
+      { left: 0, top: 0, width: 10, height: 5, scrollWidth: 10, scrollHeight: 5 },
+      { left: 0, top: 0, width: 4, height: 2, scrollWidth: 4, scrollHeight: 2 },
+    ];
+    const b = [
+      { left: 0, top: 0, width: 10, height: 5, scrollWidth: 10, scrollHeight: 5 },
+      { left: 0, top: 0, width: 5, height: 2, scrollWidth: 5, scrollHeight: 2 },
+    ];
+    const out = diffLayouts(a, b);
+    expect(out).toContain('node[1]');
+    expect(out).toContain('width');
+    expect(out).toContain('4');
+    expect(out).toContain('5');
+  });
+
+  it('reports length mismatch', () => {
+    const a = [{ left: 0, top: 0, width: 10, height: 5, scrollWidth: 10, scrollHeight: 5 }];
+    const b: typeof a = [];
+    expect(diffLayouts(a, b)).toContain('length');
   });
 });

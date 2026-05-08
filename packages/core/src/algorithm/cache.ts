@@ -15,7 +15,9 @@
  * @internal
  */
 
+import type { ComputedLayout } from '../layout.js';
 import type { MeasureMode } from '../measure-func.js';
+import type { Node } from '../node.js';
 
 /** @internal */
 export interface MeasureCacheKey {
@@ -119,4 +121,76 @@ export class MeasureCache {
   clear(): void {
     this.slots.length = 0;
   }
+}
+
+/**
+ * Pre-order traversal returning a flat array of layout snapshots, one per
+ * node. Used by differential mode to capture and compare the entire tree's
+ * layout state cheaply.
+ *
+ * @internal
+ */
+export function snapshotTreeLayouts(root: Node): ComputedLayout[] {
+  const out: ComputedLayout[] = [];
+  visit(root);
+  return out;
+
+  function visit(n: Node): void {
+    out.push({
+      left: n.layout.left,
+      top: n.layout.top,
+      width: n.layout.width,
+      height: n.layout.height,
+      scrollWidth: n.layout.scrollWidth,
+      scrollHeight: n.layout.scrollHeight,
+    });
+    for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
+  }
+}
+
+/**
+ * Recursively clear `_measureCache` on every node in the subtree.
+ * (Phase 2 will also clear `_layoutCache` here.) Used by differential
+ * mode and the fuzzer to force the cold path.
+ *
+ * @internal
+ */
+export function clearAllCaches(root: Node): void {
+  root._measureCache?.clear();
+  for (let i = 0; i < root.getChildCount(); i++) clearAllCaches(root.getChild(i)!);
+}
+
+/**
+ * Mark every node in the subtree dirty. Used after `clearAllCaches` to
+ * force `calculateLayout` down the full cold path.
+ *
+ * @internal
+ */
+export function markDirtyDeep(root: Node): void {
+  root.markDirty();
+  for (let i = 0; i < root.getChildCount(); i++) markDirtyDeep(root.getChild(i)!);
+}
+
+/**
+ * Produce a human-readable diff of two tree-layout snapshots. Returns
+ * an empty string if they match. Used by differential mode to surface
+ * cache bugs with enough context to debug them.
+ *
+ * @internal
+ */
+export function diffLayouts(a: ComputedLayout[], b: ComputedLayout[]): string {
+  if (a.length !== b.length) {
+    return `tree length mismatch: cached has ${a.length} nodes, cold has ${b.length}`;
+  }
+  const fields = ['left', 'top', 'width', 'height', 'scrollWidth', 'scrollHeight'] as const;
+  for (let i = 0; i < a.length; i++) {
+    const av = a[i]!;
+    const bv = b[i]!;
+    for (const f of fields) {
+      if (av[f] !== bv[f]) {
+        return `node[${i}].${f}: cached=${av[f]} cold=${bv[f]}`;
+      }
+    }
+  }
+  return '';
 }
