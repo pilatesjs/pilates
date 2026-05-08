@@ -164,6 +164,13 @@ export function clearAllCaches(root: Node): void {
  * Mark every node in the subtree dirty. Used after `clearAllCaches` to
  * force `calculateLayout` down the full cold path.
  *
+ * Note: `Node.markDirty()` also calls `_measureCache?.clear()` as a
+ * side-effect of dirtying. So calling `clearAllCaches(root)` then
+ * `markDirtyDeep(root)` clears each leaf's measure cache twice. The
+ * second clear is harmless (no-op on an empty slot array), but
+ * differential-mode callers should know the redundancy is intentional —
+ * we want both invariants explicit at the call site.
+ *
  * @internal
  */
 export function markDirtyDeep(root: Node): void {
