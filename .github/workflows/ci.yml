@@ -36,5 +36,8 @@ jobs:
 
       - run: pnpm test
 
+      - name: Differential layout test
+        run: pnpm test:differential
+
       - if: matrix.os == 'ubuntu-latest'
         run: pnpm test:coverage
