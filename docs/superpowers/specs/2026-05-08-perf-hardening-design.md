@@ -127,7 +127,9 @@ export class MeasureCache {
   private static readonly MAX_ENTRIES = 8;
   private slots: Array<MeasureCacheKey & MeasureCacheValue> = [];
 
-  // Dev-only counters (gated on __DEV__ build flag; absent in published builds)
+  // Always-on diagnostics counters (no __DEV__ build flag in this project;
+  // two property writes per lookup is negligible). Incremented only by
+  // lookup(); store() assumes a prior lookup() already counted the miss.
   hits = 0;
   misses = 0;
 
@@ -295,8 +297,8 @@ export class LayoutCache {
   private static readonly MAX_ENTRIES = 1;
   private slots: Array<LayoutCacheKey & { value: LayoutCacheValue }> = [];
 
-  hits = 0;       // __DEV__ only
-  misses = 0;     // __DEV__ only
+  hits = 0;       // always-on diagnostics
+  misses = 0;     // always-on diagnostics
 
   lookup(key: LayoutCacheKey): LayoutCacheValue | undefined { /* linear scan, exact === */ }
   store(key: LayoutCacheKey, value: LayoutCacheValue): void { /* overwrite-or-LRU */ }
