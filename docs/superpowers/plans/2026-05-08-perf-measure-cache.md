@@ -4,7 +4,7 @@
 
 **Goal:** Add a per-leaf measure-func cache to `@pilates/core` that halves the cost of repeated text measurement, and build the shared validation infrastructure (differential mode, property fuzzer, 5k/10k bench scenarios, CI perf budgets warn-only) that Phase 2's layout cache will rely on.
 
-**Architecture:** New `packages/core/src/algorithm/cache.ts` houses a `MeasureCache` class plus helpers (`snapshotTreeLayouts`, `clearAllCaches`, `markDirtyDeep`). `Node` gains a lazy `_measureCache` field cleared via `markDirty()`. Five measure-func call sites in `main-axis.ts` are wrapped through a single `callMeasureFunc()` helper. A new env-gated wrapper in `algorithm/index.ts` runs `calculateLayout()` twice — cached and cold — and asserts byte-identical layouts.
+**Architecture:** New `packages/core/src/algorithm/cache.ts` houses an 8-slot `MeasureCache` class (sized per Yoga's `LayoutResults::MaxCachedMeasurements`) plus helpers (`snapshotTreeLayouts`, `clearAllCaches`, `markDirtyDeep`). `Node` gains a lazy `_measureCache` field cleared via `markDirty()`. Five measure-func call sites in `main-axis.ts` are wrapped through a single `callMeasureFunc()` helper. A new env-gated wrapper in `algorithm/index.ts` runs `calculateLayout()` twice — cached and cold — and asserts byte-identical layouts.
 
 **Tech Stack:** TypeScript 5.7, vitest, fast-check (already a devDep at the workspace root), tinybench (existing bench harness), pnpm 10.32 workspace.
 
@@ -100,22 +100,33 @@ describe('MeasureCache', () => {
     expect(c.lookup(KEY_A)).toEqual({ width: 9, height: 5 });
   });
 
-  it('keeps two distinct entries (slot capacity)', () => {
+  it('keeps eight distinct entries (slot capacity)', () => {
     const c = new MeasureCache();
-    c.store(KEY_A, { width: 8, height: 4 });
-    c.store(KEY_B, { width: 18, height: 9 });
-    expect(c.lookup(KEY_A)).toEqual({ width: 8, height: 4 });
-    expect(c.lookup(KEY_B)).toEqual({ width: 18, height: 9 });
+    const keys = Array.from({ length: 8 }, (_, i) => ({
+      availableWidth: 10 + i,
+      widthMode: MeasureMode.AtMost,
+      availableHeight: 5,
+      heightMode: MeasureMode.AtMost,
+    }));
+    keys.forEach((k, i) => c.store(k, { width: i, height: i }));
+    keys.forEach((k, i) => {
+      expect(c.lookup(k)).toEqual({ width: i, height: i });
+    });
   });
 
-  it('evicts the oldest entry when a third distinct key is stored', () => {
+  it('evicts the oldest entry when a ninth distinct key is stored', () => {
     const c = new MeasureCache();
-    c.store(KEY_A, { width: 8, height: 4 });
-    c.store(KEY_B, { width: 18, height: 9 });
-    c.store(KEY_C, { width: 28, height: 6 });
-    expect(c.lookup(KEY_A)).toBeUndefined();   // evicted
-    expect(c.lookup(KEY_B)).toEqual({ width: 18, height: 9 });
-    expect(c.lookup(KEY_C)).toEqual({ width: 28, height: 6 });
+    const keys = Array.from({ length: 9 }, (_, i) => ({
+      availableWidth: 10 + i,
+      widthMode: MeasureMode.AtMost,
+      availableHeight: 5,
+      heightMode: MeasureMode.AtMost,
+    }));
+    keys.forEach((k, i) => c.store(k, { width: i, height: i }));
+    expect(c.lookup(keys[0]!)).toBeUndefined();   // oldest evicted
+    for (let i = 1; i < 9; i++) {
+      expect(c.lookup(keys[i]!)).toEqual({ width: i, height: i });
+    }
   });
 
   it('clear() drops every entry', () => {
@@ -198,15 +209,20 @@ export interface MeasureCacheValue {
 }
 
 /**
- * Up to two slots — covers the common hypothetical-vs-final pattern
- * where a leaf is measured at `(AT_MOST, parentInner)` for hypothetical
- * sizing then again at `(EXACTLY, finalSize)` for paint within the
- * same `calculateLayout` pass.
+ * Up to eight slots — matches Yoga's `LayoutResults::MaxCachedMeasurements`
+ * with the documented rationale "98% of analyzed layouts require less
+ * than 8 entries" (see facebook/yoga `node/LayoutResults.h`). Covers the
+ * hypothetical-vs-final pattern (single leaf measured twice per pass)
+ * plus broader reuse patterns where the same leaf is measured at multiple
+ * cross-axis sizes during line packing or across consecutive layout calls.
+ *
+ * Linear scan over 8 slots is a few-cycle hot-path cost; slots are
+ * lazy-allocated only on leaves with a `MeasureFunc` installed.
  *
  * @internal
  */
 export class MeasureCache {
-  private static readonly MAX_ENTRIES = 2;
+  private static readonly MAX_ENTRIES = 8;
   private slots: Array<MeasureCacheKey & MeasureCacheValue> = [];
 
   /** @internal */
@@ -260,13 +276,13 @@ export class MeasureCache {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm vitest run packages/core/src/algorithm/cache.test.ts`
-Expected: PASS, 9 tests green.
+Expected: PASS, 9 tests green (empty lookup, store/retrieve, key-mismatch, overwrite, 8-slot capacity, 9th-key eviction, clear, Infinity, hits/misses).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add packages/core/src/algorithm/cache.ts packages/core/src/algorithm/cache.test.ts
-git commit -m "feat(core): add MeasureCache with two-slot LRU"
+git commit -m "feat(core): add MeasureCache (8-slot LRU, Yoga-aligned)"
 ```
 
 ---

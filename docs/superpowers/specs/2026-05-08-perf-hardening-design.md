@@ -3,6 +3,11 @@
 **Date:** 2026-05-08
 **Branches:** `perf-measure-cache` (Phase 1), `perf-layout-cache` (Phase 2)
 **Status:** Approved — ready for implementation plan
+**Revision (2026-05-08, post external review):** sized caches per Yoga + Taffy
+prior art (1 layout slot + 8 measure slots, not 4 + 2); dropped
+`parentDirection` from `LayoutCacheKey`; added margin-position audit to
+Phase 2; added `_configVersion` hook on Node; flagged Flutter
+`relayoutBoundary` as Phase 3.
 
 ---
 
@@ -112,8 +117,14 @@ export interface MeasureCacheValue {
 }
 
 export class MeasureCache {
-  // Two slots: hypothetical-vs-final pattern often hits both per pass.
-  private static readonly MAX_ENTRIES = 2;
+  // Eight slots — matches Yoga's `LayoutResults::MaxCachedMeasurements`.
+  // Yoga's comment: "98% of analyzed layouts require less than 8 entries."
+  // Phase 1 originally specified 2 (hypothetical-vs-final); external review
+  // (Yoga `LayoutResults.h`, Taffy `tree/cache.rs` with 9 structured slots)
+  // showed measure-result reuse legitimately needs more capacity. Linear
+  // scan over 8 slots is still a few-cycle hot-path cost; slots are
+  // 64-byte structs lazy-allocated only on leaves with a MeasureFunc.
+  private static readonly MAX_ENTRIES = 8;
   private slots: Array<MeasureCacheKey & MeasureCacheValue> = [];
 
   // Dev-only counters (gated on __DEV__ build flag; absent in published builds)
@@ -205,19 +216,22 @@ through this helper — there are no remaining direct invocations of
 `node._measureFunc(...)`. Implementation grep + replace; one call site
 left untouched is a bug.
 
-### Why two slots
+### Why eight slots
 
-In a single `calculateLayout()` pass a leaf's measure-func can be called
-twice:
+The minimum case is the hypothetical-vs-final pattern (one leaf measured
+twice per pass — at `(AT_MOST, parentInnerWidth)` for hypothetical
+sizing, then `(EXACTLY, finalWidth)` for paint). That alone wants two
+slots. But Yoga's measured workload data — "98% of analyzed layouts
+require less than 8 entries" — covers patterns we'd see in real TUIs:
+flex children re-measured at multiple cross-axis sizes during line
+packing, leaves laid out across multiple terminal resizes that don't
+trigger full invalidation, etc. Going to 8 matches Yoga and removes a
+class of subtle thrash failures we'd otherwise discover only via the
+fuzzer or a real workload.
 
-1. During parent's flex-distribution, with `(AT_MOST, parentInnerWidth)`
-   to compute hypothetical sizes.
-2. During the child's own `layoutChildren`, with `(EXACTLY, finalWidth)`
-   for paint.
-
-With one slot the second call evicts the first; the next pass restarts.
-Two slots keep both, so the next pass hits twice. Memory cost: ~80 bytes
-per leaf with a measure func.
+Memory cost: ~64 bytes × 8 entries × leaves_with_measure_func.
+For a 10k-node tree where ~10% are text leaves, that's ~64KB. Bounded
+and acceptable.
 
 ### Numeric key match
 
@@ -250,7 +264,10 @@ export interface LayoutCacheKey {
   widthMode: MeasureMode;
   availableHeight: number;
   heightMode: MeasureMode;
-  parentDirection: FlexDirection;   // documented as "may prove redundant" — see open question
+  // parentDirection deliberately NOT keyed — Yoga and Taffy both treat it
+  // as implicit in available {width,height}. The flex algorithm reorients
+  // at each parent; children always see already-resolved main/cross sizes.
+  // Differential mode catches divergence if this assumption is ever wrong.
 }
 
 interface CachedChildLayout {
@@ -268,7 +285,14 @@ export interface LayoutCacheValue {
 }
 
 export class LayoutCache {
-  private static readonly MAX_ENTRIES = 4;
+  // One slot — matches Yoga's `cachedLayout` (single overwrite-on-write).
+  // Phase 2 originally specified 4 LRU; external review (Yoga
+  // `LayoutResults.h`, Taffy 1-slot layout + 9-slot measure split) showed
+  // internal-node final-pass keys converge to a stable input once the
+  // parent's flex distribution has settled, so additional layout slots
+  // are wasted memory. If post-Phase-2 hit-rate measurement shows a
+  // workload where slot-0 hit rate falls below ~95%, expand to 4.
+  private static readonly MAX_ENTRIES = 1;
   private slots: Array<LayoutCacheKey & { value: LayoutCacheValue }> = [];
 
   hits = 0;       // __DEV__ only
@@ -280,16 +304,31 @@ export class LayoutCache {
 }
 ```
 
-### Why four slots
+### Why one slot
 
-Internal nodes see more variance than leaves: a flex child may be laid
-out at intrinsic size during ancestor flex distribution, then at flexed
-size for final layout, then at a different size next pass. Four slots
-covers the common patterns without committing to Yoga's 16. If
-post-Phase-2 hit-rate measurement shows we're evicting hot entries, the
-cap is a one-line change.
+Yoga's actual layout cache is a single `cachedLayout` slot per node
+(`yoga/node/LayoutResults.h`). Final-pass layout calls converge to one
+canonical key per `(availableWidth, widthMode, availableHeight,
+heightMode)` once the parent's flex distribution has settled, so
+additional slots store entries that are never read. The original "Yoga
+uses 16 slots" claim in early drafts of this spec was a memory error —
+external review caught it before implementation.
 
-Memory cost worst case: ~200 bytes × 4 entries × 10k nodes = ~8MB.
+Two failure modes to watch for:
+
+1. **Terminal resize sequence.** A user dragging a window resizes
+   through many root sizes; each new root size invalidates root cache
+   slot[0]. Yoga handles this fine because root mutations are O(1) and
+   internal nodes get re-keyed naturally.
+2. **Two simultaneous layout calls at different sizes.** Out of scope —
+   layout is single-threaded; users don't call `calculateLayout()`
+   concurrently.
+
+Hit-rate counters (dev-only) on every cache will tell us if the 1-slot
+choice is wrong on real workloads. If slot[0] hit rate falls below 95%
+on the `hot-relayout` bench scenario, expand to 4. One-line change.
+
+Memory cost worst case: ~200 bytes × 1 entry × 10k nodes = ~2MB.
 Acceptable, bounded.
 
 ### Top-level flow (`calculateLayout`)
@@ -552,24 +591,35 @@ dump. Hard fail in CI; surfaces immediately in development.
 
 ## Open questions to resolve during implementation
 
-1. **Is `parentDirection` actually needed in `LayoutCacheKey`?** Children
-   see `availableWidth`/`availableHeight` already reoriented for them by
-   the parent's flex algorithm, so the parent direction may be implicit
-   in those values. Resolution: include in key for safety; add a
-   targeted unit test that constructs two trees with the same
-   absolute-axis sizes but different parent directions and asserts they
-   produce different layouts. If they do, the key is correct as-is. If
-   they don't, the field can be dropped in a follow-up.
-2. **`fast-check` devDep policy.** Check `pnpm-lock.yaml` first. If
-   not present and the policy resists adding it, fall back to a
-   hand-rolled seeded PRNG fuzzer (500 fixed seeds). Decide during
-   Phase 1 implementation, not now.
+1. **Margin-position audit.** Yoga's `canUseCachedMeasurement` keys on
+   13 parameters including `marginRow, marginColumn` because cached
+   measurement results were produced under specific margin assumptions.
+   Pilates' equivalent risk: at every cache-store site in
+   `main-axis.ts`, verify whether `availableWidth` represents the
+   parent's owner-width (pre-margin-subtraction) or the child's inner
+   content width (post-margin-subtraction). If pre-subtraction is ever
+   stored, `MeasureCacheKey` and `LayoutCacheKey` need to grow
+   `marginMain, marginCross` fields. Audit before merging Phase 1; add
+   a unit test asserting the answer either way.
+2. **`fast-check` devDep policy.** Verified present at
+   `fast-check@4.7.0` in workspace devDeps. Use it directly. (Was an
+   open question during initial spec; resolved during Phase 1
+   plan-writing pass.)
 3. **Absolutely-positioned children.** Pilates supports
    `position: absolute`. They lay out independently of siblings. Verify
    they're snapshotted correctly into `childLayouts` (likely yes — they
    are regular children in the tree) and add a targeted differential
    test that mutates an absolutely-positioned child without dirtying
    its siblings.
+4. **(Phase 3 future)** Flutter's `relayoutBoundary` is the right next
+   architectural lever after Phase 2 lands. A node with tight
+   constraints (explicit `width` + `height`, or `position: absolute`)
+   acts as a barrier — `markDirty()` stops walking up at the boundary,
+   so deep-leaf mutations don't invalidate the root spine. Currently
+   every leaf mutation dirties the entire spine to root, so root cache
+   misses on every keystroke; per-node caches still save us on stable
+   subtrees but the spine cost is paid every time. File as a Phase 3
+   issue once Phase 2 hit-rate data shows the spine-invalidation tax.
 
 ---
 
@@ -580,8 +630,10 @@ dump. Hard fail in CI; surfaces immediately in development.
 | Sibling-effect invalidation bug | Medium | High | Differential mode + 500-run fuzzer per CI; specifically engineered to catch this class |
 | Numeric instability in cache key (Infinity / NaN comparison) | Low | Medium | All key values are integers, `Infinity`, or enum constants. No `NaN` ever produced. Unit tests assert key behavior. |
 | Memory growth at 10k+ nodes | Low | Low | Lazy `_layoutCache` allocation; ~200 bytes × 4 entries × 10k = ~8MB cap |
-| `roundLayout` non-idempotency causing 1-cell drift on cache hit | Low | Medium | Unit test asserts `roundLayout(roundLayout(t)) == roundLayout(t)`. Round before caching; cached values are integer-clean. |
+| `roundLayout` non-idempotency causing 1-cell drift on cache hit | Low | Medium | Unit test asserts `roundLayout(roundLayout(t)) == roundLayout(t)`. Round before caching; cached values are integer-clean. Yoga learned this lesson in PR #1536 — same fix. |
 | Phase 2 turning out larger than estimated | Medium | Low | Phase 1 ships independently, valuable on its own. Phase 2 can be split further if needed. |
+| Margin-position-in-key oversight (cached measurement reused under wrong margin) | Low | High | Open Question 1 above — explicit audit gate before Phase 1 merges. Yoga's 13-param key is the canonical reference. |
+| Future global config (point scale, Unicode-width mode) silently invalidates caches | Low | Low (today) / High (future) | No relevant config exists today. If/when added, bump a global `_configVersion` and bake into cache keys. Yoga learned in PR #1674; we get to start with the lesson. |
 
 ---
 
