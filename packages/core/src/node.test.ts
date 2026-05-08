@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
+// Differential mode runs calculateLayout twice (cached + cold pass), which
+// causes extra measure calls that break the measure-cache hit counter test.
+const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
 import { MeasureCache } from './algorithm/cache.js';
 import { Edge } from './edge.js';
 import { MeasureMode } from './measure-func.js';
@@ -395,31 +398,38 @@ describe('Node — measure cache integration', () => {
 });
 
 describe('Node — measure cache hit during calculateLayout', () => {
-  it('two layout passes on the same tree result in cache hits on the second pass', () => {
-    const root = Node.create();
-    root.setWidth(100);
-    root.setHeight(50);
+  // In differential mode calculateLayout intentionally runs a cold pass that
+  // clears the measure cache, so the "zero calls on second pass" invariant
+  // cannot hold. Skip in that mode — coverage comes from the differential
+  // check itself, not from this counter assertion.
+  it.skipIf(DIFFERENTIAL)(
+    'two layout passes on the same tree result in cache hits on the second pass',
+    () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
 
-    const leaf = Node.create();
-    let measureCalls = 0;
-    leaf.setMeasureFunc((w, _wm, h, _hm) => {
-      measureCalls++;
-      return { width: Math.min(20, w), height: Math.min(3, h) };
-    });
-    root.insertChild(leaf, 0);
+      const leaf = Node.create();
+      let measureCalls = 0;
+      leaf.setMeasureFunc((w, _wm, h, _hm) => {
+        measureCalls++;
+        return { width: Math.min(20, w), height: Math.min(3, h) };
+      });
+      root.insertChild(leaf, 0);
 
-    root.calculateLayout(100, 50);
-    const callsAfterFirst = measureCalls;
-    expect(callsAfterFirst).toBeGreaterThan(0);
+      root.calculateLayout(100, 50);
+      const callsAfterFirst = measureCalls;
+      expect(callsAfterFirst).toBeGreaterThan(0);
 
-    // Force a re-layout by marking the root dirty (simulates a parent-only
-    // change that doesn't touch the leaf's cache).
-    root.setWidth(100);
-    root.calculateLayout(100, 50);
+      // Force a re-layout by marking the root dirty (simulates a parent-only
+      // change that doesn't touch the leaf's cache).
+      root.setWidth(100);
+      root.calculateLayout(100, 50);
 
-    // Pass-2 measureCalls should be 0 — the leaf wasn't dirtied; its
-    // measure cache should hit on every input combination it saw on pass 1.
-    const callsOnPass2 = measureCalls - callsAfterFirst;
-    expect(callsOnPass2).toBe(0);
-  });
+      // Pass-2 measureCalls should be 0 — the leaf wasn't dirtied; its
+      // measure cache should hit on every input combination it saw on pass 1.
+      const callsOnPass2 = measureCalls - callsAfterFirst;
+      expect(callsOnPass2).toBe(0);
+    },
+  );
 });
