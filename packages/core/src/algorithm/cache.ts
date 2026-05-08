@@ -48,9 +48,19 @@ export class MeasureCache {
   private static readonly MAX_ENTRIES = 8;
   private slots: Array<MeasureCacheKey & MeasureCacheValue> = [];
 
-  /** @internal */
+  /**
+   * Hit/miss counters for diagnostics (bench output, debugging). Always
+   * on — the spec originally proposed `__DEV__`-gating these, but the
+   * project has no build-tooling `__DEV__` define and the counters cost
+   * two property writes per `lookup()` (negligible at any realistic
+   * call rate). Counts are incremented only by `lookup()`; `store()`
+   * assumes `lookup()` has already been called for the same key on the
+   * same call site, so it does not double-count.
+   *
+   * @internal
+   */
   hits = 0;
-  /** @internal */
+  /** See {@link hits}. @internal */
   misses = 0;
 
   lookup(key: MeasureCacheKey): MeasureCacheValue | undefined {
@@ -69,6 +79,16 @@ export class MeasureCache {
     return undefined;
   }
 
+  /**
+   * Store `value` for `key`. If `key` is already present, overwrite in
+   * place without growing the slot array; otherwise append, evicting
+   * the oldest slot when the array is at `MAX_ENTRIES` capacity.
+   *
+   * Callers should always invoke `lookup(key)` first and only call
+   * `store()` on a miss — the `misses` counter is incremented by
+   * `lookup()`, not here, so calling `store()` without a prior lookup
+   * would cause silent miss undercounting in diagnostics.
+   */
   store(key: MeasureCacheKey, value: MeasureCacheValue): void {
     for (const slot of this.slots) {
       if (

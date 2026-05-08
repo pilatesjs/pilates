@@ -43,6 +43,30 @@ describe('MeasureCache', () => {
     expect(c.lookup(KEY_A)).toEqual({ width: 9, height: 5 });
   });
 
+  it('overwriting a key in a full cache does not evict any other slot', () => {
+    // Fill to capacity (8 entries), then overwrite the value at slot 0.
+    // The overwrite path must NOT fall through to push+evict — if it
+    // did, slot 0 would still be there (re-pushed) but slot 1 would
+    // get evicted as the "oldest". This regression-guards the early
+    // return on the in-place-overwrite branch in `store()`.
+    const c = new MeasureCache();
+    const keys = Array.from({ length: 8 }, (_, i) => ({
+      availableWidth: 10 + i,
+      widthMode: MeasureMode.AtMost,
+      availableHeight: 5,
+      heightMode: MeasureMode.AtMost,
+    }));
+    keys.forEach((k, i) => c.store(k, { width: i, height: i }));
+    c.store(keys[0]!, { width: 99, height: 99 });
+    // All eight original keys must still resolve.
+    for (let i = 0; i < 8; i++) {
+      const found = c.lookup(keys[i]!);
+      expect(found).toBeDefined();
+    }
+    // The overwrite took effect.
+    expect(c.lookup(keys[0]!)).toEqual({ width: 99, height: 99 });
+  });
+
   it('keeps eight distinct entries (slot capacity)', () => {
     const c = new MeasureCache();
     const keys = Array.from({ length: 8 }, (_, i) => ({

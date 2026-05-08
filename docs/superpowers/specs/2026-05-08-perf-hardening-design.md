@@ -561,16 +561,23 @@ fix the cache, not to hand consumers an off switch.
 
 ---
 
-## Dev-mode observability
+## Observability
 
-`hits` / `misses` counters on each cache, gated on a `__DEV__` build
-constant. Set true for tests/bench, false for published builds. In
-published builds the counter fields and increments don't exist —
-verified by inspecting `dist/algorithm/cache.js` after build during PR
-review.
+`hits` / `misses` counters on each cache, **always on** (early drafts
+proposed `__DEV__`-gating these but the project has no build-tooling
+`__DEV__` define and the cost is two property writes per `lookup()` —
+negligible at any realistic call rate). Counters are incremented only
+by `lookup()`; `store()` assumes a prior `lookup()` already counted
+the miss for the same key.
+
+Both counters are `@internal` JSDoc-tagged. They aren't part of the
+public API but they ARE part of the published bundle — consumers
+poking at `Node._measureCache` can read them, just like consumers
+poking at `Node._style` can read internal style state today. We
+document non-support; we don't engineer to prevent it.
 
 `pnpm bench` prints aggregate hit-rate per scenario alongside the
-latency tables. Dev/debug only; not part of the published API.
+latency tables.
 
 ---
 
