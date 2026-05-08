@@ -12,6 +12,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Bench } from 'tinybench';
 import * as big from './scenarios/big.js';
+import * as hotRelayout from './scenarios/hot-relayout.js';
 import * as huge from './scenarios/huge.js';
 import * as realistic from './scenarios/realistic.js';
 import * as stress from './scenarios/stress.js';
@@ -33,6 +34,11 @@ const SCENARIOS: Scenario[] = [
   { name: 'stress', notes: '~1000 nodes, 2 levels', ...stress },
   { name: 'big', notes: '~5000 nodes, 2 levels (50 × 100)', ...big },
   { name: 'huge', notes: '~10000 nodes, 2 levels (100 × 100)', ...huge },
+  {
+    name: 'hotrelayout',
+    notes: '1k-node persistent tree, mutate one leaf per pass',
+    ...hotRelayout,
+  },
 ];
 
 async function runScenario(s: Scenario): Promise<{
@@ -141,8 +147,8 @@ async function main(): Promise<void> {
   out.push('- **Long-lived trees with hot relayouts**: build the tree once,');
   out.push('  mutate-and-relayout in a loop. The build cost amortizes; only');
   out.push("  the layout pass is measured. WASM Yoga's compute advantage");
-  out.push('  shows up here. (Not benchmarked in this suite — an issue if');
-  out.push('  your use case looks like that.)');
+  out.push('  shows up here. See the `hotrelayout` scenario — Phase 3+');
+  out.push('  relayout-boundary work targets this workload.');
   out.push('- **Concurrent layout of many independent trees**: WASM can');
   out.push("  unlock SharedArrayBuffer + worker patterns Pilates can't.");
   out.push('');
