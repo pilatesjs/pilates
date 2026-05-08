@@ -1,24 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { Node } from '../node.js';
 
 describe('calculateLayout — differential mode', () => {
-  const ORIGINAL_ENV = process.env.PILATES_DIFFERENTIAL_LAYOUT;
-
-  beforeEach(() => {
-    process.env.PILATES_DIFFERENTIAL_LAYOUT = undefined;
-  });
-
-  afterEach(() => {
-    if (ORIGINAL_ENV !== undefined) process.env.PILATES_DIFFERENTIAL_LAYOUT = ORIGINAL_ENV;
-    else process.env.PILATES_DIFFERENTIAL_LAYOUT = undefined;
-  });
-
   it('produces correct layout regardless of differential setting', () => {
-    // Sanity: layout is what we expect either way. We can't toggle the
-    // env var at runtime since the module reads it at import time, so
-    // this test runs in the default (off) configuration. The Vitest CI
-    // step `pnpm test:differential` runs the entire suite WITH the env
-    // var on — that's what gives the differential check its coverage.
+    // Sanity test only. The differential wrapper reads
+    // `PILATES_DIFFERENTIAL_LAYOUT` once at module import; we can't
+    // toggle it at runtime, so this test runs in whichever mode the
+    // process started in. The CI step `pnpm test:differential` runs
+    // the entire suite with the env var ON — that's what gives the
+    // differential check its coverage. This file just pins one
+    // straightforward layout case so it would visibly fail if the
+    // wrapper itself broke `calculateLayout` for the off path.
     const root = Node.create();
     root.setWidth(100);
     root.setHeight(50);

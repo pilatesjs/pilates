@@ -128,6 +128,11 @@ export class MeasureCache {
  * node. Used by differential mode to capture and compare the entire tree's
  * layout state cheaply.
  *
+ * Captures only the six `ComputedLayout` fields. `_dirty` flags, cache
+ * contents, and other ancillary state are NOT in scope. Phase 2's
+ * layout-cache work should add `_dirty` validation to the harness if
+ * dirty-flag semantics ever become load-bearing for cache correctness.
+ *
  * @internal
  */
 export function snapshotTreeLayouts(root: Node): ComputedLayout[] {
