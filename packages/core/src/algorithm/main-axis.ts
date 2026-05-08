@@ -743,6 +743,20 @@ function visibleChildrenOf(node: Node): readonly Node[] {
   return out ?? NO_CHILDREN;
 }
 
+/**
+ * Measure-func warm-up call inside `layoutChildren` for leaves (the
+ * leaf's own `_layout.width`/`height` were already resolved by the
+ * parent during flex distribution via `resolveHypotheticalMainSize` /
+ * `naturalCrossSize`, so the result of this call is intentionally
+ * discarded). Two reasons we still make the call:
+ *
+ *   1. Side-effect contract — some measure funcs maintain their own
+ *      internal state (e.g. text-shaping caches) that would otherwise
+ *      go stale; the call gives them a chance to update.
+ *   2. Cache priming — populates `_measureCache` with the final
+ *      `(layout-width, AtMost)` key so a subsequent re-layout pass on
+ *      a clean leaf hits the cache without re-invoking the measurer.
+ */
 function measureLeafIfNeeded(node: Node): void {
   if (node.getMeasureFunc() === null) return;
   const padW = (node.style.padding[1] ?? 0) + (node.style.padding[3] ?? 0);
