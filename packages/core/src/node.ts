@@ -16,6 +16,7 @@
  *   - `dirty`     — set on style/tree mutation; consumed by the algorithm.
  */
 
+import { MeasureCache } from './algorithm/cache.js';
 import { calculateLayout as runCalculateLayout } from './algorithm/index.js';
 import { Edge } from './edge.js';
 import { type ComputedLayout, defaultLayout } from './layout.js';
@@ -115,6 +116,17 @@ export class Node {
   /** True if style or tree has changed since the last `calculateLayout()`. */
   private _dirty = true;
 
+  /**
+   * Lazy-allocated measure-func result cache. Created the first time
+   * `setMeasureFunc()` installs a measurer. Cleared by `markDirty()`
+   * (which fires on every style/tree mutation) and by re-installing
+   * the measure function. Read by `callMeasureFunc()` in
+   * `algorithm/main-axis.ts`.
+   *
+   * @internal
+   */
+  _measureCache?: MeasureCache;
+
   /** Construct via `Node.create()` to mirror Yoga's factory style. */
   static create(): Node {
     return new Node();
@@ -172,6 +184,15 @@ export class Node {
       throw new Error('cannot set a measure function on a node with children');
     }
     this._measure = fn;
+    if (fn === null) {
+      this._measureCache?.clear();
+    } else {
+      if (this._measureCache === undefined) {
+        this._measureCache = new MeasureCache();
+      } else {
+        this._measureCache.clear();
+      }
+    }
     this.markDirty();
   }
 
@@ -406,6 +427,7 @@ export class Node {
    */
   markDirty(): void {
     this._dirty = true;
+    this._measureCache?.clear();
     if (this._parent !== null && !this._parent._dirty) this._parent.markDirty();
   }
 

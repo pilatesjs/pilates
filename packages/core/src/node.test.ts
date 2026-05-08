@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { MeasureCache } from './algorithm/cache.js';
 import { Edge } from './edge.js';
 import { MeasureMode } from './measure-func.js';
 import { Node } from './node.js';
@@ -305,5 +306,85 @@ describe('Node — layout entry points', () => {
       scrollWidth: 40,
       scrollHeight: 10,
     });
+  });
+});
+
+describe('Node — measure cache integration', () => {
+  it('exposes _measureCache as undefined before setMeasureFunc', () => {
+    const n = Node.create();
+    expect((n as unknown as { _measureCache?: MeasureCache })._measureCache).toBeUndefined();
+  });
+
+  it('lazy-creates _measureCache on setMeasureFunc', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    expect((n as unknown as { _measureCache?: MeasureCache })._measureCache).toBeInstanceOf(
+      MeasureCache,
+    );
+  });
+
+  it('clears _measureCache contents when markDirty is called', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    const cache = (n as unknown as { _measureCache: MeasureCache })._measureCache;
+    cache.store(
+      { availableWidth: 5, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
+      { width: 5, height: 3 },
+    );
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeDefined();
+    n.markDirty();
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('clears _measureCache contents when setMeasureFunc is called again', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    const cache = (n as unknown as { _measureCache: MeasureCache })._measureCache;
+    cache.store(
+      { availableWidth: 5, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
+      { width: 5, height: 3 },
+    );
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w * 2, height: h }));
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('clears _measureCache contents when setMeasureFunc(null) is called', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    const cache = (n as unknown as { _measureCache: MeasureCache })._measureCache;
+    cache.store(
+      { availableWidth: 5, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
+      { width: 5, height: 3 },
+    );
+    n.setMeasureFunc(null);
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeUndefined();
   });
 });
