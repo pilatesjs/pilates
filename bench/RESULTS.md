@@ -21,9 +21,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 1.9µs | 529.1k ops/s | 0 |
-| @pilates/render (full) | 76.4µs | 13.1k ops/s | 0 |
-| yoga-layout (WASM) | 29.0µs | 34.5k ops/s | 0 |
+| @pilates/core (layout) | 2.3µs | 440.0k ops/s | 0 |
+| @pilates/render (full) | 74.1µs | 13.5k ops/s | 0 |
+| yoga-layout (WASM) | 29.5µs | 33.9k ops/s | 0 |
 
 ## realistic
 
@@ -31,9 +31,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 58.3µs | 17.1k ops/s | 0 |
-| @pilates/render (full) | 319.8µs | 3.1k ops/s | 0 |
-| yoga-layout (WASM) | 488.7µs | 2.0k ops/s | 0 |
+| @pilates/core (layout) | 61.6µs | 16.2k ops/s | 0 |
+| @pilates/render (full) | 315.5µs | 3.2k ops/s | 0 |
+| yoga-layout (WASM) | 492.7µs | 2.0k ops/s | 0 |
 
 ## stress
 
@@ -41,9 +41,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 259.7µs | 3.9k ops/s | 0 |
-| @pilates/render (full) | 1.74ms | 574 ops/s | 0 |
-| yoga-layout (WASM) | 2.73ms | 366 ops/s | 0 |
+| @pilates/core (layout) | 267.3µs | 3.7k ops/s | 0 |
+| @pilates/render (full) | 1.77ms | 563 ops/s | 0 |
+| yoga-layout (WASM) | 2.79ms | 359 ops/s | 0 |
 
 ## big
 
@@ -51,9 +51,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 1.38ms | 727 ops/s | 0 |
-| @pilates/render (full) | 7.47ms | 134 ops/s | 0 |
-| yoga-layout (WASM) | 13.0ms | 77 ops/s | 0 |
+| @pilates/core (layout) | 1.43ms | 699 ops/s | 0 |
+| @pilates/render (full) | 7.82ms | 128 ops/s | 0 |
+| yoga-layout (WASM) | 13.3ms | 75 ops/s | 0 |
 
 ## huge
 
@@ -61,9 +61,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 3.91ms | 255 ops/s | 0 |
-| @pilates/render (full) | 23.8ms | 42 ops/s | 0 |
-| yoga-layout (WASM) | 25.9ms | 39 ops/s | 0 |
+| @pilates/core (layout) | 4.06ms | 247 ops/s | 0 |
+| @pilates/render (full) | 23.9ms | 42 ops/s | 0 |
+| yoga-layout (WASM) | 27.0ms | 37 ops/s | 0 |
 
 ## What's measured
 
