@@ -11,6 +11,8 @@ import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Bench } from 'tinybench';
+import * as big from './scenarios/big.js';
+import * as huge from './scenarios/huge.js';
 import * as realistic from './scenarios/realistic.js';
 import * as stress from './scenarios/stress.js';
 import * as tiny from './scenarios/tiny.js';
@@ -29,6 +31,8 @@ const SCENARIOS: Scenario[] = [
   { name: 'tiny', notes: '10 nodes, 1 level', ...tiny },
   { name: 'realistic', notes: '~100 nodes, 3-4 levels', ...realistic },
   { name: 'stress', notes: '~1000 nodes, 2 levels', ...stress },
+  { name: 'big', notes: '~5000 nodes, 2 levels (50 × 100)', ...big },
+  { name: 'huge', notes: '~10000 nodes, 2 levels (100 × 100)', ...huge },
 ];
 
 async function runScenario(s: Scenario): Promise<{

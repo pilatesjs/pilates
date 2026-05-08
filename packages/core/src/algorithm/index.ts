@@ -6,13 +6,51 @@
  *   2. Recursively lay out children in floating-point coordinates.
  *   3. Round the whole tree to integer cells.
  *   4. Mark every node clean.
+ *
+ * When `PILATES_DIFFERENTIAL_LAYOUT=1` is set in the environment, the
+ * exported `calculateLayout` runs the algorithm twice — once normally
+ * (with caches active), then again with all caches cleared and every
+ * node forcibly re-dirtied — and asserts the two snapshots are byte
+ * identical. Used by the test suite (`pnpm test:differential`) to
+ * catch any cache-correctness regression as soon as it lands.
  */
 
 import type { Node } from '../node.js';
+import { clearAllCaches, diffLayouts, markDirtyDeep, snapshotTreeLayouts } from './cache.js';
 import { layoutChildren, resolveRootAxisSize } from './main-axis.js';
 import { roundLayout } from './round.js';
 
+const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
+
 export function calculateLayout(
+  root: Node,
+  availableWidth: number | undefined,
+  availableHeight: number | undefined,
+): void {
+  if (!DIFFERENTIAL) {
+    calculateLayoutImpl(root, availableWidth, availableHeight);
+    return;
+  }
+
+  // First pass: cached path (normal).
+  calculateLayoutImpl(root, availableWidth, availableHeight);
+  const cachedSnapshot = snapshotTreeLayouts(root);
+
+  // Second pass: clear caches, re-dirty, recompute cold.
+  clearAllCaches(root);
+  markDirtyDeep(root);
+  calculateLayoutImpl(root, availableWidth, availableHeight);
+  const coldSnapshot = snapshotTreeLayouts(root);
+
+  const diff = diffLayouts(cachedSnapshot, coldSnapshot);
+  if (diff !== '') {
+    throw new Error(
+      `[pilates differential layout] cache produced different result than fresh recompute:\n  ${diff}`,
+    );
+  }
+}
+
+function calculateLayoutImpl(
   root: Node,
   availableWidth: number | undefined,
   availableHeight: number | undefined,

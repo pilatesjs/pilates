@@ -1,4 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
+// Differential mode runs calculateLayout twice (cached + cold pass), which
+// causes extra measure calls that break the measure-cache hit counter test.
+const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
+import { MeasureCache } from './algorithm/cache.js';
 import { Edge } from './edge.js';
 import { MeasureMode } from './measure-func.js';
 import { Node } from './node.js';
@@ -306,4 +310,126 @@ describe('Node — layout entry points', () => {
       scrollHeight: 10,
     });
   });
+});
+
+describe('Node — measure cache integration', () => {
+  it('exposes _measureCache as undefined before setMeasureFunc', () => {
+    const n = Node.create();
+    expect((n as unknown as { _measureCache?: MeasureCache })._measureCache).toBeUndefined();
+  });
+
+  it('lazy-creates _measureCache on setMeasureFunc', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    expect((n as unknown as { _measureCache?: MeasureCache })._measureCache).toBeInstanceOf(
+      MeasureCache,
+    );
+  });
+
+  it('clears _measureCache contents when markDirty is called', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    const cache = (n as unknown as { _measureCache: MeasureCache })._measureCache;
+    cache.store(
+      { availableWidth: 5, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
+      { width: 5, height: 3 },
+    );
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeDefined();
+    n.markDirty();
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('clears _measureCache contents when setMeasureFunc is called again', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    const cache = (n as unknown as { _measureCache: MeasureCache })._measureCache;
+    cache.store(
+      { availableWidth: 5, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
+      { width: 5, height: 3 },
+    );
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w * 2, height: h }));
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('clears _measureCache contents when setMeasureFunc(null) is called', () => {
+    const n = Node.create();
+    n.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
+    const cache = (n as unknown as { _measureCache: MeasureCache })._measureCache;
+    cache.store(
+      { availableWidth: 5, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
+      { width: 5, height: 3 },
+    );
+    n.setMeasureFunc(null);
+    expect(
+      cache.lookup({
+        availableWidth: 5,
+        widthMode: 'at-most',
+        availableHeight: 3,
+        heightMode: 'at-most',
+      }),
+    ).toBeUndefined();
+    // The cache instance itself must remain — `setMeasureFunc(null)`
+    // calls `clear()`, not delete; this pins the contract.
+    expect((n as unknown as { _measureCache?: MeasureCache })._measureCache).toBeInstanceOf(
+      MeasureCache,
+    );
+  });
+});
+
+describe('Node — measure cache hit during calculateLayout', () => {
+  // In differential mode calculateLayout intentionally runs a cold pass that
+  // clears the measure cache, so the "zero calls on second pass" invariant
+  // cannot hold. Skip in that mode — coverage comes from the differential
+  // check itself, not from this counter assertion.
+  it.skipIf(DIFFERENTIAL)(
+    'two layout passes on the same tree result in cache hits on the second pass',
+    () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+
+      const leaf = Node.create();
+      let measureCalls = 0;
+      leaf.setMeasureFunc((w, _wm, h, _hm) => {
+        measureCalls++;
+        return { width: Math.min(20, w), height: Math.min(3, h) };
+      });
+      root.insertChild(leaf, 0);
+
+      root.calculateLayout(100, 50);
+      const callsAfterFirst = measureCalls;
+      expect(callsAfterFirst).toBeGreaterThan(0);
+
+      // Force a re-layout by marking the root dirty (simulates a parent-only
+      // change that doesn't touch the leaf's cache).
+      root.setWidth(100);
+      root.calculateLayout(100, 50);
+
+      // Pass-2 measureCalls should be 0 — the leaf wasn't dirtied; its
+      // measure cache should hit on every input combination it saw on pass 1.
+      const callsOnPass2 = measureCalls - callsAfterFirst;
+      expect(callsOnPass2).toBe(0);
+    },
+  );
 });

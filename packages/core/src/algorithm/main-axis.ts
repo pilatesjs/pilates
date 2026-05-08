@@ -49,6 +49,34 @@ import {
   readStart,
 } from './axis.js';
 
+/**
+ * Single chokepoint for measure-func invocation. Consults the leaf's
+ * `_measureCache`; on miss, calls the measurer and stores the result.
+ * Every measure-func call site in this file routes through here.
+ *
+ * @internal
+ */
+function callMeasureFunc(
+  node: Node,
+  availableWidth: number,
+  widthMode: MeasureMode,
+  availableHeight: number,
+  heightMode: MeasureMode,
+): { width: number; height: number } {
+  const fn = node.getMeasureFunc();
+  if (fn === null) {
+    throw new Error('callMeasureFunc requires a node with a measure function');
+  }
+  const key = { availableWidth, widthMode, availableHeight, heightMode };
+  const cached = node._measureCache?.lookup(key);
+  if (cached !== undefined) return cached;
+  const result = fn(availableWidth, widthMode, availableHeight, heightMode);
+  // _measureCache was lazy-created by setMeasureFunc — guaranteed present
+  // here since fn !== null.
+  node._measureCache?.store(key, result);
+  return result;
+}
+
 interface FlexItem {
   node: Node;
   /** Hypothetical main size after clamp. */
@@ -241,7 +269,8 @@ function layoutAbsoluteChild(child: Node, parentOuterW: number, parentOuterH: nu
       parentOuterW - pos[POS_LEFT] - pos[POS_RIGHT] - margin[POS_LEFT] - margin[POS_RIGHT];
     width = clampSize(child.style, 'row', Math.max(0, candidate));
   } else if (child.getMeasureFunc() !== null && child.getChildCount() === 0) {
-    const result = child.getMeasureFunc()!(
+    const result = callMeasureFunc(
+      child,
       parentOuterW,
       MeasureMode.AtMost,
       parentOuterH,
@@ -262,7 +291,8 @@ function layoutAbsoluteChild(child: Node, parentOuterW: number, parentOuterH: nu
       parentOuterH - pos[POS_TOP] - pos[POS_BOTTOM] - margin[POS_TOP] - margin[POS_BOTTOM];
     height = clampSize(child.style, 'column', Math.max(0, candidate));
   } else if (child.getMeasureFunc() !== null && child.getChildCount() === 0) {
-    const result = child.getMeasureFunc()!(
+    const result = callMeasureFunc(
+      child,
       width,
       MeasureMode.Exactly,
       parentOuterH,
@@ -713,12 +743,26 @@ function visibleChildrenOf(node: Node): readonly Node[] {
   return out ?? NO_CHILDREN;
 }
 
+/**
+ * Measure-func warm-up call inside `layoutChildren` for leaves (the
+ * leaf's own `_layout.width`/`height` were already resolved by the
+ * parent during flex distribution via `resolveHypotheticalMainSize` /
+ * `naturalCrossSize`, so the result of this call is intentionally
+ * discarded). Two reasons we still make the call:
+ *
+ *   1. Side-effect contract — some measure funcs maintain their own
+ *      internal state (e.g. text-shaping caches) that would otherwise
+ *      go stale; the call gives them a chance to update.
+ *   2. Cache priming — populates `_measureCache` with the final
+ *      `(layout-width, AtMost)` key so a subsequent re-layout pass on
+ *      a clean leaf hits the cache without re-invoking the measurer.
+ */
 function measureLeafIfNeeded(node: Node): void {
-  const fn = node.getMeasureFunc();
-  if (fn === null) return;
+  if (node.getMeasureFunc() === null) return;
   const padW = (node.style.padding[1] ?? 0) + (node.style.padding[3] ?? 0);
   const padH = (node.style.padding[0] ?? 0) + (node.style.padding[2] ?? 0);
-  fn(
+  callMeasureFunc(
+    node,
     Math.max(0, node.layout.width - padW),
     MeasureMode.AtMost,
     Math.max(0, node.layout.height - padH),
@@ -760,8 +804,7 @@ function resolveHypotheticalMainSize(
   const styleMain = effectivePreferredSize(child.style, main);
   if (typeof styleMain === 'number') return styleMain;
 
-  const measure = child.getMeasureFunc();
-  if (measure !== null && child.getChildCount() === 0) {
+  if (child.getMeasureFunc() !== null && child.getChildCount() === 0) {
     // Ask the leaf for its natural main-axis size: cross axis is
     // constrained (AtMost the available cross), main axis is free
     // (Undefined). The measure function reports `{ width, height }` as
@@ -789,7 +832,7 @@ function resolveHypotheticalMainSize(
       heightMode = MeasureMode.Undefined;
     }
 
-    const result = measure(widthArg, widthMode, heightArg, heightMode);
+    const result = callMeasureFunc(child, widthArg, widthMode, heightArg, heightMode);
     return main === 'row' ? result.width : result.height;
   }
 
@@ -801,12 +844,12 @@ function naturalCrossSize(child: Node, cross: Axis, innerCross: number): number 
   const explicit = effectivePreferredSize(child.style, cross);
   if (typeof explicit === 'number') return explicit;
 
-  const measure = child.getMeasureFunc();
-  if (measure !== null && child.getChildCount() === 0) {
+  if (child.getMeasureFunc() !== null && child.getChildCount() === 0) {
     const main = cross === 'row' ? 'column' : 'row';
     const ms = preferredSize(child.style, main);
     const mainHint = typeof ms === 'number' ? ms : innerCross;
-    const result = measure(
+    const result = callMeasureFunc(
+      child,
       cross === 'row' ? innerCross : mainHint,
       cross === 'row' ? MeasureMode.AtMost : MeasureMode.Undefined,
       cross === 'column' ? innerCross : mainHint,

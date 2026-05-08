@@ -1,0 +1,34 @@
+name: perf-budgets
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm bench
+
+      # Phase 1: warn-only — the script does not exit non-zero on
+      # violation. Phase 2 will flip this to fail-on-regression.
+      - run: pnpm bench:budgets
+
+      - name: Upload RESULTS.md
+        uses: actions/upload-artifact@v5
+        with:
+          name: bench-results
+          path: bench/RESULTS.md
