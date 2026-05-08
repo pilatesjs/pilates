@@ -271,6 +271,81 @@ export function markDirtyDeep(root: Node): void {
 }
 
 /**
+ * Build a `LayoutCacheValue` from `node`'s current `_layout` + its direct
+ * children's `_layout`. Captures only direct children; deeper descendants
+ * are reconstituted via their own caches during `restoreFromCache`.
+ *
+ * Called by the algorithm AFTER `roundLayout` and `computeScrollSizes`
+ * have populated all `_layout` fields, so the captured values are
+ * already integer-rounded and scroll-aware.
+ *
+ * @internal
+ */
+export function snapshotForCache(node: Node): LayoutCacheValue {
+  const childLayouts: CachedChildLayout[] = [];
+  const count = node.getChildCount();
+  for (let i = 0; i < count; i++) {
+    const c = node.getChild(i)!;
+    childLayouts.push({
+      left: c.layout.left,
+      top: c.layout.top,
+      width: c.layout.width,
+      height: c.layout.height,
+      scrollWidth: c.layout.scrollWidth,
+      scrollHeight: c.layout.scrollHeight,
+    });
+  }
+  return {
+    width: node.layout.width,
+    height: node.layout.height,
+    scrollWidth: node.layout.scrollWidth,
+    scrollHeight: node.layout.scrollHeight,
+    childLayouts,
+  };
+}
+
+/**
+ * Restore `node`'s own size + scroll metrics, plus its direct children's
+ * left/top/width/height/scroll. The caller is responsible for handling
+ * the recursion into deeper descendants via per-child cache lookups (or
+ * a `layoutChildren` fallback on miss).
+ *
+ * Pre-conditions: `node`'s child list at this call must match the child
+ * list captured at cache-store time. The cache invalidation on
+ * `insertChild`/`removeChild` (via `markDirty`) guarantees this — a
+ * mismatch indicates a cache-correctness bug. We assert in differential
+ * mode.
+ *
+ * @internal
+ */
+export function restoreFromCache(node: Node, value: LayoutCacheValue): void {
+  if (process.env.PILATES_DIFFERENTIAL_LAYOUT === '1') {
+    if (node.getChildCount() !== value.childLayouts.length) {
+      throw new Error(
+        `[pilates layout cache] restored value has ${value.childLayouts.length} children but node has ${node.getChildCount()} — cache invalidation bug`,
+      );
+    }
+  }
+  node._layout.width = value.width;
+  node._layout.height = value.height;
+  node._layout.scrollWidth = value.scrollWidth;
+  node._layout.scrollHeight = value.scrollHeight;
+  // node._layout.left/top are set by the caller before recursion starts
+  // (root sets to 0; child positions come from this restore via the
+  // childLayouts array below).
+  for (let i = 0; i < node.getChildCount(); i++) {
+    const c = node.getChild(i)!;
+    const cl = value.childLayouts[i]!;
+    c._layout.left = cl.left;
+    c._layout.top = cl.top;
+    c._layout.width = cl.width;
+    c._layout.height = cl.height;
+    c._layout.scrollWidth = cl.scrollWidth;
+    c._layout.scrollHeight = cl.scrollHeight;
+  }
+}
+
+/**
  * Produce a human-readable diff of two tree-layout snapshots. Returns
  * an empty string if they match. Used by differential mode to surface
  * cache bugs with enough context to debug them.

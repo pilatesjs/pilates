@@ -7,6 +7,8 @@ import {
   clearAllCaches,
   diffLayouts,
   markDirtyDeep,
+  restoreFromCache,
+  snapshotForCache,
   snapshotTreeLayouts,
 } from './cache.js';
 import type { LayoutCacheValue } from './cache.js';
@@ -348,5 +350,89 @@ describe('LayoutCache', () => {
     c.store(KEY_A, v);
     v.width = 999;
     expect(c.lookup(KEY_A)?.width).toBe(999); // mutation visible — proves no clone
+  });
+});
+
+describe('snapshotForCache', () => {
+  it('captures the node plus a parallel array of direct-child layouts', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(50);
+    root.setFlexDirection('row');
+    const a = Node.create();
+    a.setFlex(1);
+    const b = Node.create();
+    b.setFlex(1);
+    root.insertChild(a, 0);
+    root.insertChild(b, 1);
+    root.calculateLayout(100, 50);
+
+    const snap = snapshotForCache(root);
+    expect(snap.width).toBe(100);
+    expect(snap.height).toBe(50);
+    expect(snap.scrollWidth).toBe(100);
+    expect(snap.scrollHeight).toBe(50);
+    expect(snap.childLayouts).toHaveLength(2);
+    expect(snap.childLayouts[0]).toEqual({
+      left: 0,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
+    expect(snap.childLayouts[1]).toEqual({
+      left: 50,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
+  });
+});
+
+describe('restoreFromCache', () => {
+  it('writes the node and its direct children back to _layout (positions and sizes)', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(50);
+    root.setFlexDirection('row');
+    const a = Node.create();
+    const b = Node.create();
+    root.insertChild(a, 0);
+    root.insertChild(b, 1);
+
+    const cached: LayoutCacheValue = {
+      width: 100,
+      height: 50,
+      scrollWidth: 100,
+      scrollHeight: 50,
+      childLayouts: [
+        { left: 0, top: 0, width: 50, height: 50, scrollWidth: 50, scrollHeight: 50 },
+        { left: 50, top: 0, width: 50, height: 50, scrollWidth: 50, scrollHeight: 50 },
+      ],
+    };
+    restoreFromCache(root, cached);
+
+    expect(root.layout.width).toBe(100);
+    expect(root.layout.height).toBe(50);
+    expect(root.layout.scrollWidth).toBe(100);
+    expect(a.layout).toEqual({
+      left: 0,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
+    expect(b.layout).toEqual({
+      left: 50,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
   });
 });
