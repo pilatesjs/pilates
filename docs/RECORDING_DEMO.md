@@ -21,17 +21,67 @@ want a second clip.
 
 ## Tools needed
 
+### Windows (recommended path)
+
+[**ScreenToGif**](https://www.screentogif.com/) — single download, free,
+open source, region-records any window straight to GIF. Built-in editor
+trims dead frames and optimizes file size.
+
+That's it. No CLI tooling, no `agg` toolchain.
+
+### macOS / Linux
+
 ```bash
 brew install asciinema agg          # macOS
 # or:
-sudo apt install asciinema           # Linux (then install `agg` from cargo or release)
+sudo apt install asciinema           # Linux
 cargo install --git https://github.com/asciinema/agg
 ```
 
-Windows: record on macOS or Linux instead. Asciinema works on Windows
-but `agg` is the painful step there.
+Asciinema records the terminal as a `.cast` file (compact, deterministic,
+re-playable); `agg` converts it to GIF.
 
-## Recording commands (paste in order)
+## Recording — Windows (ScreenToGif)
+
+1. Install ScreenToGif (one-shot installer from the site, or
+   `winget install ScreenToGif.ScreenToGif`).
+2. Open Windows Terminal (or your terminal of choice). Set:
+   - **Dark theme.** Pilates' colors pop on dark backgrounds and wash
+     out on light. The default Windows Terminal "Campbell" or
+     "One Half Dark" themes work well.
+   - **Comfortable size:** ~120 columns × 24 rows lets the
+     `progress-table` output sit on one screen without wrap.
+   - **Larger font.** Hit `Ctrl + =` a few times so the eventual GIF
+     stays readable when scaled to ~720px wide.
+3. In ScreenToGif: **Recorder → Region select** → drag a tight
+   rectangle around just the terminal output area (no title bar,
+   no shell prompt above the example).
+4. Click record. Switch focus to the terminal and run:
+   ```bash
+   pnpm --filter @pilates-examples/progress-table dev
+   ```
+5. The example renders one static frame and exits. Wait ~1–2 seconds
+   after the output appears, then stop ScreenToGif.
+6. ScreenToGif's editor opens. Trim leading/trailing dead frames
+   (Edit → Trim → keep only frames showing the rendered output).
+   For a near-static clip like this, set the playback to **2 fps**
+   (or just keep a single frame and save as GIF) — both keep the
+   file <500 KB.
+7. **Save → Gif → File**. Name it `assets/demo.gif`, save into the
+   repo's `assets/` folder.
+
+**For an animated alternative** (if you want the GIF to actually
+move): record `react-dashboard` instead. It has a live `tick` counter
+that increments every frame, giving the GIF visible motion:
+
+```bash
+pnpm --filter @pilates-examples/react-dashboard dev
+```
+
+Record ~5 seconds of it, the diff loop's live re-render creates a
+cleanly-moving clip.
+
+## Recording — macOS / Linux (asciinema + agg)
 
 ```bash
 # 1. Make sure you're on a clean main with no uncommitted noise.
