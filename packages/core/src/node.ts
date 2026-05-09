@@ -440,11 +440,20 @@ export class Node {
    *   2. `flexGrow <= 0` — the node won't be grown by parent free space.
    *   3. `flexShrink <= 0` — the node won't be shrunk by parent overflow.
    *
-   * With all three conditions, the boundary's final `{width, height}` as
-   * placed by the parent's flex algorithm equals its style's explicit
-   * values regardless of siblings or container size. The cross-axis is
-   * also safe: when `height` is explicit, `alignItems: stretch` defers
-   * to the explicit value (see `crossAlignItemsInLine` in `main-axis.ts`).
+   * The early spec draft argued (1) alone was sufficient ("flex grow/shrink
+   * adjust size based on parent state, not descendant state"). The fuzzer
+   * disproved this: with `flexGrow > 0`, the parent's flex distribution
+   * gives the boundary a post-grow width different from style.width. After
+   * a descendant mutation dirties the boundary but not its ancestors, the
+   * cached parent layout reuses the post-grow width, but the cold
+   * recompute may produce a different post-grow width if any sibling
+   * changed (or even due to micro-rounding interactions). The fuzzer
+   * surfaced this with a `setFlexGrow(1)` boundary producing
+   * `cached=17 vs cold=16` width drift.
+   *
+   * Conditions (2) + (3) ensure the boundary's actual size equals its
+   * style values exactly, so the cached parent layout stays valid no
+   * matter what siblings do.
    *
    * Boundaries stop the upward dirty propagation in `markDirtyFromChild()`
    * so descendant mutations don't invalidate ancestor layout caches.
