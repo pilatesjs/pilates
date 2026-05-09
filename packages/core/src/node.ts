@@ -446,6 +446,22 @@ export class Node {
     if (this._parent !== null && !this._parent._dirty) this._parent.markDirty();
   }
 
+  /**
+   * Set dirty + clear caches + propagate up unconditionally, bypassing
+   * the layout-boundary short-circuit in `markDirty()`. Used only by
+   * `markDirtyDeep` in `algorithm/cache.ts` for differential-mode and
+   * fuzzer validation that need to force the full tree onto the cold
+   * path regardless of boundary semantics.
+   *
+   * @internal
+   */
+  _forceDirty(): void {
+    this._dirty = true;
+    this._measureCache?.clear();
+    this._layoutCache?.clear();
+    if (this._parent !== null && !this._parent._dirty) this._parent._forceDirty();
+  }
+
   isDirty(): boolean {
     return this._dirty;
   }
