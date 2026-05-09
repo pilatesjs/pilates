@@ -79,11 +79,11 @@ all of React. **Pilates** separates them:
 
 | Package | Status | What |
 |---|---|---|
-| [`@pilates/core`](./packages/core)       | `1.0.0-rc.1`     | Engine: imperative Node API, returns layout boxes. |
-| [`@pilates/render`](./packages/render)   | `1.0.0-rc.2`     | Out-of-box: declarative tree → painted string. |
+| [`@pilates/core`](./packages/core)       | `1.0.0-rc.2`     | Engine: imperative Node API, returns layout boxes. |
+| [`@pilates/render`](./packages/render)   | `1.0.0-rc.3`     | Out-of-box: declarative tree → painted string. |
 | [`@pilates/diff`](./packages/diff)       | `0.1.0`          | Cell-level frame diff + minimal ANSI redraw. |
-| [`@pilates/react`](./packages/react)     | `0.2.1`          | React reconciler — author terminal UIs with JSX and hooks. |
-| [`@pilates/widgets`](./packages/widgets) | `0.1.0-rc.1`     | Interactive widgets (`TextInput`, `Select`, `Spinner`) for `@pilates/react`. |
+| [`@pilates/react`](./packages/react)     | `0.3.0`          | React reconciler — author terminal UIs with JSX, hooks, mouse, focus, scroll. |
+| [`@pilates/widgets`](./packages/widgets) | `0.1.0-rc.2`     | Interactive widgets (`TextInput`, `Select`, `Spinner`, `MultiSelect`, `Tabs`, `Table`, `ProgressBar`, `TextArea`) for `@pilates/react`. |
 
 ## Examples
 
@@ -177,6 +177,38 @@ process.stdout.write(
 **Out of v1:** `aspectRatio`, RTL/LTR direction inheritance, baseline alignment,
 input handling, animations, scroll containers, style inheritance.
 
+## Performance
+
+Pure-TypeScript layout, validated cell-for-cell against WASM Yoga,
+faster than WASM Yoga on every benchmarked workload. Numbers are mean
+latency from `pnpm bench` (Node 22, win32/x64; relative positions are
+the interesting signal):
+
+| Scenario | Pilates core | yoga-layout (WASM) | Pilates speedup |
+|---|---:|---:|---:|
+| tiny (10 nodes) | 2.5µs | 30µs | **12× faster** |
+| realistic (~100) | 67µs | 460µs | **7× faster** |
+| stress (~1000) | 299µs | 2.65ms | **9× faster** |
+| big (~5000) | 1.5ms | 11.7ms | **8× faster** |
+| huge (~10000) | 3.1ms | 22.3ms | **7× faster** |
+| hot-relayout (1k persistent, mutate one leaf/frame) | 199µs | 100µs | Yoga wins ~2× |
+| **hot-relayout + boundaries** (same + explicit-sized rows) | **10.8µs** | **95µs** | **9× faster** |
+
+The hot-relayout scenario was the only workload Yoga had been winning
+on — long-lived trees with hot per-frame mutations. With Phase 3's
+relayout boundaries, any container with `width: N, height: M` (the
+idiomatic TUI pattern) acts as a barrier that stops dirty propagation,
+so descendant mutations don't invalidate ancestor caches. Pilates is
+now strictly faster than WASM Yoga across every benchmarked workload
+when consumers structure trees with explicit-sized containers.
+
+WASM Yoga's compute kernel is genuinely faster than pure-TS Pilates,
+but every `setProperty` / `Node.create` crosses the JS↔WASM boundary
+and that marshalling cost dominates at TUI tree sizes (10–10k nodes).
+
+Reproduce with `pnpm bench`. Full numbers + scenario shapes in
+[`bench/RESULTS.md`](./bench/RESULTS.md).
+
 ## Validation
 
 Every flex feature is verified cell-for-cell against a reference WASM
@@ -209,9 +241,12 @@ flexbox implementation:
 
 ## Status
 
-Release candidate. Core algorithm is feature-complete for v1; render layer
-covers everything you'd want for static dashboards and CLI panels. Public
-launch tracked on the v1 milestone.
+Release candidate, in active use. Core algorithm + flex pipeline are
+feature-complete for v1, validated cell-for-cell against WASM Yoga,
+and faster than Yoga on every benchmarked workload (see Performance
+above). The React layer ships mouse, scroll, focus management, and
+typed errors. Promotion of `@pilates/core` and `@pilates/render` to
+`1.0.0` is the next milestone.
 
 ## License
 
