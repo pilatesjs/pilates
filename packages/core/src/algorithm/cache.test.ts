@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { MeasureMode } from '../measure-func.js';
 import { Node } from '../node.js';
 import {
+  LayoutCache,
   MeasureCache,
   clearAllCaches,
   diffLayouts,
   markDirtyDeep,
+  restoreFromCache,
+  snapshotForCache,
   snapshotTreeLayouts,
 } from './cache.js';
+import type { LayoutCacheValue } from './cache.js';
 
 describe('MeasureCache', () => {
   const KEY_A = {
@@ -249,5 +253,186 @@ describe('diffLayouts', () => {
     const a = [{ left: 0, top: 0, width: 10, height: 5, scrollWidth: 10, scrollHeight: 5 }];
     const b: typeof a = [];
     expect(diffLayouts(a, b)).toContain('length');
+  });
+});
+
+describe('LayoutCache', () => {
+  const KEY_A = {
+    availableWidth: 100,
+    widthMode: MeasureMode.Exactly,
+    availableHeight: 50,
+    heightMode: MeasureMode.Exactly,
+  };
+  const KEY_B = {
+    availableWidth: 80,
+    widthMode: MeasureMode.AtMost,
+    availableHeight: 40,
+    heightMode: MeasureMode.AtMost,
+  };
+  const VAL_A = {
+    width: 100,
+    height: 50,
+    scrollWidth: 100,
+    scrollHeight: 50,
+    childLayouts: [
+      { left: 0, top: 0, width: 50, height: 25, scrollWidth: 50, scrollHeight: 25 },
+      { left: 50, top: 0, width: 50, height: 25, scrollWidth: 50, scrollHeight: 25 },
+    ],
+  };
+
+  it('returns undefined on empty cache', () => {
+    const c = new LayoutCache();
+    expect(c.lookup(KEY_A)).toBeUndefined();
+  });
+
+  it('stores and retrieves an entry by exact key match', () => {
+    const c = new LayoutCache();
+    c.store(KEY_A, VAL_A);
+    expect(c.lookup(KEY_A)).toEqual(VAL_A);
+  });
+
+  it('returns undefined when any key field differs', () => {
+    const c = new LayoutCache();
+    c.store(KEY_A, VAL_A);
+    expect(c.lookup({ ...KEY_A, availableWidth: 99 })).toBeUndefined();
+    expect(c.lookup({ ...KEY_A, widthMode: MeasureMode.AtMost })).toBeUndefined();
+    expect(c.lookup({ ...KEY_A, availableHeight: 49 })).toBeUndefined();
+    expect(c.lookup({ ...KEY_A, heightMode: MeasureMode.AtMost })).toBeUndefined();
+  });
+
+  it('overwrites the value on second store with same key (single slot)', () => {
+    const c = new LayoutCache();
+    c.store(KEY_A, VAL_A);
+    const VAL_A2 = { ...VAL_A, width: 200 };
+    c.store(KEY_A, VAL_A2);
+    expect(c.lookup(KEY_A)).toEqual(VAL_A2);
+  });
+
+  it('storing a new key overwrites the previous slot (single-slot cache)', () => {
+    const c = new LayoutCache();
+    c.store(KEY_A, VAL_A);
+    c.store(KEY_B, { ...VAL_A, width: 80 });
+    expect(c.lookup(KEY_A)).toBeUndefined();
+    expect(c.lookup(KEY_B)).toEqual({ ...VAL_A, width: 80 });
+  });
+
+  it('clear() drops the slot', () => {
+    const c = new LayoutCache();
+    c.store(KEY_A, VAL_A);
+    c.clear();
+    expect(c.lookup(KEY_A)).toBeUndefined();
+  });
+
+  it('tracks hits and misses', () => {
+    const c = new LayoutCache();
+    expect(c.hits).toBe(0);
+    expect(c.misses).toBe(0);
+    c.lookup(KEY_A);
+    expect(c.misses).toBe(1);
+    c.store(KEY_A, VAL_A);
+    c.lookup(KEY_A);
+    c.lookup(KEY_A);
+    expect(c.hits).toBe(2);
+    expect(c.misses).toBe(1);
+  });
+
+  it('value is stored by reference; mutating the input affects the cache (caller must not mutate after store)', () => {
+    // Documenting the contract: store does not deep-clone; callers must
+    // construct a fresh LayoutCacheValue per store.
+    const c = new LayoutCache();
+    const v: LayoutCacheValue = {
+      width: 10,
+      height: 10,
+      scrollWidth: 10,
+      scrollHeight: 10,
+      childLayouts: [],
+    };
+    c.store(KEY_A, v);
+    v.width = 999;
+    expect(c.lookup(KEY_A)?.width).toBe(999); // mutation visible — proves no clone
+  });
+});
+
+describe('snapshotForCache', () => {
+  it('captures the node plus a parallel array of direct-child layouts', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(50);
+    root.setFlexDirection('row');
+    const a = Node.create();
+    a.setFlex(1);
+    const b = Node.create();
+    b.setFlex(1);
+    root.insertChild(a, 0);
+    root.insertChild(b, 1);
+    root.calculateLayout(100, 50);
+
+    const snap = snapshotForCache(root);
+    expect(snap.width).toBe(100);
+    expect(snap.height).toBe(50);
+    expect(snap.scrollWidth).toBe(100);
+    expect(snap.scrollHeight).toBe(50);
+    expect(snap.childLayouts).toHaveLength(2);
+    expect(snap.childLayouts[0]).toEqual({
+      left: 0,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
+    expect(snap.childLayouts[1]).toEqual({
+      left: 50,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
+  });
+});
+
+describe('restoreFromCache', () => {
+  it('writes the node and its direct children back to _layout (positions and sizes)', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(50);
+    root.setFlexDirection('row');
+    const a = Node.create();
+    const b = Node.create();
+    root.insertChild(a, 0);
+    root.insertChild(b, 1);
+
+    const cached: LayoutCacheValue = {
+      width: 100,
+      height: 50,
+      scrollWidth: 100,
+      scrollHeight: 50,
+      childLayouts: [
+        { left: 0, top: 0, width: 50, height: 50, scrollWidth: 50, scrollHeight: 50 },
+        { left: 50, top: 0, width: 50, height: 50, scrollWidth: 50, scrollHeight: 50 },
+      ],
+    };
+    restoreFromCache(root, cached);
+
+    expect(root.layout.width).toBe(100);
+    expect(root.layout.height).toBe(50);
+    expect(root.layout.scrollWidth).toBe(100);
+    expect(a.layout).toEqual({
+      left: 0,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
+    expect(b.layout).toEqual({
+      left: 50,
+      top: 0,
+      width: 50,
+      height: 50,
+      scrollWidth: 50,
+      scrollHeight: 50,
+    });
   });
 });

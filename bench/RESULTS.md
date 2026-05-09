@@ -14,6 +14,7 @@ positions are the interesting signal.
 | **stress** | ~1000 nodes, 2 levels |
 | **big** | ~5000 nodes, 2 levels (50 × 100) |
 | **huge** | ~10000 nodes, 2 levels (100 × 100) |
+| **hotrelayout** | 1k-node persistent tree, mutate one leaf per pass |
 
 ## tiny
 
@@ -21,9 +22,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 2.3µs | 440.0k ops/s | 0 |
-| @pilates/render (full) | 74.1µs | 13.5k ops/s | 0 |
-| yoga-layout (WASM) | 29.5µs | 33.9k ops/s | 0 |
+| @pilates/core (layout) | 2.4µs | 421.2k ops/s | 0 |
+| @pilates/render (full) | 72.3µs | 13.8k ops/s | 0 |
+| yoga-layout (WASM) | 19.5µs | 51.2k ops/s | 0 |
 
 ## realistic
 
@@ -31,9 +32,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 61.6µs | 16.2k ops/s | 0 |
-| @pilates/render (full) | 315.5µs | 3.2k ops/s | 0 |
-| yoga-layout (WASM) | 492.7µs | 2.0k ops/s | 0 |
+| @pilates/core (layout) | 68.1µs | 14.7k ops/s | 0 |
+| @pilates/render (full) | 256.5µs | 3.9k ops/s | 0 |
+| yoga-layout (WASM) | 332.7µs | 3.0k ops/s | 0 |
 
 ## stress
 
@@ -41,9 +42,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 267.3µs | 3.7k ops/s | 0 |
-| @pilates/render (full) | 1.77ms | 563 ops/s | 0 |
-| yoga-layout (WASM) | 2.79ms | 359 ops/s | 0 |
+| @pilates/core (layout) | 278.6µs | 3.6k ops/s | 0 |
+| @pilates/render (full) | 1.57ms | 636 ops/s | 0 |
+| yoga-layout (WASM) | 2.03ms | 493 ops/s | 0 |
 
 ## big
 
@@ -51,9 +52,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 1.43ms | 699 ops/s | 0 |
-| @pilates/render (full) | 7.82ms | 128 ops/s | 0 |
-| yoga-layout (WASM) | 13.3ms | 75 ops/s | 0 |
+| @pilates/core (layout) | 1.41ms | 711 ops/s | 0 |
+| @pilates/render (full) | 9.61ms | 104 ops/s | 0 |
+| yoga-layout (WASM) | 9.34ms | 107 ops/s | 0 |
 
 ## huge
 
@@ -61,9 +62,19 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 4.06ms | 247 ops/s | 0 |
-| @pilates/render (full) | 23.9ms | 42 ops/s | 0 |
-| yoga-layout (WASM) | 27.0ms | 37 ops/s | 0 |
+| @pilates/core (layout) | 2.92ms | 342 ops/s | 0 |
+| @pilates/render (full) | 23.8ms | 42 ops/s | 0 |
+| yoga-layout (WASM) | 18.6ms | 54 ops/s | 0 |
+
+## hotrelayout
+
+> 1k-node persistent tree, mutate one leaf per pass
+
+| Engine | Mean latency | Throughput | Samples |
+|---|---:|---:|---:|
+| @pilates/core (layout) | 180.0µs | 5.6k ops/s | 0 |
+| @pilates/render (full) | 178.9µs | 5.6k ops/s | 0 |
+| yoga-layout (WASM) | 86.0µs | 11.6k ops/s | 0 |
 
 ## What's measured
 
@@ -96,8 +107,8 @@ every operation is a property assignment on a JS object.
 - **Long-lived trees with hot relayouts**: build the tree once,
   mutate-and-relayout in a loop. The build cost amortizes; only
   the layout pass is measured. WASM Yoga's compute advantage
-  shows up here. (Not benchmarked in this suite — an issue if
-  your use case looks like that.)
+  shows up here. See the `hotrelayout` scenario — Phase 3+
+  relayout-boundary work targets this workload.
 - **Concurrent layout of many independent trees**: WASM can
   unlock SharedArrayBuffer + worker patterns Pilates can't.
 

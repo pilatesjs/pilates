@@ -48,6 +48,7 @@ import {
   readEnd,
   readStart,
 } from './axis.js';
+import { restoreFromCache } from './cache.js';
 
 /**
  * Single chokepoint for measure-func invocation. Consults the leaf's
@@ -122,7 +123,47 @@ interface FlexLine {
  * non-hidden child so their own descendants are laid out within the box
  * we just assigned them.
  */
-export function layoutChildren(node: Node): void {
+export function layoutChildren(node: Node, useCache = false): void {
+  // Cache hit fast-path: only when useCache=true (i.e. we are in a path
+  // that has already committed to skipping roundLayout — either the root
+  // cache-hit fast-path or a recursive call from another cache-hit node).
+  // We MUST NOT use this fast-path when the root is on the cold path and
+  // roundLayout will run afterwards: the cache stores post-rounded values
+  // that were computed with different ancestor absolute coordinates, so
+  // re-rounding after restore would give wrong results for deep descendants.
+  //
+  // Implication for performance: inner-node caches only get READS on root
+  // cache hits (which require root clean — `markDirty()` propagates up,
+  // so any descendant mutation dirties root). On any cold root pass the
+  // cache is fully bypassed for reads (writes still happen via
+  // `computeScrollSizes`). The hot-relayout workload (mutate one leaf
+  // per frame) thus DOES NOT benefit from the layout cache at this layer
+  // — it only benefits from the measure cache. The layout cache wins on
+  // identical-input replays (e.g. external code calling calculateLayout
+  // multiple times without mutation, or terminal-resize sequences that
+  // return to a prior size).
+  if (useCache && !node.isDirty() && node._layoutCache !== undefined) {
+    const key = {
+      availableWidth: node.layout.width,
+      widthMode: 'exactly' as const,
+      availableHeight: node.layout.height,
+      heightMode: 'exactly' as const,
+    };
+    const hit = node._layoutCache.lookup(key);
+    if (hit !== undefined) {
+      restoreFromCache(node, hit);
+      // Recurse to children — each one either hits its own cache or
+      // falls through to a full layoutChildren recompute.
+      for (let i = 0; i < node.getChildCount(); i++) {
+        const c = node.getChild(i)!;
+        if (c.style.display === 'none') continue;
+        layoutChildren(c, true);
+      }
+      return;
+    }
+  }
+
+  // Cold path (unchanged):
   const flowChildren = visibleChildrenOf(node);
   const absoluteList = absoluteChildrenOf(node);
 
@@ -145,7 +186,7 @@ export function layoutChildren(node: Node): void {
   for (let i = 0; i < node.getChildCount(); i++) {
     const c = node.getChild(i)!;
     if (c.style.display === 'none') continue;
-    layoutChildren(c);
+    layoutChildren(c, useCache);
   }
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 // Differential mode runs calculateLayout twice (cached + cold pass), which
 // causes extra measure calls that break the measure-cache hit counter test.
 const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
-import { MeasureCache } from './algorithm/cache.js';
+import { LayoutCache, MeasureCache, clearAllCaches } from './algorithm/cache.js';
 import { Edge } from './edge.js';
 import { MeasureMode } from './measure-func.js';
 import { Node } from './node.js';
@@ -432,4 +432,83 @@ describe('Node — measure cache hit during calculateLayout', () => {
       expect(callsOnPass2).toBe(0);
     },
   );
+});
+
+describe('Node — layout cache integration', () => {
+  it('exposes _layoutCache as undefined initially', () => {
+    const n = Node.create();
+    expect((n as unknown as { _layoutCache?: LayoutCache })._layoutCache).toBeUndefined();
+  });
+
+  it('clears _layoutCache contents when markDirty is called', () => {
+    const n = Node.create();
+    // Plant a cache directly for the test (production path lazy-allocates
+    // it via the algorithm).
+    const cache = new LayoutCache();
+    (n as unknown as { _layoutCache: LayoutCache })._layoutCache = cache;
+    cache.store(
+      {
+        availableWidth: 100,
+        widthMode: 'exactly',
+        availableHeight: 50,
+        heightMode: 'exactly',
+      },
+      {
+        width: 100,
+        height: 50,
+        scrollWidth: 100,
+        scrollHeight: 50,
+        childLayouts: [],
+      },
+    );
+    expect(
+      cache.lookup({
+        availableWidth: 100,
+        widthMode: 'exactly',
+        availableHeight: 50,
+        heightMode: 'exactly',
+      }),
+    ).toBeDefined();
+    n.markDirty();
+    expect(
+      cache.lookup({
+        availableWidth: 100,
+        widthMode: 'exactly',
+        availableHeight: 50,
+        heightMode: 'exactly',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('clearAllCaches clears _layoutCache on every node in the subtree', () => {
+    const root = Node.create();
+    const child = Node.create();
+    root.insertChild(child, 0);
+    const rootCache = new LayoutCache();
+    const childCache = new LayoutCache();
+    (root as unknown as { _layoutCache: LayoutCache })._layoutCache = rootCache;
+    (child as unknown as { _layoutCache: LayoutCache })._layoutCache = childCache;
+    const KEY = {
+      availableWidth: 50,
+      widthMode: 'at-most' as const,
+      availableHeight: 25,
+      heightMode: 'at-most' as const,
+    };
+    const VAL = {
+      width: 50,
+      height: 25,
+      scrollWidth: 50,
+      scrollHeight: 25,
+      childLayouts: [],
+    };
+    rootCache.store(KEY, VAL);
+    childCache.store(KEY, VAL);
+    expect(rootCache.lookup(KEY)).toBeDefined();
+    expect(childCache.lookup(KEY)).toBeDefined();
+
+    clearAllCaches(root);
+
+    expect(rootCache.lookup(KEY)).toBeUndefined();
+    expect(childCache.lookup(KEY)).toBeUndefined();
+  });
 });

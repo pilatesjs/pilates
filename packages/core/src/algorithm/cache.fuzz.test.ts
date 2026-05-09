@@ -49,7 +49,14 @@ type Mutation =
   | { type: 'setWidth'; path: number[]; value: number }
   | { type: 'setHeight'; path: number[]; value: number }
   | { type: 'setFlexGrow'; path: number[]; value: number }
-  | { type: 'setPadding'; path: number[]; value: number };
+  | { type: 'setFlexShrink'; path: number[]; value: number }
+  | { type: 'setMargin'; path: number[]; value: number }
+  | { type: 'setPadding'; path: number[]; value: number }
+  | {
+      type: 'setFlexDirection';
+      path: number[];
+      value: 'row' | 'column' | 'row-reverse' | 'column-reverse';
+    };
 
 const mutationArbitrary: fc.Arbitrary<Mutation> = fc.oneof(
   fc.record({
@@ -68,9 +75,26 @@ const mutationArbitrary: fc.Arbitrary<Mutation> = fc.oneof(
     value: fc.integer({ min: 0, max: 3 }),
   }),
   fc.record({
+    type: fc.constant('setFlexShrink' as const),
+    path: fc.array(fc.nat({ max: 3 }), { maxLength: 4 }),
+    value: fc.integer({ min: 0, max: 3 }),
+  }),
+  fc.record({
+    type: fc.constant('setMargin' as const),
+    path: fc.array(fc.nat({ max: 3 }), { maxLength: 4 }),
+    value: fc.integer({ min: 0, max: 3 }),
+  }),
+  fc.record({
     type: fc.constant('setPadding' as const),
     path: fc.array(fc.nat({ max: 3 }), { maxLength: 4 }),
     value: fc.integer({ min: 0, max: 3 }),
+  }),
+  fc.record({
+    type: fc.constant('setFlexDirection' as const),
+    path: fc.array(fc.nat({ max: 3 }), { maxLength: 4 }),
+    value: fc.constantFrom('row', 'column', 'row-reverse', 'column-reverse') as fc.Arbitrary<
+      'row' | 'column' | 'row-reverse' | 'column-reverse'
+    >,
   }),
 );
 
@@ -111,8 +135,17 @@ function applyMutation(root: Node, m: Mutation): void {
     case 'setFlexGrow':
       target.setFlexGrow(m.value);
       break;
+    case 'setFlexShrink':
+      target.setFlexShrink(m.value);
+      break;
+    case 'setMargin':
+      target.setMargin(Edge.All, m.value);
+      break;
     case 'setPadding':
       target.setPadding(Edge.All, m.value);
+      break;
+    case 'setFlexDirection':
+      target.setFlexDirection(m.value);
       break;
   }
 }

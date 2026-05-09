@@ -10,7 +10,7 @@
  * automatically by `markDirty()`. Consumers never interact with the
  * cache directly — it is `@internal`.
  *
- * Phase 2 will add `LayoutCache` here.
+ * Phase 2 added `LayoutCache` here (P2-T1).
  *
  * @internal
  */
@@ -123,6 +123,92 @@ export class MeasureCache {
   }
 }
 
+/** @internal */
+export interface LayoutCacheKey {
+  availableWidth: number;
+  widthMode: MeasureMode;
+  availableHeight: number;
+  heightMode: MeasureMode;
+  // parentDirection deliberately NOT keyed — Yoga (LayoutResults.h) and
+  // Taffy (tree/cache.rs) both treat it as implicit in available
+  // {width,height} since flex algorithms reorient at each parent.
+  // Differential mode catches divergence if this assumption is ever wrong.
+}
+
+/** @internal */
+export interface CachedChildLayout {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  scrollWidth: number;
+  scrollHeight: number;
+}
+
+/** @internal */
+export interface LayoutCacheValue {
+  width: number;
+  height: number;
+  scrollWidth: number;
+  scrollHeight: number;
+  childLayouts: CachedChildLayout[];
+}
+
+/**
+ * Single-slot per-node layout cache. Matches Yoga's `cachedLayout`
+ * (single overwrite-on-write) and Taffy's 1-slot layout-cache. Internal
+ * nodes' final-pass keys converge to one stable input once the parent's
+ * flex distribution has settled, so additional slots would be dead memory.
+ *
+ * Lazy-allocated by the algorithm in `algorithm/main-axis.ts` and
+ * `algorithm/index.ts` only on nodes that actually go through the
+ * `layoutChildren` recursion. Cleared by `Node.markDirty()` (which fires
+ * on every style/tree mutation).
+ *
+ * Hit/miss counters are always-on (same rationale as `MeasureCache`).
+ *
+ * @internal
+ */
+export class LayoutCache {
+  private slot: (LayoutCacheKey & { value: LayoutCacheValue }) | undefined = undefined;
+
+  /** @internal */
+  hits = 0;
+  /** @internal */
+  misses = 0;
+
+  lookup(key: LayoutCacheKey): LayoutCacheValue | undefined {
+    const slot = this.slot;
+    if (
+      slot !== undefined &&
+      slot.availableWidth === key.availableWidth &&
+      slot.widthMode === key.widthMode &&
+      slot.availableHeight === key.availableHeight &&
+      slot.heightMode === key.heightMode
+    ) {
+      this.hits++;
+      return slot.value;
+    }
+    this.misses++;
+    return undefined;
+  }
+
+  /**
+   * Store `value` for `key`. Single-slot — replaces the previous entry
+   * unconditionally. Caller must construct a fresh `LayoutCacheValue` per
+   * store; this method does NOT deep-clone for performance, so any
+   * subsequent mutation of `value` is visible through `lookup`. The
+   * algorithm builds new values per layout pass so the contract holds.
+   */
+  store(key: LayoutCacheKey, value: LayoutCacheValue): void {
+    this.slot = { ...key, value };
+  }
+
+  clear(): void {
+    this.slot = undefined;
+  }
+}
+
 /**
  * Pre-order traversal returning a flat array of layout snapshots, one per
  * node. Used by differential mode to capture and compare the entire tree's
@@ -154,14 +240,15 @@ export function snapshotTreeLayouts(root: Node): ComputedLayout[] {
 }
 
 /**
- * Recursively clear `_measureCache` on every node in the subtree.
- * (Phase 2 will also clear `_layoutCache` here.) Used by differential
- * mode and the fuzzer to force the cold path.
+ * Recursively clear `_measureCache` and `_layoutCache` on every node in
+ * the subtree. Used by differential mode and the fuzzer to force the cold
+ * path.
  *
  * @internal
  */
 export function clearAllCaches(root: Node): void {
   root._measureCache?.clear();
+  root._layoutCache?.clear();
   for (let i = 0; i < root.getChildCount(); i++) clearAllCaches(root.getChild(i)!);
 }
 
@@ -181,6 +268,81 @@ export function clearAllCaches(root: Node): void {
 export function markDirtyDeep(root: Node): void {
   root.markDirty();
   for (let i = 0; i < root.getChildCount(); i++) markDirtyDeep(root.getChild(i)!);
+}
+
+/**
+ * Build a `LayoutCacheValue` from `node`'s current `_layout` + its direct
+ * children's `_layout`. Captures only direct children; deeper descendants
+ * are reconstituted via their own caches during `restoreFromCache`.
+ *
+ * Called by the algorithm AFTER `roundLayout` and `computeScrollSizes`
+ * have populated all `_layout` fields, so the captured values are
+ * already integer-rounded and scroll-aware.
+ *
+ * @internal
+ */
+export function snapshotForCache(node: Node): LayoutCacheValue {
+  const childLayouts: CachedChildLayout[] = [];
+  const count = node.getChildCount();
+  for (let i = 0; i < count; i++) {
+    const c = node.getChild(i)!;
+    childLayouts.push({
+      left: c.layout.left,
+      top: c.layout.top,
+      width: c.layout.width,
+      height: c.layout.height,
+      scrollWidth: c.layout.scrollWidth,
+      scrollHeight: c.layout.scrollHeight,
+    });
+  }
+  return {
+    width: node.layout.width,
+    height: node.layout.height,
+    scrollWidth: node.layout.scrollWidth,
+    scrollHeight: node.layout.scrollHeight,
+    childLayouts,
+  };
+}
+
+/**
+ * Restore `node`'s own size + scroll metrics, plus its direct children's
+ * left/top/width/height/scroll. The caller is responsible for handling
+ * the recursion into deeper descendants via per-child cache lookups (or
+ * a `layoutChildren` fallback on miss).
+ *
+ * Pre-conditions: `node`'s child list at this call must match the child
+ * list captured at cache-store time. The cache invalidation on
+ * `insertChild`/`removeChild` (via `markDirty`) guarantees this — a
+ * mismatch indicates a cache-correctness bug. We assert in differential
+ * mode.
+ *
+ * @internal
+ */
+export function restoreFromCache(node: Node, value: LayoutCacheValue): void {
+  if (process.env.PILATES_DIFFERENTIAL_LAYOUT === '1') {
+    if (node.getChildCount() !== value.childLayouts.length) {
+      throw new Error(
+        `[pilates layout cache] restored value has ${value.childLayouts.length} children but node has ${node.getChildCount()} — cache invalidation bug`,
+      );
+    }
+  }
+  node._layout.width = value.width;
+  node._layout.height = value.height;
+  node._layout.scrollWidth = value.scrollWidth;
+  node._layout.scrollHeight = value.scrollHeight;
+  // node._layout.left/top are set by the caller before recursion starts
+  // (root sets to 0; child positions come from this restore via the
+  // childLayouts array below).
+  for (let i = 0; i < node.getChildCount(); i++) {
+    const c = node.getChild(i)!;
+    const cl = value.childLayouts[i]!;
+    c._layout.left = cl.left;
+    c._layout.top = cl.top;
+    c._layout.width = cl.width;
+    c._layout.height = cl.height;
+    c._layout.scrollWidth = cl.scrollWidth;
+    c._layout.scrollHeight = cl.scrollHeight;
+  }
 }
 
 /**

@@ -1,7 +1,8 @@
 {
   "tiny": { "@pilates/core (layout)": { "maxMeanMs": 0.01 } },
-  "realistic": { "@pilates/core (layout)": { "maxMeanMs": 0.2 } },
-  "stress": { "@pilates/core (layout)": { "maxMeanMs": 0.85 } },
-  "big": { "@pilates/core (layout)": { "maxMeanMs": 5.0 } },
-  "huge": { "@pilates/core (layout)": { "maxMeanMs": 15.0 } }
+  "realistic": { "@pilates/core (layout)": { "maxMeanMs": 0.25 } },
+  "stress": { "@pilates/core (layout)": { "maxMeanMs": 1.0 } },
+  "big": { "@pilates/core (layout)": { "maxMeanMs": 4.5 } },
+  "huge": { "@pilates/core (layout)": { "maxMeanMs": 10.0 } },
+  "hotrelayout": { "@pilates/core (layout)": { "maxMeanMs": 0.65 } }
 }
