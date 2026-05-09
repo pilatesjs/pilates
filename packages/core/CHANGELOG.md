@@ -67,6 +67,53 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `parentDirection` redundancy, absolute-position child round-trip,
   margin invalidation correctness.
 
+### Performance hardening — Phase 3 (relayout boundaries)
+
+- **Internal** Flutter-style relayout boundaries: a node with explicit
+  `width` AND explicit `height` AND `flexGrow <= 0` AND `flexShrink <= 0`
+  acts as a layout boundary. Descendant mutations dirty the boundary
+  but stop propagating to ancestors, so root `_layoutCache` stays
+  valid and hits on subsequent `calculateLayout` calls. The strict
+  flexGrow/flexShrink check is empirically required: the fuzzer
+  surfaced a `cached=17 vs cold=16` width drift when grow>0 boundaries
+  were considered eligible, since the parent's flex distribution can
+  produce slightly different post-grow widths under sibling-style
+  interactions.
+- **Internal** new `Node._forceDirty()` `@internal` method bypasses
+  the boundary check; used only by `markDirtyDeep` in
+  `algorithm/cache.ts` for differential-mode and fuzzer validation.
+- **Internal** new `Node._hasDirtyDescendant` flag propagates
+  upward through boundaries (without marking ancestors dirty). The
+  root cache-hit path uses this to skip subtrees with no mutations
+  at all — turning the boundary-scenario path from O(N) iteration of
+  root's children to O(dirty subtree).
+- **Internal** `markDirty()` split into two paths:
+  `markDirty()` (called by setters) always propagates upward;
+  `markDirtyFromChild()` (called only from descendant propagation)
+  applies the boundary check. Necessary because the boundary's own
+  setter changes its preferred size, which the parent's flex still
+  needs to react to.
+- **Internal** when a dirty boundary runs the cold path inside a root
+  cache-hit pass, `roundLayout` and `computeScrollSizes` are skipped
+  by `calculateLayoutImpl`. `layoutChildren` now inlines per-subtree
+  versions (`roundLayoutSubtree` exported from `algorithm/round.ts`,
+  `computeAndCacheScrollSizes` local to `main-axis.ts`) so the
+  boundary's subtree gets correctly rounded and scroll-sized in that
+  scenario. The `useCache` parameter on `layoutChildren` gained
+  `parentAbsX`/`parentAbsY` parameters so subtree rounding uses the
+  correct absolute coordinates.
+- **Bench** new `hotrelayoutboundary` scenario — same shape as
+  `hotrelayout` but with explicit-sized row containers that act as
+  boundaries. Demonstrates the Phase 3 win:
+  - Pilates `hotrelayoutboundary`: ~10.8µs (~92.5k ops/s)
+  - Pilates `hotrelayout`: ~199µs
+  - Yoga `hotrelayoutboundary`: ~95.4µs
+  - Pilates is **~18× faster than the boundary-less Pilates path**
+    and **~9× faster than WASM Yoga** on this workload — the workload
+    Yoga traditionally wins.
+- **Public API unchanged.** Boundaries auto-detected from existing
+  style; no new setters or getters exposed.
+
 ## [1.0.0-rc.2] — 2026-05-07
 
 ### Overflow (Track 1 P2 prep)
