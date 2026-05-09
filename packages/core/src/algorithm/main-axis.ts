@@ -48,7 +48,8 @@ import {
   readEnd,
   readStart,
 } from './axis.js';
-import { restoreFromCache } from './cache.js';
+import { LayoutCache, restoreFromCache, snapshotForCache } from './cache.js';
+import { roundLayoutSubtree } from './round.js';
 
 /**
  * Single chokepoint for measure-func invocation. Consults the leaf's
@@ -123,7 +124,7 @@ interface FlexLine {
  * non-hidden child so their own descendants are laid out within the box
  * we just assigned them.
  */
-export function layoutChildren(node: Node, useCache = false): void {
+export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, parentAbsY = 0): void {
   // Cache hit fast-path: only when useCache=true (i.e. we are in a path
   // that has already committed to skipping roundLayout — either the root
   // cache-hit fast-path or a recursive call from another cache-hit node).
@@ -134,14 +135,13 @@ export function layoutChildren(node: Node, useCache = false): void {
   //
   // Implication for performance: inner-node caches only get READS on root
   // cache hits (which require root clean — `markDirty()` propagates up,
-  // so any descendant mutation dirties root). On any cold root pass the
-  // cache is fully bypassed for reads (writes still happen via
-  // `computeScrollSizes`). The hot-relayout workload (mutate one leaf
-  // per frame) thus DOES NOT benefit from the layout cache at this layer
-  // — it only benefits from the measure cache. The layout cache wins on
-  // identical-input replays (e.g. external code calling calculateLayout
-  // multiple times without mutation, or terminal-resize sequences that
-  // return to a prior size).
+  // so any descendant mutation dirties root). Phase 3 relayout boundaries
+  // break this assumption: a boundary node may be dirty while its ancestor
+  // root is clean. The cold-path fallback below handles this: when a dirty
+  // node is encountered under useCache=true, it re-lays out the subtree,
+  // rounds child positions (using the tracked absolute coordinate), and
+  // updates scroll sizes + cache (see `roundLayoutSubtree` and
+  // `updateScrollSizesAndCache`).
   if (useCache && !node.isDirty() && node._layoutCache !== undefined) {
     const key = {
       availableWidth: node.layout.width,
@@ -153,17 +153,21 @@ export function layoutChildren(node: Node, useCache = false): void {
     if (hit !== undefined) {
       restoreFromCache(node, hit);
       // Recurse to children — each one either hits its own cache or
-      // falls through to a full layoutChildren recompute.
+      // falls through to a full layoutChildren recompute. Pass along the
+      // absolute position of `node` as the new parentAbsX/Y so dirty
+      // sub-boundaries can round their subtrees using correct coordinates.
+      const nodeAbsX = parentAbsX + node._layout.left;
+      const nodeAbsY = parentAbsY + node._layout.top;
       for (let i = 0; i < node.getChildCount(); i++) {
         const c = node.getChild(i)!;
         if (c.style.display === 'none') continue;
-        layoutChildren(c, true);
+        layoutChildren(c, true, nodeAbsX, nodeAbsY);
       }
       return;
     }
   }
 
-  // Cold path (unchanged):
+  // Cold path:
   const flowChildren = visibleChildrenOf(node);
   const absoluteList = absoluteChildrenOf(node);
 
@@ -183,11 +187,79 @@ export function layoutChildren(node: Node, useCache = false): void {
   // Recurse into every non-hidden child so descendants are laid out within
   // the box we just assigned them. (Absolute children may have their own
   // flex subtrees.)
+  // When inside a root cache-hit pass (useCache=true, i.e. we are on a dirty
+  // node's cold-recompute path), pass useCache=false to the children. The
+  // children's sub-layouts will be fully recomputed; `roundLayoutSubtree`
+  // below will then round their positions, and `updateScrollSizesAndCache`
+  // will set their parent-visible scroll metrics. Passing useCache=false here
+  // prevents children from reading stale cache entries whose keys were keyed
+  // on pre-mutation sizes (the parent just assigned them new widths/heights
+  // via the cold flex path, so their sizes may have changed).
   for (let i = 0; i < node.getChildCount(); i++) {
     const c = node.getChild(i)!;
     if (c.style.display === 'none') continue;
-    layoutChildren(c, useCache);
+    layoutChildren(c, false);
   }
+
+  // When we are inside a root cache-hit pass (useCache=true) and this node
+  // ran the cold path (it was dirty or its cache missed), we must:
+  //   1. Round this node's children using absolute coordinates (mirrors what
+  //      roundLayout does in the full cold path). `parentAbsX/Y` is the
+  //      absolute position of node's parent, so node's absolute corner is
+  //      `(parentAbsX + node.left, parentAbsY + node.top)`.
+  //   2. Recompute scroll sizes from the now-rounded child positions.
+  //   3. Refresh this node's own layout cache so subsequent clean passes hit.
+  // This is safe for relayout boundaries because their `left`/`top` were
+  // restored from the parent's rounded cache (already integers), so
+  // node.absX = parentAbsX + node.left is already integer — rounding is a
+  // no-op at the node level and correct for all child positions.
+  if (useCache) {
+    roundLayoutSubtree(node, parentAbsX, parentAbsY);
+    computeAndCacheScrollSizes(node);
+  }
+}
+
+/**
+ * Recursively recompute `scrollWidth`/`scrollHeight` for `node` and all
+ * its descendants (post-order), then refresh each non-root node's
+ * `_layoutCache`. This mirrors what `computeScrollSizes` in `index.ts`
+ * does on the full cold path, but is called inline from `layoutChildren`
+ * when a dirty boundary node runs the cold path inside a root cache-hit
+ * pass. In that context `computeScrollSizes` + `roundLayout` will NOT
+ * run for this subtree, so we update scroll metrics here instead.
+ *
+ * Called after `roundLayoutSubtree` so all positions and sizes are already
+ * integer-rounded before we compute content extents.
+ */
+function computeAndCacheScrollSizes(node: Node): void {
+  // Post-order: recurse into children first so their scrollWidths are
+  // set before we compute this node's content extent from them.
+  for (let i = 0; i < node.getChildCount(); i++) {
+    computeAndCacheScrollSizes(node.getChild(i)!);
+  }
+
+  let contentRight = 0;
+  let contentBottom = 0;
+  for (let i = 0; i < node.getChildCount(); i++) {
+    const c = node.getChild(i)!;
+    const cl = c._layout;
+    if (cl.left + cl.width > contentRight) contentRight = cl.left + cl.width;
+    if (cl.top + cl.height > contentBottom) contentBottom = cl.top + cl.height;
+  }
+  node._layout.scrollWidth = Math.max(node._layout.width, contentRight);
+  node._layout.scrollHeight = Math.max(node._layout.height, contentBottom);
+
+  // Refresh this node's own layout cache so subsequent clean passes see
+  // the updated scroll sizes. Mirror the key scheme used by `computeScrollSizes`
+  // in `index.ts` (width/height as exactly-sized container).
+  const innerKey = {
+    availableWidth: node.layout.width,
+    widthMode: 'exactly' as const,
+    availableHeight: node.layout.height,
+    heightMode: 'exactly' as const,
+  };
+  if (node._layoutCache === undefined) node._layoutCache = new LayoutCache();
+  node._layoutCache.store(innerKey, snapshotForCache(node));
 }
 
 /** The 8-step flex pipeline for in-flow children. */

@@ -432,6 +432,36 @@ export class Node {
   // ─── dirty tracking ────────────────────────────────────────────────────
 
   /**
+   * A node is a relayout boundary iff its layout size is fully
+   * independent of both parent flex distribution and descendant changes:
+   *
+   *   1. `width` AND `height` are explicit numbers (not `'auto'`) — pins
+   *      the node's own preferred size on both axes.
+   *   2. `flexGrow <= 0` — the node won't be grown by parent free space.
+   *   3. `flexShrink <= 0` — the node won't be shrunk by parent overflow.
+   *
+   * With all three conditions, the boundary's final `{width, height}` as
+   * placed by the parent's flex algorithm equals its style's explicit
+   * values regardless of siblings or container size. The cross-axis is
+   * also safe: when `height` is explicit, `alignItems: stretch` defers
+   * to the explicit value (see `crossAlignItemsInLine` in `main-axis.ts`).
+   *
+   * Boundaries stop the upward dirty propagation in `markDirtyFromChild()`
+   * so descendant mutations don't invalidate ancestor layout caches.
+   *
+   * See `docs/superpowers/specs/2026-05-09-relayout-boundaries-design.md`
+   * for the full rationale and edge-case analysis.
+   */
+  private isLayoutBoundary(): boolean {
+    return (
+      typeof this._style.width === 'number' &&
+      typeof this._style.height === 'number' &&
+      this._style.flexGrow <= 0 &&
+      this._style.flexShrink <= 0
+    );
+  }
+
+  /**
    * Walk up the tree marking every ancestor dirty too. The algorithm uses
    * this hint to short-circuit work in subtrees that did not change.
    */
@@ -443,7 +473,26 @@ export class Node {
     // is a deliberate no-op as we propagate dirty up the tree.
     this._measureCache?.clear();
     this._layoutCache?.clear();
-    if (this._parent !== null && !this._parent._dirty) this._parent.markDirty();
+    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+  }
+
+  /**
+   * Called when a child (or descendant via recursion) is mutated. Marks
+   * this node dirty and propagates upward — but stops here if this node
+   * is a relayout boundary. The boundary semantics apply only when the
+   * mutation originates in a descendant, not when this node's own setters
+   * call `markDirty()` directly.
+   *
+   * See `isLayoutBoundary()` for the boundary definition and rationale.
+   */
+  private markDirtyFromChild(_child: Node): void {
+    this._dirty = true;
+    this._layoutCache?.clear();
+    // Stop propagation at relayout boundaries — see isLayoutBoundary
+    // and the Phase 3 spec for why explicit width+height makes the
+    // boundary's size independent of descendant changes.
+    if (this.isLayoutBoundary()) return;
+    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
   }
 
   /**
