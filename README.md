@@ -177,6 +177,10 @@ input handling, animations, scroll containers, style inheritance.
 
 ## Performance
 
+<p align="center">
+  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 7-12× faster across every workload, including the hot-relayout pattern Yoga used to win" width="100%">
+</p>
+
 Pure-TypeScript layout, validated cell-for-cell against WASM Yoga,
 faster than WASM Yoga on every benchmarked workload. Numbers are mean
 latency from `pnpm bench` (Node 22, win32/x64; relative positions are
