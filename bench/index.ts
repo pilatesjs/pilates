@@ -12,6 +12,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Bench } from 'tinybench';
 import * as big from './scenarios/big.js';
+import * as hotRelayoutBoundary from './scenarios/hot-relayout-boundary.js';
 import * as hotRelayout from './scenarios/hot-relayout.js';
 import * as huge from './scenarios/huge.js';
 import * as realistic from './scenarios/realistic.js';
@@ -38,6 +39,11 @@ const SCENARIOS: Scenario[] = [
     name: 'hotrelayout',
     notes: '1k-node persistent tree, mutate one leaf per pass',
     ...hotRelayout,
+  },
+  {
+    name: 'hotrelayoutboundary',
+    notes: '1k-node persistent tree with explicit-sized row boundaries, mutate one leaf',
+    ...hotRelayoutBoundary,
   },
 ];
 

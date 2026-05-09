@@ -4,5 +4,6 @@
   "stress": { "@pilates/core (layout)": { "maxMeanMs": 1.0 } },
   "big": { "@pilates/core (layout)": { "maxMeanMs": 4.5 } },
   "huge": { "@pilates/core (layout)": { "maxMeanMs": 10.0 } },
-  "hotrelayout": { "@pilates/core (layout)": { "maxMeanMs": 0.65 } }
+  "hotrelayout": { "@pilates/core (layout)": { "maxMeanMs": 0.65 } },
+  "hotrelayoutboundary": { "@pilates/core (layout)": { "maxMeanMs": 0.035 } }
 }

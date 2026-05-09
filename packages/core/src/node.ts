@@ -115,6 +115,16 @@ export class Node {
   private _measure: MeasureFunc | null = null;
   /** True if style or tree has changed since the last `calculateLayout()`. */
   private _dirty = true;
+  /**
+   * True if any descendant has been marked dirty (even if dirty propagation
+   * was stopped by a relayout boundary before reaching this node). Used by
+   * the root cache-hit path to skip `layoutChildren` for subtrees that have
+   * no mutations at all — not just subtrees where this node itself is clean.
+   *
+   * Invariant: `_dirty` implies `_hasDirtyDescendant` on the parent (if any).
+   * Cleared by `clearDirty()` after each `calculateLayout()`.
+   */
+  _hasDirtyDescendant = false;
 
   /**
    * Lazy-allocated measure-func result cache. Created the first time
@@ -497,11 +507,34 @@ export class Node {
   private markDirtyFromChild(_child: Node): void {
     this._dirty = true;
     this._layoutCache?.clear();
-    // Stop propagation at relayout boundaries — see isLayoutBoundary
+    // Stop dirty propagation at relayout boundaries — see isLayoutBoundary
     // and the Phase 3 spec for why explicit width+height makes the
     // boundary's size independent of descendant changes.
-    if (this.isLayoutBoundary()) return;
+    //
+    // Even though we stop dirty propagation here, we still need to inform
+    // ancestors that some descendant of theirs is dirty (so the root
+    // cache-hit path knows to recurse into this subtree). We do this via
+    // the separate `_hasDirtyDescendant` signal, which continues upward
+    // past this boundary without marking ancestors dirty.
+    if (this.isLayoutBoundary()) {
+      if (this._parent !== null) this._parent.markHasDirtyDescendant();
+      return;
+    }
     if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+  }
+
+  /**
+   * Propagate the "has a dirty descendant somewhere below" signal upward
+   * without marking ancestors `_dirty`. Called when a relayout boundary
+   * stops the dirty propagation but still needs to let the root know that
+   * some subtree needs attention. Stops if the parent is already dirty
+   * (in which case the root will recompute everything anyway) or already
+   * has a dirty descendant flag set.
+   */
+  private markHasDirtyDescendant(): void {
+    if (this._hasDirtyDescendant) return; // already set; further propagation is a no-op
+    this._hasDirtyDescendant = true;
+    if (this._parent !== null && !this._parent._dirty) this._parent.markHasDirtyDescendant();
   }
 
   /**
@@ -533,6 +566,7 @@ export class Node {
    */
   clearDirty(): void {
     this._dirty = false;
+    this._hasDirtyDescendant = false;
   }
 }
 
