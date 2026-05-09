@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Edge } from '../edge.js';
 import { MeasureMode } from '../measure-func.js';
 import { Node } from '../node.js';
 import {
@@ -275,8 +276,26 @@ describe('LayoutCache', () => {
     scrollWidth: 100,
     scrollHeight: 50,
     childLayouts: [
-      { left: 0, top: 0, width: 50, height: 25, scrollWidth: 50, scrollHeight: 25 },
-      { left: 50, top: 0, width: 50, height: 25, scrollWidth: 50, scrollHeight: 25 },
+      {
+        left: 0,
+        top: 0,
+        width: 50,
+        height: 25,
+        scrollWidth: 50,
+        scrollHeight: 25,
+        floatLeft: 0,
+        floatTop: 0,
+      },
+      {
+        left: 50,
+        top: 0,
+        width: 50,
+        height: 25,
+        scrollWidth: 50,
+        scrollHeight: 25,
+        floatLeft: 50,
+        floatTop: 0,
+      },
     ],
   };
 
@@ -380,6 +399,8 @@ describe('snapshotForCache', () => {
       height: 50,
       scrollWidth: 50,
       scrollHeight: 50,
+      floatLeft: 0,
+      floatTop: 0,
     });
     expect(snap.childLayouts[1]).toEqual({
       left: 50,
@@ -388,6 +409,8 @@ describe('snapshotForCache', () => {
       height: 50,
       scrollWidth: 50,
       scrollHeight: 50,
+      floatLeft: 50,
+      floatTop: 0,
     });
   });
 });
@@ -409,8 +432,26 @@ describe('restoreFromCache', () => {
       scrollWidth: 100,
       scrollHeight: 50,
       childLayouts: [
-        { left: 0, top: 0, width: 50, height: 50, scrollWidth: 50, scrollHeight: 50 },
-        { left: 50, top: 0, width: 50, height: 50, scrollWidth: 50, scrollHeight: 50 },
+        {
+          left: 0,
+          top: 0,
+          width: 50,
+          height: 50,
+          scrollWidth: 50,
+          scrollHeight: 50,
+          floatLeft: 0,
+          floatTop: 0,
+        },
+        {
+          left: 50,
+          top: 0,
+          width: 50,
+          height: 50,
+          scrollWidth: 50,
+          scrollHeight: 50,
+          floatLeft: 50,
+          floatTop: 0,
+        },
       ],
     };
     restoreFromCache(root, cached);
@@ -434,5 +475,104 @@ describe('restoreFromCache', () => {
       scrollWidth: 50,
       scrollHeight: 50,
     });
+  });
+});
+
+describe('relayout boundary rounding correctness (regression: seed 1283320469)', () => {
+  /**
+   * Regression test for the Phase 3 relayout-boundary rounding divergence
+   * caught by the fuzzer with seed 1283320469.
+   *
+   * Tree structure:
+   *   root (height=1, column-reverse)
+   *   ├── child0 (height=1, flexShrink=1, row)
+   *   └── child1 (height=1, flexShrink=1, column-reverse)
+   *       └── grandchild (width=1, height=5, column-reverse)  ← boundary
+   *           ├── ggc0 (height=1, flexShrink=1, row)          ← node[4]
+   *           └── ggc1 (height=1, flexShrink=1, row)
+   *
+   * Root is 20×10 but has explicit height=1, so root.height=1.
+   * child0 and child1 each have flexShrink=1 → they share the 1-unit main
+   * axis, each getting 0.5 (float) before rounding. grandchild has explicit
+   * height=5 and no flexShrink, so it overflows child1's box (float height
+   * 0.5) and gets top = 0.5 - 5 = -4.5 (float) from the column-reverse flip.
+   * After rounding, grandchild.top = -4.
+   *
+   * After mutation (ggc0.setMargin(Edge.All, 2)):
+   * - ggc0 is dirtied → grandchild is dirtied (boundary) → child1+root get
+   *   _hasDirtyDescendant = true.
+   * - Cached path: root cache-hit → child1 cache-hit (restores grandchild.top=-4
+   *   from rounded cache) → grandchild dirty (boundary re-layout with innerMain=1).
+   * - Cold path: full recompute gives grandchild.top=-4.5 (float).
+   *
+   * The bug: roundLayoutSubtree used grandchild._layout.top=-4 (rounded, from
+   * cache) as the anchor for computing ggc0's absolute Y. The correct anchor is
+   * the float -4.5. Using -4 shifted ggc0.absY from -2.0 to -1.5, and
+   * Math.round(-1.5)=-1 while Math.round(-2.0)=-2, so ggc0.top came out 3
+   * (cached) vs 2 (cold).
+   *
+   * Fix: cache records the pre-rounding float left/top (Node._floatLeft/Top)
+   * alongside the rounded positions; roundLayoutSubtree and the cache-hit walk
+   * use the float values for absolute coordinate computation.
+   */
+  it('cached and cold paths produce identical layouts after boundary mutation with float-rounding edge case', () => {
+    // Build tree
+    const root = Node.create();
+    root.setHeight(1);
+    root.setFlexDirection('column-reverse');
+
+    const child0 = Node.create();
+    child0.setHeight(1);
+    child0.setFlexShrink(1);
+    child0.setFlexDirection('row');
+    root.insertChild(child0, 0);
+
+    const child1 = Node.create();
+    child1.setHeight(1);
+    child1.setFlexShrink(1);
+    child1.setFlexDirection('column-reverse');
+    root.insertChild(child1, 1);
+
+    const grandchild = Node.create();
+    grandchild.setWidth(1);
+    grandchild.setHeight(5);
+    grandchild.setFlexDirection('column-reverse');
+    child1.insertChild(grandchild, 0);
+
+    const ggc0 = Node.create();
+    ggc0.setHeight(1);
+    ggc0.setFlexShrink(1);
+    ggc0.setFlexDirection('row');
+    grandchild.insertChild(ggc0, 0);
+
+    const ggc1 = Node.create();
+    ggc1.setHeight(1);
+    ggc1.setFlexShrink(1);
+    ggc1.setFlexDirection('row');
+    grandchild.insertChild(ggc1, 1);
+
+    // Prime the caches
+    root.calculateLayout(20, 10);
+
+    // Mutation: add margin=2 to ggc0 (makes grandchild's flex distribution
+    // produce a float ggc0.top that when anchored to the rounded grandchild.top
+    // crosses a rounding threshold unless we use the float anchor)
+    ggc0.setMargin(Edge.All, 2);
+
+    // Cached path
+    root.calculateLayout(20, 10);
+    const cachedSnap = snapshotTreeLayouts(root);
+
+    // Cold path: force full recompute
+    clearAllCaches(root);
+    markDirtyDeep(root);
+    root.calculateLayout(20, 10);
+    const coldSnap = snapshotTreeLayouts(root);
+
+    const diff = diffLayouts(cachedSnap, coldSnap);
+    expect(diff).toBe('');
+
+    // Verify ggc0 specifically (node[4]) — this was the diverging node
+    expect(cachedSnap[4]!.top).toBe(coldSnap[4]!.top);
   });
 });

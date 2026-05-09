@@ -147,6 +147,26 @@ export class Node {
    */
   _layoutCache?: LayoutCache;
 
+  /**
+   * Pre-rounding (float) left/top position of this node within its parent,
+   * as computed by the flex algorithm BEFORE `roundLayout` converts positions
+   * to integers.
+   *
+   * Written by the position-write helpers in `algorithm/main-axis.ts` at the
+   * same time as `_layout.left/top`. After `roundLayout` runs, `_layout.left/top`
+   * become integers but `_floatLeft/Top` retain the float values. These are
+   * captured by `snapshotForCache` and restored by `restoreFromCache` so that
+   * `roundLayoutSubtree` can compute the correct absolute float coordinate for
+   * a re-laid-out boundary node's children.
+   *
+   * Initialized to 0 (same as `_layout.left/top`).
+   *
+   * @internal
+   */
+  _floatLeft = 0;
+  /** See {@link _floatLeft}. @internal */
+  _floatTop = 0;
+
   /** Construct via `Node.create()` to mirror Yoga's factory style. */
   static create(): Node {
     return new Node();

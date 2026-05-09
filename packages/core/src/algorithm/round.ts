@@ -48,8 +48,14 @@ export function roundLayout(root: Node): void {
  * @internal
  */
 export function roundLayoutSubtree(node: Node, parentAbsX: number, parentAbsY: number): void {
-  const nodeAbsX = parentAbsX + node._layout.left;
-  const nodeAbsY = parentAbsY + node._layout.top;
+  // Use the pre-rounding float left/top (node._floatLeft/Top) rather than the
+  // rounded integer _layout.left/top. The boundary node's _layout.left/top were
+  // restored from the parent's rounded cache (integers), but the true float
+  // position is stored in _floatLeft/Top (also restored from cache). Using the
+  // float position ensures that absolute coordinates of the boundary's children
+  // are computed in the same floating-point space as the full-tree roundLayout pass.
+  const nodeAbsX = parentAbsX + node._floatLeft;
+  const nodeAbsY = parentAbsY + node._floatTop;
   const absolutes = new Map<Node, AbsCorner>();
   // Collect children relative to the node's absolute corner.
   for (let i = 0; i < node.getChildCount(); i++) {

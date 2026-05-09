@@ -143,6 +143,16 @@ export interface CachedChildLayout {
   height: number;
   scrollWidth: number;
   scrollHeight: number;
+  /**
+   * Pre-rounding (float) left position of this child, captured before
+   * `roundLayout` converts positions to integers. Used by
+   * `roundLayoutSubtree` to compute the correct float absolute coordinate
+   * when re-laying out a dirty boundary node under a cache-hit root.
+   * See `Node._floatLeft` for the full explanation.
+   */
+  floatLeft: number;
+  /** See {@link floatLeft}. */
+  floatTop: number;
 }
 
 /** @internal */
@@ -300,6 +310,8 @@ export function snapshotForCache(node: Node): LayoutCacheValue {
       height: c.layout.height,
       scrollWidth: c.layout.scrollWidth,
       scrollHeight: c.layout.scrollHeight,
+      floatLeft: c._floatLeft,
+      floatTop: c._floatTop,
     });
   }
   return {
@@ -349,6 +361,8 @@ export function restoreFromCache(node: Node, value: LayoutCacheValue): void {
     c._layout.height = cl.height;
     c._layout.scrollWidth = cl.scrollWidth;
     c._layout.scrollHeight = cl.scrollHeight;
+    c._floatLeft = cl.floatLeft;
+    c._floatTop = cl.floatTop;
   }
 }
 

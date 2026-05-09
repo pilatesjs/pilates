@@ -80,6 +80,8 @@ function calculateLayoutImpl(
     if (hit !== undefined) {
       root._layout.left = 0;
       root._layout.top = 0;
+      root._floatLeft = 0;
+      root._floatTop = 0;
       restoreFromCache(root, hit);
       // Children may have their own caches; recurse to either hit those
       // or fall back to recompute on miss. Pass useCache=true so inner nodes
@@ -114,6 +116,8 @@ function calculateLayoutImpl(
   // Cold path
   root._layout.left = 0;
   root._layout.top = 0;
+  root._floatLeft = 0;
+  root._floatTop = 0;
   root._layout.width = resolveRootAxisSize(root, 'row', availableWidth);
   root._layout.height = resolveRootAxisSize(root, 'column', availableHeight);
 

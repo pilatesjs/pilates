@@ -154,10 +154,13 @@ export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, par
       restoreFromCache(node, hit);
       // Recurse to children — each one either hits its own cache or
       // falls through to a full layoutChildren recompute. Pass along the
-      // absolute position of `node` as the new parentAbsX/Y so dirty
+      // float absolute position of `node` as the new parentAbsX/Y so dirty
       // sub-boundaries can round their subtrees using correct coordinates.
-      const nodeAbsX = parentAbsX + node._layout.left;
-      const nodeAbsY = parentAbsY + node._layout.top;
+      // Use `_floatLeft/Top` (pre-rounding values restored from cache) rather
+      // than `_layout.left/top` (rounded integers restored from cache) so that
+      // grandchildren's absolute float coordinates are computed correctly.
+      const nodeAbsX = parentAbsX + node._floatLeft;
+      const nodeAbsY = parentAbsY + node._floatTop;
       for (let i = 0; i < node.getChildCount(); i++) {
         const c = node.getChild(i)!;
         if (c.style.display === 'none') continue;
@@ -440,6 +443,8 @@ function layoutAbsoluteChild(child: Node, parentOuterW: number, parentOuterH: nu
   child._layout.top = top;
   child._layout.width = width;
   child._layout.height = height;
+  child._floatLeft = left;
+  child._floatTop = top;
 }
 
 // A frozen empty tuple lets the no-children case avoid allocating a
@@ -888,16 +893,26 @@ function sizeOnAxis(node: Node, axis: Axis): number {
 }
 
 function writeMainPos(node: Node, main: Axis, value: number): void {
-  if (main === 'row') node._layout.left = value;
-  else node._layout.top = value;
+  if (main === 'row') {
+    node._layout.left = value;
+    node._floatLeft = value;
+  } else {
+    node._layout.top = value;
+    node._floatTop = value;
+  }
 }
 function writeMainSize(node: Node, main: Axis, value: number): void {
   if (main === 'row') node._layout.width = value;
   else node._layout.height = value;
 }
 function writeCrossPos(node: Node, cross: Axis, value: number): void {
-  if (cross === 'row') node._layout.left = value;
-  else node._layout.top = value;
+  if (cross === 'row') {
+    node._layout.left = value;
+    node._floatLeft = value;
+  } else {
+    node._layout.top = value;
+    node._floatTop = value;
+  }
 }
 function writeCrossSize(node: Node, cross: Axis, value: number): void {
   if (cross === 'row') node._layout.width = value;
@@ -991,8 +1006,13 @@ function flipMainAxis(
     const childPos = main === 'row' ? child.layout.left : child.layout.top;
     const innerPos = childPos - padMainStart;
     const newPos = padMainStart + innerMain - innerPos - childMain;
-    if (main === 'row') child._layout.left = newPos;
-    else child._layout.top = newPos;
+    if (main === 'row') {
+      child._layout.left = newPos;
+      child._floatLeft = newPos;
+    } else {
+      child._layout.top = newPos;
+      child._floatTop = newPos;
+    }
   }
 }
 
