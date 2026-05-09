@@ -115,6 +115,16 @@ export class Node {
   private _measure: MeasureFunc | null = null;
   /** True if style or tree has changed since the last `calculateLayout()`. */
   private _dirty = true;
+  /**
+   * True if any descendant has been marked dirty (even if dirty propagation
+   * was stopped by a relayout boundary before reaching this node). Used by
+   * the root cache-hit path to skip `layoutChildren` for subtrees that have
+   * no mutations at all — not just subtrees where this node itself is clean.
+   *
+   * Invariant: `_dirty` implies `_hasDirtyDescendant` on the parent (if any).
+   * Cleared by `clearDirty()` after each `calculateLayout()`.
+   */
+  _hasDirtyDescendant = false;
 
   /**
    * Lazy-allocated measure-func result cache. Created the first time
@@ -136,6 +146,26 @@ export class Node {
    * @internal
    */
   _layoutCache?: LayoutCache;
+
+  /**
+   * Pre-rounding (float) left/top position of this node within its parent,
+   * as computed by the flex algorithm BEFORE `roundLayout` converts positions
+   * to integers.
+   *
+   * Written by the position-write helpers in `algorithm/main-axis.ts` at the
+   * same time as `_layout.left/top`. After `roundLayout` runs, `_layout.left/top`
+   * become integers but `_floatLeft/Top` retain the float values. These are
+   * captured by `snapshotForCache` and restored by `restoreFromCache` so that
+   * `roundLayoutSubtree` can compute the correct absolute float coordinate for
+   * a re-laid-out boundary node's children.
+   *
+   * Initialized to 0 (same as `_layout.left/top`).
+   *
+   * @internal
+   */
+  _floatLeft = 0;
+  /** See {@link _floatLeft}. @internal */
+  _floatTop = 0;
 
   /** Construct via `Node.create()` to mirror Yoga's factory style. */
   static create(): Node {
@@ -432,6 +462,45 @@ export class Node {
   // ─── dirty tracking ────────────────────────────────────────────────────
 
   /**
+   * A node is a relayout boundary iff its layout size is fully
+   * independent of both parent flex distribution and descendant changes:
+   *
+   *   1. `width` AND `height` are explicit numbers (not `'auto'`) — pins
+   *      the node's own preferred size on both axes.
+   *   2. `flexGrow <= 0` — the node won't be grown by parent free space.
+   *   3. `flexShrink <= 0` — the node won't be shrunk by parent overflow.
+   *
+   * The early spec draft argued (1) alone was sufficient ("flex grow/shrink
+   * adjust size based on parent state, not descendant state"). The fuzzer
+   * disproved this: with `flexGrow > 0`, the parent's flex distribution
+   * gives the boundary a post-grow width different from style.width. After
+   * a descendant mutation dirties the boundary but not its ancestors, the
+   * cached parent layout reuses the post-grow width, but the cold
+   * recompute may produce a different post-grow width if any sibling
+   * changed (or even due to micro-rounding interactions). The fuzzer
+   * surfaced this with a `setFlexGrow(1)` boundary producing
+   * `cached=17 vs cold=16` width drift.
+   *
+   * Conditions (2) + (3) ensure the boundary's actual size equals its
+   * style values exactly, so the cached parent layout stays valid no
+   * matter what siblings do.
+   *
+   * Boundaries stop the upward dirty propagation in `markDirtyFromChild()`
+   * so descendant mutations don't invalidate ancestor layout caches.
+   *
+   * See `docs/superpowers/specs/2026-05-09-relayout-boundaries-design.md`
+   * for the full rationale and edge-case analysis.
+   */
+  private isLayoutBoundary(): boolean {
+    return (
+      typeof this._style.width === 'number' &&
+      typeof this._style.height === 'number' &&
+      this._style.flexGrow <= 0 &&
+      this._style.flexShrink <= 0
+    );
+  }
+
+  /**
    * Walk up the tree marking every ancestor dirty too. The algorithm uses
    * this hint to short-circuit work in subtrees that did not change.
    */
@@ -443,7 +512,65 @@ export class Node {
     // is a deliberate no-op as we propagate dirty up the tree.
     this._measureCache?.clear();
     this._layoutCache?.clear();
-    if (this._parent !== null && !this._parent._dirty) this._parent.markDirty();
+    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+  }
+
+  /**
+   * Called when a child (or descendant via recursion) is mutated. Marks
+   * this node dirty and propagates upward — but stops here if this node
+   * is a relayout boundary. The boundary semantics apply only when the
+   * mutation originates in a descendant, not when this node's own setters
+   * call `markDirty()` directly.
+   *
+   * See `isLayoutBoundary()` for the boundary definition and rationale.
+   */
+  private markDirtyFromChild(_child: Node): void {
+    this._dirty = true;
+    this._layoutCache?.clear();
+    // Stop dirty propagation at relayout boundaries — see isLayoutBoundary
+    // and the Phase 3 spec for why explicit width+height makes the
+    // boundary's size independent of descendant changes.
+    //
+    // Even though we stop dirty propagation here, we still need to inform
+    // ancestors that some descendant of theirs is dirty (so the root
+    // cache-hit path knows to recurse into this subtree). We do this via
+    // the separate `_hasDirtyDescendant` signal, which continues upward
+    // past this boundary without marking ancestors dirty.
+    if (this.isLayoutBoundary()) {
+      if (this._parent !== null) this._parent.markHasDirtyDescendant();
+      return;
+    }
+    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+  }
+
+  /**
+   * Propagate the "has a dirty descendant somewhere below" signal upward
+   * without marking ancestors `_dirty`. Called when a relayout boundary
+   * stops the dirty propagation but still needs to let the root know that
+   * some subtree needs attention. Stops if the parent is already dirty
+   * (in which case the root will recompute everything anyway) or already
+   * has a dirty descendant flag set.
+   */
+  private markHasDirtyDescendant(): void {
+    if (this._hasDirtyDescendant) return; // already set; further propagation is a no-op
+    this._hasDirtyDescendant = true;
+    if (this._parent !== null && !this._parent._dirty) this._parent.markHasDirtyDescendant();
+  }
+
+  /**
+   * Set dirty + clear caches + propagate up unconditionally, bypassing
+   * the layout-boundary short-circuit in `markDirty()`. Used only by
+   * `markDirtyDeep` in `algorithm/cache.ts` for differential-mode and
+   * fuzzer validation that need to force the full tree onto the cold
+   * path regardless of boundary semantics.
+   *
+   * @internal
+   */
+  _forceDirty(): void {
+    this._dirty = true;
+    this._measureCache?.clear();
+    this._layoutCache?.clear();
+    if (this._parent !== null && !this._parent._dirty) this._parent._forceDirty();
   }
 
   isDirty(): boolean {
@@ -459,6 +586,7 @@ export class Node {
    */
   clearDirty(): void {
     this._dirty = false;
+    this._hasDirtyDescendant = false;
   }
 }
 

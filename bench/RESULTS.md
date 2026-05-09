@@ -1,6 +1,6 @@
 # Pilates benchmark results
 
-Generated: 2026-05-08 · Node v22.21.0 · win32/x64
+Generated: 2026-05-09 · Node v22.21.0 · win32/x64
 
 Reproduce: `pnpm bench`. Numbers vary by machine — relative
 positions are the interesting signal.
@@ -15,6 +15,7 @@ positions are the interesting signal.
 | **big** | ~5000 nodes, 2 levels (50 × 100) |
 | **huge** | ~10000 nodes, 2 levels (100 × 100) |
 | **hotrelayout** | 1k-node persistent tree, mutate one leaf per pass |
+| **hotrelayoutboundary** | 1k-node persistent tree with explicit-sized row boundaries, mutate one leaf |
 
 ## tiny
 
@@ -22,9 +23,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 2.4µs | 421.2k ops/s | 0 |
-| @pilates/render (full) | 72.3µs | 13.8k ops/s | 0 |
-| yoga-layout (WASM) | 19.5µs | 51.2k ops/s | 0 |
+| @pilates/core (layout) | 2.5µs | 405.4k ops/s | 0 |
+| @pilates/render (full) | 77.7µs | 12.9k ops/s | 0 |
+| yoga-layout (WASM) | 29.6µs | 33.8k ops/s | 0 |
 
 ## realistic
 
@@ -32,9 +33,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 68.1µs | 14.7k ops/s | 0 |
-| @pilates/render (full) | 256.5µs | 3.9k ops/s | 0 |
-| yoga-layout (WASM) | 332.7µs | 3.0k ops/s | 0 |
+| @pilates/core (layout) | 66.6µs | 15.0k ops/s | 0 |
+| @pilates/render (full) | 310.0µs | 3.2k ops/s | 0 |
+| yoga-layout (WASM) | 460.2µs | 2.2k ops/s | 0 |
 
 ## stress
 
@@ -42,9 +43,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 278.6µs | 3.6k ops/s | 0 |
-| @pilates/render (full) | 1.57ms | 636 ops/s | 0 |
-| yoga-layout (WASM) | 2.03ms | 493 ops/s | 0 |
+| @pilates/core (layout) | 298.8µs | 3.3k ops/s | 0 |
+| @pilates/render (full) | 1.66ms | 601 ops/s | 0 |
+| yoga-layout (WASM) | 2.65ms | 377 ops/s | 0 |
 
 ## big
 
@@ -52,9 +53,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 1.41ms | 711 ops/s | 0 |
-| @pilates/render (full) | 9.61ms | 104 ops/s | 0 |
-| yoga-layout (WASM) | 9.34ms | 107 ops/s | 0 |
+| @pilates/core (layout) | 1.52ms | 660 ops/s | 0 |
+| @pilates/render (full) | 10.2ms | 98 ops/s | 0 |
+| yoga-layout (WASM) | 11.7ms | 86 ops/s | 0 |
 
 ## huge
 
@@ -62,9 +63,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 2.92ms | 342 ops/s | 0 |
-| @pilates/render (full) | 23.8ms | 42 ops/s | 0 |
-| yoga-layout (WASM) | 18.6ms | 54 ops/s | 0 |
+| @pilates/core (layout) | 3.12ms | 320 ops/s | 0 |
+| @pilates/render (full) | 25.2ms | 40 ops/s | 0 |
+| yoga-layout (WASM) | 22.3ms | 45 ops/s | 0 |
 
 ## hotrelayout
 
@@ -72,9 +73,19 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 180.0µs | 5.6k ops/s | 0 |
-| @pilates/render (full) | 178.9µs | 5.6k ops/s | 0 |
-| yoga-layout (WASM) | 86.0µs | 11.6k ops/s | 0 |
+| @pilates/core (layout) | 199.2µs | 5.0k ops/s | 0 |
+| @pilates/render (full) | 199.2µs | 5.0k ops/s | 0 |
+| yoga-layout (WASM) | 100.0µs | 10.0k ops/s | 0 |
+
+## hotrelayoutboundary
+
+> 1k-node persistent tree with explicit-sized row boundaries, mutate one leaf
+
+| Engine | Mean latency | Throughput | Samples |
+|---|---:|---:|---:|
+| @pilates/core (layout) | 10.8µs | 92.8k ops/s | 0 |
+| @pilates/render (full) | 10.9µs | 91.4k ops/s | 0 |
+| yoga-layout (WASM) | 95.4µs | 10.5k ops/s | 0 |
 
 ## What's measured
 

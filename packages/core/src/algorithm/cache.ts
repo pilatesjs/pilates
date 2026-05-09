@@ -143,6 +143,16 @@ export interface CachedChildLayout {
   height: number;
   scrollWidth: number;
   scrollHeight: number;
+  /**
+   * Pre-rounding (float) left position of this child, captured before
+   * `roundLayout` converts positions to integers. Used by
+   * `roundLayoutSubtree` to compute the correct float absolute coordinate
+   * when re-laying out a dirty boundary node under a cache-hit root.
+   * See `Node._floatLeft` for the full explanation.
+   */
+  floatLeft: number;
+  /** See {@link floatLeft}. */
+  floatTop: number;
 }
 
 /** @internal */
@@ -256,17 +266,24 @@ export function clearAllCaches(root: Node): void {
  * Mark every node in the subtree dirty. Used after `clearAllCaches` to
  * force `calculateLayout` down the full cold path.
  *
- * Note: `Node.markDirty()` also calls `_measureCache?.clear()` as a
- * side-effect of dirtying. So calling `clearAllCaches(root)` then
- * `markDirtyDeep(root)` clears each leaf's measure cache twice. The
- * second clear is harmless (no-op on an empty slot array), but
- * differential-mode callers should know the redundancy is intentional —
- * we want both invariants explicit at the call site.
+ * Uses `_forceDirty()` rather than `markDirty()` so the propagation
+ * walks through layout boundaries (Phase 3). Differential-mode and
+ * fuzzer validation rely on dirtying the entire tree to force the
+ * cold path; without this, boundaries would short-circuit the walk
+ * and leave clean ancestors that would never re-run the algorithm.
+ *
+ * Note: `Node._forceDirty()` also calls `_measureCache?.clear()` and
+ * `_layoutCache?.clear()` as a side-effect of dirtying. So calling
+ * `clearAllCaches(root)` then `markDirtyDeep(root)` clears each node's
+ * caches twice. The second clear is harmless (no-op on an empty
+ * structure), but differential-mode callers should know the
+ * redundancy is intentional — we want both invariants explicit at the
+ * call site.
  *
  * @internal
  */
 export function markDirtyDeep(root: Node): void {
-  root.markDirty();
+  root._forceDirty();
   for (let i = 0; i < root.getChildCount(); i++) markDirtyDeep(root.getChild(i)!);
 }
 
@@ -293,6 +310,8 @@ export function snapshotForCache(node: Node): LayoutCacheValue {
       height: c.layout.height,
       scrollWidth: c.layout.scrollWidth,
       scrollHeight: c.layout.scrollHeight,
+      floatLeft: c._floatLeft,
+      floatTop: c._floatTop,
     });
   }
   return {
@@ -342,6 +361,8 @@ export function restoreFromCache(node: Node, value: LayoutCacheValue): void {
     c._layout.height = cl.height;
     c._layout.scrollWidth = cl.scrollWidth;
     c._layout.scrollHeight = cl.scrollHeight;
+    c._floatLeft = cl.floatLeft;
+    c._floatTop = cl.floatTop;
   }
 }
 

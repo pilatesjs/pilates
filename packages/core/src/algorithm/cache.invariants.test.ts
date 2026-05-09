@@ -104,3 +104,45 @@ describe('cache invariants — open questions from spec', () => {
     expect(child.layout.left).toBe(10);
   });
 });
+
+describe('cache invariants — relayout boundaries', () => {
+  it('layout cache hits at root after descendant mutation under a boundary', () => {
+    // The Phase 3 win: with a boundary in the tree, descendant mutations
+    // don't invalidate the root cache. Root.calculateLayout hits its
+    // cache even though a leaf inside the boundary changed.
+    const root = Node.create();
+    root.setFlexDirection('row');
+    const boundary = Node.create();
+    // Explicit width AND height + no flex grow/shrink → boundary.
+    boundary.setWidth(50);
+    boundary.setHeight(50);
+    const leaf = Node.create();
+    boundary.insertChild(leaf, 0);
+    root.insertChild(boundary, 0);
+
+    // Prime the cache.
+    root.calculateLayout(100, 50);
+
+    // Mutate a leaf under the boundary.
+    leaf.setFlexGrow(3);
+
+    const beforeHits =
+      (root as unknown as { _layoutCache?: { hits: number } })._layoutCache?.hits ?? 0;
+
+    root.calculateLayout(100, 50);
+
+    const afterHits =
+      (root as unknown as { _layoutCache?: { hits: number } })._layoutCache?.hits ?? 0;
+
+    // Root cache must hit (boundary stopped dirty propagation).
+    // Differential mode skips this assertion (cold-pass invalidates
+    // the counter).
+    if (process.env.PILATES_DIFFERENTIAL_LAYOUT !== '1') {
+      expect(afterHits).toBe(beforeHits + 1);
+    }
+
+    // Layout still correct.
+    expect(boundary.layout.width).toBe(50);
+    expect(boundary.layout.height).toBe(50);
+  });
+});

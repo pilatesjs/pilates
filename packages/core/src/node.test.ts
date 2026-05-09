@@ -434,6 +434,91 @@ describe('Node — measure cache hit during calculateLayout', () => {
   );
 });
 
+describe('Node — relayout boundary semantics', () => {
+  it('node with explicit width and height stops dirty propagation', () => {
+    const root = Node.create();
+    const boundary = Node.create();
+    boundary.setWidth(50);
+    boundary.setHeight(20);
+    const leaf = Node.create();
+    boundary.insertChild(leaf, 0);
+    root.insertChild(boundary, 0);
+    root.calculateLayout(100, 50);
+
+    expect(root.isDirty()).toBe(false);
+    expect(boundary.isDirty()).toBe(false);
+
+    leaf.setFlexGrow(2);
+
+    expect(leaf.isDirty()).toBe(true);
+    expect(boundary.isDirty()).toBe(true);
+    expect(root.isDirty()).toBe(false);
+  });
+
+  it('node with only explicit width (no height) propagates dirty up', () => {
+    const root = Node.create();
+    const partial = Node.create();
+    partial.setWidth(50);
+    const leaf = Node.create();
+    partial.insertChild(leaf, 0);
+    root.insertChild(partial, 0);
+    root.calculateLayout(100, 50);
+
+    leaf.setFlexGrow(2);
+    expect(root.isDirty()).toBe(true);
+  });
+
+  it('toggling width to "auto" removes the boundary', () => {
+    const root = Node.create();
+    const node = Node.create();
+    node.setWidth(50);
+    node.setHeight(20);
+    root.insertChild(node, 0);
+    const leaf = Node.create();
+    node.insertChild(leaf, 0);
+    root.calculateLayout(100, 50);
+
+    node.setWidth('auto');
+    root.calculateLayout(100, 50);
+    expect(root.isDirty()).toBe(false);
+
+    leaf.setFlexGrow(2);
+    expect(root.isDirty()).toBe(true);
+  });
+
+  it('absolute-positioned boundary still acts as a boundary', () => {
+    const root = Node.create();
+    const abs = Node.create();
+    abs.setPositionType('absolute');
+    abs.setWidth(30);
+    abs.setHeight(15);
+    const leaf = Node.create();
+    abs.insertChild(leaf, 0);
+    root.insertChild(abs, 0);
+    root.calculateLayout(100, 50);
+
+    leaf.setFlexGrow(2);
+    expect(abs.isDirty()).toBe(true);
+    expect(root.isDirty()).toBe(false);
+  });
+
+  it('_forceDirty bypasses boundary semantics for differential-mode infra', () => {
+    const root = Node.create();
+    const boundary = Node.create();
+    boundary.setWidth(50);
+    boundary.setHeight(20);
+    const leaf = Node.create();
+    boundary.insertChild(leaf, 0);
+    root.insertChild(boundary, 0);
+    root.calculateLayout(100, 50);
+
+    (leaf as unknown as { _forceDirty: () => void })._forceDirty();
+    expect(leaf.isDirty()).toBe(true);
+    expect(boundary.isDirty()).toBe(true);
+    expect(root.isDirty()).toBe(true);
+  });
+});
+
 describe('Node — layout cache integration', () => {
   it('exposes _layoutCache as undefined initially', () => {
     const n = Node.create();

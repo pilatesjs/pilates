@@ -80,15 +80,29 @@ function calculateLayoutImpl(
     if (hit !== undefined) {
       root._layout.left = 0;
       root._layout.top = 0;
+      root._floatLeft = 0;
+      root._floatTop = 0;
       restoreFromCache(root, hit);
       // Children may have their own caches; recurse to either hit those
       // or fall back to recompute on miss. Pass useCache=true so inner nodes
       // can also use their caches. This is safe because the root cache-hit
       // path skips roundLayout — cached values were already rounded at their
       // original absolute positions, which are unchanged when the root hits.
+      //
+      // Phase 3 optimisation: a child can be skipped entirely when BOTH
+      //   (a) the child itself is not dirty, AND
+      //   (b) no descendant of the child is dirty.
+      // Condition (b) is tracked by `_hasDirtyDescendant`. A boundary that
+      // stops dirty propagation still sets `_hasDirtyDescendant = true` on
+      // its ancestors (without marking them dirty), so a clean direct child
+      // of root with `_hasDirtyDescendant = true` is the signal that a
+      // boundary somewhere below needs to be re-laid out.
+      // When both flags are false, the subtree is fully clean: layout values
+      // are unchanged from the last pass and no recursion is needed.
       for (let i = 0; i < root.getChildCount(); i++) {
         const c = root.getChild(i)!;
         if (c.style.display === 'none') continue;
+        if (!c.isDirty() && !c._hasDirtyDescendant) continue;
         // c._layout.{width,height} were populated by restoreFromCache(root, ...)
         // above. layoutChildren will use them as the EXACTLY-sized container
         // and either hit c's own cache or recompute.
@@ -102,6 +116,8 @@ function calculateLayoutImpl(
   // Cold path
   root._layout.left = 0;
   root._layout.top = 0;
+  root._floatLeft = 0;
+  root._floatTop = 0;
   root._layout.width = resolveRootAxisSize(root, 'row', availableWidth);
   root._layout.height = resolveRootAxisSize(root, 'column', availableHeight);
 

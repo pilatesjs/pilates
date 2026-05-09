@@ -31,6 +31,45 @@ export function roundLayout(root: Node): void {
   applyRounding(root, absolutes, 0, 0);
 }
 
+/**
+ * Round the layout of a subtree that sits at a known absolute position.
+ *
+ * Used by the Phase 3 relayout-boundary path: when a boundary node is
+ * re-laid out under a cache-hit root, its children's positions are in
+ * floating-point space. We round them in isolation using the boundary
+ * node's already-rounded absolute position as the origin.
+ *
+ * The boundary node's own `width`/`height` are explicit integers (that is
+ * the boundary invariant) and its `left`/`top` were restored from the
+ * parent's rounded cache, so they are already integers. We therefore do
+ * NOT re-round the boundary node itself — only its children. The parent
+ * absolute corner is `(parentAbsX + node.left, parentAbsY + node.top)`.
+ *
+ * @internal
+ */
+export function roundLayoutSubtree(node: Node, parentAbsX: number, parentAbsY: number): void {
+  // Use the pre-rounding float left/top (node._floatLeft/Top) rather than the
+  // rounded integer _layout.left/top. The boundary node's _layout.left/top were
+  // restored from the parent's rounded cache (integers), but the true float
+  // position is stored in _floatLeft/Top (also restored from cache). Using the
+  // float position ensures that absolute coordinates of the boundary's children
+  // are computed in the same floating-point space as the full-tree roundLayout pass.
+  const nodeAbsX = parentAbsX + node._floatLeft;
+  const nodeAbsY = parentAbsY + node._floatTop;
+  const absolutes = new Map<Node, AbsCorner>();
+  // Collect children relative to the node's absolute corner.
+  for (let i = 0; i < node.getChildCount(); i++) {
+    collectAbsolutes(node.getChild(i)!, nodeAbsX, nodeAbsY, absolutes);
+  }
+  // Round children (their positions are relative to `node`, so
+  // parentRoundedX/Y for each child is node's absolute corner rounded).
+  const roundedNodeX = Math.round(nodeAbsX);
+  const roundedNodeY = Math.round(nodeAbsY);
+  for (let i = 0; i < node.getChildCount(); i++) {
+    applyRounding(node.getChild(i)!, absolutes, roundedNodeX, roundedNodeY);
+  }
+}
+
 function collectAbsolutes(
   node: Node,
   parentX: number,
