@@ -6,6 +6,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [1.0.0] — 2026-05-09
+
+Promotion to 1.0.0 alongside `@pilates/core@1.0.0`. No `@pilates/render`
+public API change since `1.0.0-rc.3`; the version bump reflects the
+core's milestone (consumers using both packages now have a clean
+matched-1.0 line).
+
 ## [1.0.0-rc.3] — 2026-05-07
 
 ### Scissor clipping + scrollbar (Track 1 P2 prep)

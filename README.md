@@ -79,9 +79,9 @@ all of React. **Pilates** separates them:
 
 | Package | Status | What |
 |---|---|---|
-| [`@pilates/core`](./packages/core)       | `1.0.0-rc.2`     | Engine: imperative Node API, returns layout boxes. |
-| [`@pilates/render`](./packages/render)   | `1.0.0-rc.3`     | Out-of-box: declarative tree → painted string. |
-| [`@pilates/diff`](./packages/diff)       | `0.1.0`          | Cell-level frame diff + minimal ANSI redraw. |
+| [`@pilates/core`](./packages/core)       | `1.0.0`          | Engine: imperative Node API, returns layout boxes. |
+| [`@pilates/render`](./packages/render)   | `1.0.0`          | Out-of-box: declarative tree → painted string. |
+| [`@pilates/diff`](./packages/diff)       | `0.2.0`          | Cell-level frame diff + minimal ANSI redraw. |
 | [`@pilates/react`](./packages/react)     | `0.3.0`          | React reconciler — author terminal UIs with JSX, hooks, mouse, focus, scroll. |
 | [`@pilates/widgets`](./packages/widgets) | `0.1.0-rc.2`     | Interactive widgets (`TextInput`, `Select`, `Spinner`, `MultiSelect`, `Tabs`, `Table`, `ProgressBar`, `TextArea`) for `@pilates/react`. |
 
@@ -241,12 +241,11 @@ flexbox implementation:
 
 ## Status
 
-Release candidate, in active use. Core algorithm + flex pipeline are
-feature-complete for v1, validated cell-for-cell against WASM Yoga,
-and faster than Yoga on every benchmarked workload (see Performance
-above). The React layer ships mouse, scroll, focus management, and
-typed errors. Promotion of `@pilates/core` and `@pilates/render` to
-`1.0.0` is the next milestone.
+`@pilates/core@1.0.0` and `@pilates/render@1.0.0` are released.
+Core algorithm + flex pipeline are feature-complete, validated
+cell-for-cell against WASM Yoga, and faster than Yoga on every
+benchmarked workload (see Performance above). The React layer ships
+mouse, scroll, focus management, and typed errors.
 
 ## License
 

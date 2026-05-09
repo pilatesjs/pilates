@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [1.0.0] — 2026-05-09
+
+The `@pilates/core` 1.0.0 milestone. Three rounds of performance
+hardening on top of `1.0.0-rc.2` brought Pilates from "fast on
+tree-build" to faster than WASM Yoga on every benchmarked workload
+(7–12× across tree-build-then-layout, ~9× on the hot-relayout pattern
+Yoga had been winning on). Public API is unchanged from `rc.2`.
+
 ### Performance hardening — Phase 1
 
 - **Internal** measure-func result cache on leaves with a `MeasureFunc`
