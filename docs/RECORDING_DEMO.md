@@ -7,17 +7,26 @@ block in `README.md` (currently lines 17–24).
 
 ## Recommended choice
 
-**`examples/progress-table`** for the README hero. It's:
-- Visually striking (color bars, percentages, status icons).
-- Static-looking — easy to capture without timing tricks.
-- Demonstrates render quality without needing user input.
-- Renders in ~0.5 seconds; clip is short.
+**`examples/react-build-dashboard`** for the README hero. It's the
+flagship demo and exercises everything Pilates ships: multi-pane
+flex layout, two `<ScrollView>` instances, `useFocus` + keyboard
+navigation, mouse click + scroll, `<ProgressBar>` and `<Spinner>`
+widgets, and live animation (tick → progress fills + log appends).
 
-For a secondary asset (Twitter / blog), `examples/react-wizard`
-demonstrates the interactive React story — `<TextInput>` → `<Select>`
-→ `<Spinner>` flow with mouse and keyboard. Better for "look you can
-build interactive things" framing. Record this one separately if you
-want a second clip.
+The simulation runs forever in a self-driving loop — no user input
+required to look interesting. A 5–10 second clip captures one or two
+pipeline-step transitions plus the activity log scrolling. That's
+the launch artifact.
+
+For a secondary asset (Twitter or static screenshot):
+
+- **`examples/progress-table`** — static one-frame render. Good for
+  a small inline image in a tweet or blog body. Captures the render
+  quality (color bars, status, box-drawing) without needing motion.
+- **`examples/react-wizard`** — interactive React story
+  (`<TextInput>` → `<Select>` → `<Spinner>`). Shows you can build
+  forms. Worth a second clip if you want to highlight the React
+  layer specifically.
 
 ## Tools needed
 
@@ -49,8 +58,8 @@ re-playable); `agg` converts it to GIF.
    - **Dark theme.** Pilates' colors pop on dark backgrounds and wash
      out on light. The default Windows Terminal "Campbell" or
      "One Half Dark" themes work well.
-   - **Comfortable size:** ~120 columns × 24 rows lets the
-     `progress-table` output sit on one screen without wrap.
+   - **Comfortable size:** ~100 columns × 30 rows fits the
+     `react-build-dashboard` panes comfortably without wrap.
    - **Larger font.** Hit `Ctrl + =` a few times so the eventual GIF
      stays readable when scaled to ~720px wide.
 3. In ScreenToGif: **Recorder → Region select** → drag a tight
@@ -58,28 +67,18 @@ re-playable); `agg` converts it to GIF.
    no shell prompt above the example).
 4. Click record. Switch focus to the terminal and run:
    ```bash
-   pnpm --filter @pilates-examples/progress-table dev
+   pnpm --filter @pilates-examples/react-build-dashboard dev
    ```
-5. The example renders one static frame and exits. Wait ~1–2 seconds
-   after the output appears, then stop ScreenToGif.
+5. The example self-drives forever — pipeline steps run, log
+   entries append, tasks advance. Record **5–10 seconds** to capture
+   one or two pipeline-step transitions plus log scrolling. Press
+   `q` in the terminal to exit cleanly, then stop ScreenToGif.
 6. ScreenToGif's editor opens. Trim leading/trailing dead frames
-   (Edit → Trim → keep only frames showing the rendered output).
-   For a near-static clip like this, set the playback to **2 fps**
-   (or just keep a single frame and save as GIF) — both keep the
-   file <500 KB.
+   (Edit → Trim → keep only the live segment). Aim for a clip
+   under 5 MB; reduce frame count via Edit → Reduce frame count if
+   it's too big.
 7. **Save → Gif → File**. Name it `assets/demo.gif`, save into the
    repo's `assets/` folder.
-
-**For an animated alternative** (if you want the GIF to actually
-move): record `react-dashboard` instead. It has a live `tick` counter
-that increments every frame, giving the GIF visible motion:
-
-```bash
-pnpm --filter @pilates-examples/react-dashboard dev
-```
-
-Record ~5 seconds of it, the diff loop's live re-render creates a
-cleanly-moving clip.
 
 ## Recording — macOS / Linux (asciinema + agg)
 
@@ -93,16 +92,15 @@ pnpm install
 pnpm build
 
 # 3. Record.
-asciinema rec assets/progress-table.cast \
-  --command "pnpm --filter @pilates-examples/progress-table dev" \
+asciinema rec assets/react-build-dashboard.cast \
+  --command "pnpm --filter @pilates-examples/react-build-dashboard dev" \
   --idle-time-limit 1.0
 
-# 4. Convert to GIF. Tweak --cols / --rows to match the example's
-#    output dimensions (progress-table is 80x20-ish).
-agg --cols 80 --rows 18 \
+# 4. Convert to GIF. The build-dashboard fits ~100x30; tweak to match.
+agg --cols 100 --rows 30 \
     --font-family "JetBrains Mono,Menlo,Monaco,monospace" \
     --speed 1.5 \
-    assets/progress-table.cast \
+    assets/react-build-dashboard.cast \
     assets/demo.gif
 
 # 5. Inspect the result.
@@ -145,10 +143,10 @@ For Twitter, max 6.5 MB and ideally under 30 seconds. Use the same
 cast but cut to 10 seconds with:
 
 ```bash
-agg --cols 80 --rows 18 \
+agg --cols 100 --rows 30 \
     --speed 2.0 \
     --last-frame-pause 1.0 \
-    assets/progress-table.cast \
+    assets/react-build-dashboard.cast \
     assets/twitter-clip.gif
 ```
 
@@ -172,9 +170,9 @@ The recording is the only thing blocking the announcement post. Once
 existing draft at `docs/announcements/2026-05-09-faster-than-yoga.md`
 can ship to HN / Twitter / r/javascript / r/commandline.
 
-Don't post the announcement until both:
-1. `@pilates/core@1.0.0` and `@pilates/render@1.0.0` are on npm
-   (the `npm pack --dry-run` outputs the correct tarballs at HEAD;
-   actual `pnpm publish` needs your 2FA OTP).
+Don't post the announcement until:
+1. ~~`@pilates/core@1.0.0` and `@pilates/render@1.0.0` are on npm~~ —
+   done as of 2026-05-09. `npm view @pilates/core version` returns
+   `1.0.0`.
 2. `assets/demo.gif` is committed and the README block is
    uncommented.

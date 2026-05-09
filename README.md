@@ -105,6 +105,7 @@ the imperative `@pilates/render` API, four built on `@pilates/react`.
 
 | Example | What it shows |
 |---|---|
+| **[react-build-dashboard](./examples/react-build-dashboard)** | **Flagship demo.** Interactive build-pipeline dashboard: `<ScrollView>` × 2, mouse, `useFocus`, keyboard nav, animation, `<ProgressBar>` + `<Spinner>` widgets, all stitched together. |
 | [react-counter](./examples/react-counter)     | Minimal reconciler example: counter incrementing every 250ms, demonstrating the diff-based redraw loop. |
 | [react-dashboard](./examples/react-dashboard) | React port of `dashboard` with a live `tick` counter on the header. |
 | [react-modal](./examples/react-modal)         | React port of `modal`: centered confirmation dialog over a scrollable list. |
@@ -118,6 +119,8 @@ pnpm --filter @pilates-examples/progress-table dev
 # react
 pnpm --filter @pilates-examples/react-counter dev
 pnpm --filter @pilates-examples/react-wizard dev
+# flagship
+pnpm --filter @pilates-examples/react-build-dashboard dev
 ```
 
 ## Quick start (using just the engine)
