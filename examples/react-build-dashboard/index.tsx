@@ -218,17 +218,16 @@ export function App() {
         border="single"
         title="Pilates Build Dashboard"
         flexDirection="row"
-        justifyContent="space-between"
         alignItems="center"
         padding={{ left: 1, right: 1 }}
       >
-        <Box flexDirection="row" gap={{ column: 2 }}>
-          <Text color="green" bold>
-            ● live
-          </Text>
-          <Text color="gray">running:</Text>
-          <Text color="cyan">{runningTaskName}</Text>
-        </Box>
+        <Text color="green" bold>
+          ● live
+        </Text>
+        <Text>{'  '}</Text>
+        <Text color="gray">running: </Text>
+        <Text color="cyan">{runningTaskName}</Text>
+        <Box flexGrow={1} />
         <Text color="gray">tick {tick}</Text>
       </Box>
 
