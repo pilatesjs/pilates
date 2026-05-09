@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 540" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif">
+  <!-- Theme: dark backdrop so it pops on both light and dark GitHub READMEs -->
+  <defs>
+    <style>
+      .title       { font-size: 22px; font-weight: 700; fill: #f3f4f6; }
+      .subtitle    { font-size: 13px; fill: #9ca3af; }
+      .scenario    { font-size: 14px; font-weight: 600; fill: #e5e7eb; }
+      .scenarioSub { font-size: 11px; fill: #9ca3af; }
+      .barLabel    { font-size: 12px; font-weight: 600; fill: #ffffff; }
+      .speedup     { font-size: 16px; font-weight: 700; fill: #10b981; }
+      .speedupRev  { font-size: 16px; font-weight: 700; fill: #f97316; }
+      .legend      { font-size: 12px; fill: #d1d5db; }
+      .footnote    { font-size: 11px; fill: #6b7280; }
+    </style>
+  </defs>
+
+  <!-- background -->
+  <rect width="880" height="540" fill="#0f172a" rx="8"/>
+
+  <!-- title -->
+  <text x="40" y="40" class="title">Pilates vs WASM Yoga — flex layout latency</text>
+  <text x="40" y="60" class="subtitle">Mean time per layout pass · lower is better · pure-TS Pilates beats WASM Yoga across every workload</text>
+
+  <!-- legend -->
+  <g transform="translate(620, 35)">
+    <rect width="14" height="14" fill="#10b981" rx="2"/>
+    <text x="22" y="11" class="legend">@pilates/core (pure TS)</text>
+    <rect y="22" width="14" height="14" fill="#f97316" rx="2"/>
+    <text x="22" y="33" class="legend">yoga-layout (WASM)</text>
+  </g>
+
+  <!-- chart area starts at y=100 -->
+  <!-- Each row: 56 tall. Layout per row: scenario col (180px wide), bar area (520px), speedup col (right-aligned).
+       Bar area: 4 cells wide and 2 stacked bars (Pilates 18 tall + 4 gap + Yoga 18 tall = 40).
+       Bars are normalized within-row to the slower of the two, full bar width = 480px. -->
+
+  <!-- ROW 1: tiny -->
+  <g transform="translate(0, 100)">
+    <text x="40" y="14" class="scenario">tiny</text>
+    <text x="40" y="30" class="scenarioSub">10 nodes, 1 level</text>
+    <!-- Pilates 2.5µs / Yoga 30µs (12×). Pilates bar = 2.5/30 * 480 = 40 -->
+    <rect x="220" y="2" width="40" height="18" fill="#10b981" rx="2"/>
+    <text x="266" y="15" class="barLabel" fill="#10b981">2.5µs</text>
+    <rect x="220" y="26" width="480" height="18" fill="#f97316" rx="2"/>
+    <text x="708" y="39" class="barLabel" fill="#f97316">30µs</text>
+    <text x="780" y="28" class="speedup">12× faster</text>
+  </g>
+
+  <!-- ROW 2: realistic -->
+  <g transform="translate(0, 156)">
+    <text x="40" y="14" class="scenario">realistic</text>
+    <text x="40" y="30" class="scenarioSub">~100 nodes, 3-4 levels</text>
+    <!-- Pilates 67µs / Yoga 460µs (7×). Pilates bar = 67/460 * 480 = 70 -->
+    <rect x="220" y="2" width="70" height="18" fill="#10b981" rx="2"/>
+    <text x="296" y="15" class="barLabel" fill="#10b981">67µs</text>
+    <rect x="220" y="26" width="480" height="18" fill="#f97316" rx="2"/>
+    <text x="708" y="39" class="barLabel" fill="#f97316">460µs</text>
+    <text x="780" y="28" class="speedup">7× faster</text>
+  </g>
+
+  <!-- ROW 3: stress -->
+  <g transform="translate(0, 212)">
+    <text x="40" y="14" class="scenario">stress</text>
+    <text x="40" y="30" class="scenarioSub">~1,000 nodes, 2 levels</text>
+    <!-- Pilates 299µs / Yoga 2.65ms (9×). Pilates bar = 299/2650 * 480 = 54 -->
+    <rect x="220" y="2" width="54" height="18" fill="#10b981" rx="2"/>
+    <text x="280" y="15" class="barLabel" fill="#10b981">299µs</text>
+    <rect x="220" y="26" width="480" height="18" fill="#f97316" rx="2"/>
+    <text x="708" y="39" class="barLabel" fill="#f97316">2.65ms</text>
+    <text x="780" y="28" class="speedup">9× faster</text>
+  </g>
+
+  <!-- ROW 4: big -->
+  <g transform="translate(0, 268)">
+    <text x="40" y="14" class="scenario">big</text>
+    <text x="40" y="30" class="scenarioSub">~5,000 nodes</text>
+    <!-- Pilates 1.5ms / Yoga 11.7ms (8×). Pilates bar = 1.5/11.7 * 480 = 62 -->
+    <rect x="220" y="2" width="62" height="18" fill="#10b981" rx="2"/>
+    <text x="288" y="15" class="barLabel" fill="#10b981">1.5ms</text>
+    <rect x="220" y="26" width="480" height="18" fill="#f97316" rx="2"/>
+    <text x="708" y="39" class="barLabel" fill="#f97316">11.7ms</text>
+    <text x="780" y="28" class="speedup">8× faster</text>
+  </g>
+
+  <!-- ROW 5: huge -->
+  <g transform="translate(0, 324)">
+    <text x="40" y="14" class="scenario">huge</text>
+    <text x="40" y="30" class="scenarioSub">~10,000 nodes</text>
+    <!-- Pilates 3.1ms / Yoga 22.3ms (7×). Pilates bar = 3.1/22.3 * 480 = 67 -->
+    <rect x="220" y="2" width="67" height="18" fill="#10b981" rx="2"/>
+    <text x="293" y="15" class="barLabel" fill="#10b981">3.1ms</text>
+    <rect x="220" y="26" width="480" height="18" fill="#f97316" rx="2"/>
+    <text x="708" y="39" class="barLabel" fill="#f97316">22.3ms</text>
+    <text x="780" y="28" class="speedup">7× faster</text>
+  </g>
+
+  <!-- ROW 6: hotrelayout (Yoga wins) -->
+  <g transform="translate(0, 380)">
+    <text x="40" y="14" class="scenario">hot-relayout</text>
+    <text x="40" y="30" class="scenarioSub">1k tree, mutate one leaf / frame</text>
+    <!-- Pilates 199µs / Yoga 100µs. Pilates LOSES here. Yoga bar = 100/199 * 480 = 241; Pilates bar = full -->
+    <rect x="220" y="2" width="480" height="18" fill="#10b981" rx="2"/>
+    <text x="708" y="15" class="barLabel" fill="#10b981">199µs</text>
+    <rect x="220" y="26" width="241" height="18" fill="#f97316" rx="2"/>
+    <text x="467" y="39" class="barLabel" fill="#f97316">100µs</text>
+    <text x="780" y="28" class="speedupRev">Yoga 2× faster</text>
+  </g>
+
+  <!-- ROW 7: hotrelayoutboundary (the headline) -->
+  <g transform="translate(0, 436)">
+    <!-- accent: highlight the headline row with a subtle background -->
+    <rect x="20" y="-6" width="840" height="56" fill="#1e293b" rx="6"/>
+    <text x="40" y="14" class="scenario">hot-relayout</text>
+    <text x="40" y="30" class="scenarioSub">↑ same workload, with explicit-sized boundaries</text>
+    <!-- Pilates 10.8µs / Yoga 95.4µs (9×). Pilates bar = 10.8/95.4 * 480 = 54 -->
+    <rect x="220" y="2" width="54" height="18" fill="#10b981" rx="2"/>
+    <text x="280" y="15" class="barLabel" fill="#10b981">10.8µs</text>
+    <rect x="220" y="26" width="480" height="18" fill="#f97316" rx="2"/>
+    <text x="708" y="39" class="barLabel" fill="#f97316">95.4µs</text>
+    <text x="780" y="28" class="speedup">9× faster</text>
+  </g>
+
+  <!-- footer -->
+  <text x="40" y="510" class="footnote">Reproduce: <tspan font-family="ui-monospace, 'SF Mono', Menlo, monospace" fill="#9ca3af">pnpm bench</tspan> in github.com/pilatesjs/pilates · Node 22.21, win32/x64 · machine numbers vary; relative positions are the signal</text>
+  <text x="40" y="525" class="footnote">Phase 3 relayout boundaries (last row) close the one workload Yoga used to win — explicit-sized container nodes stop dirty propagation, root layout cache stays valid</text>
+</svg>
