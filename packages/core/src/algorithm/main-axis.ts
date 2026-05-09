@@ -141,7 +141,7 @@ export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, par
   // node is encountered under useCache=true, it re-lays out the subtree,
   // rounds child positions (using the tracked absolute coordinate), and
   // updates scroll sizes + cache (see `roundLayoutSubtree` and
-  // `updateScrollSizesAndCache`).
+  // `computeAndCacheScrollSizes`).
   if (useCache && !node.isDirty() && node._layoutCache !== undefined) {
     const key = {
       availableWidth: node.layout.width,
@@ -190,7 +190,7 @@ export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, par
   // When inside a root cache-hit pass (useCache=true, i.e. we are on a dirty
   // node's cold-recompute path), pass useCache=false to the children. The
   // children's sub-layouts will be fully recomputed; `roundLayoutSubtree`
-  // below will then round their positions, and `updateScrollSizesAndCache`
+  // below will then round their positions, and `computeAndCacheScrollSizes`
   // will set their parent-visible scroll metrics. Passing useCache=false here
   // prevents children from reading stale cache entries whose keys were keyed
   // on pre-mutation sizes (the parent just assigned them new widths/heights
