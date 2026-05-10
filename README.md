@@ -14,14 +14,9 @@
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/@pilates/core?color=blue" alt="license MIT"></a>
 </p>
 
-<!-- Demo: once recorded, drop assets/demo.gif into ./assets/ and uncomment.
-     Suggested: `asciinema rec` while running
-     `pnpm --filter @pilates-examples/progress-table dev`,
-     then convert with `agg demo.cast assets/demo.gif`.
 <p align="center">
-  <img src="./assets/demo.gif" alt="Pilates demo — progress-table example" width="720">
+  <img src="./assets/demo.gif" alt="Pilates demo — react-build-dashboard example" width="720">
 </p>
--->
 
 > Headless flex layout engine for terminal UIs. Pure TypeScript, zero runtime
 > dependencies.
