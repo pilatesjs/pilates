@@ -152,16 +152,52 @@ Strategy + roadmap: [docs/STRATEGY.md](https://github.com/pilatesjs/pilates/blob
 
 # HN title options
 
-Pick whichever lands best:
+HN moderators routinely rewrite titles containing superlatives ("fastest",
+"faster than X", "best") and comparison framing reads as marketing to the
+HN audience. Use a descriptive title, then put the benchmark comparison in
+your own first top-level comment immediately after submitting.
 
-- "Pilates: a pure-TypeScript flex layout engine, faster than WASM Yoga at terminal-UI sizes"
-- "Show HN: Pilates – pure-TS terminal-UI layout, 9× faster than WASM Yoga"
-- "Pilates 1.0 RC: zero-dep TypeScript flex layout, beats WASM Yoga across the board"
+Pick whichever lands best (ranked):
+
+1. **"Show HN: Pilates – a pure-TypeScript flex layout engine for terminal UIs"** *(safest — descriptive, no claim, no edit risk)*
+2. **"Show HN: Pilates – pure-TS terminal-UI layout, no WASM"** *(the "no WASM" parenthetical implies the Yoga comparison without making the claim)*
+3. **"Show HN: Pilates 1.0 – terminal-UI flex layout in pure TypeScript"** *(version-as-news framing)*
+
+# Author's first comment (post immediately after submission)
+
+This is where the benchmark table and the Yoga comparison live. Posting it
+as the first top-level comment, by you, pins the context without forcing
+moderators to edit the title.
+
+> **Some context on why we built this**
+>
+> Terminal UI in JavaScript today means [Ink](https://github.com/vadimdemedes/ink), which uses [Yoga](https://github.com/facebook/yoga) (Facebook's flex engine, compiled to WASM) for layout. Yoga's compute kernel is hand-tuned C++ and very fast in absolute terms, but every `node.setWidth(N)` crosses the JS↔WASM boundary, and at TUI tree sizes (10–10000 nodes) the marshalling cost dominates the compute advantage.
+>
+> Pilates is a from-scratch flex layout engine in pure TypeScript, no WASM, zero runtime dependencies. Validated cell-for-cell against Yoga across 33 oracle fixtures plus a 500-runs-per-CI property fuzzer.
+>
+> Bench numbers (mean per-pass, lower is better):
+>
+> | Scenario | Pilates | yoga-layout (WASM) | Speedup |
+> |---|---:|---:|---:|
+> | 10 nodes | 2.5µs | 30µs | 12× |
+> | 100 nodes | 67µs | 460µs | 7× |
+> | 1k nodes | 0.30ms | 2.65ms | 9× |
+> | 10k nodes | 3.1ms | 22.3ms | 7× |
+> | 1k tree, mutate one leaf/frame | 199µs | 100µs | Yoga wins ~2× |
+> | Same + explicit-sized container rows | 10.8µs | 95µs | 9× |
+>
+> The last row is this week's headline: a node with explicit `width` AND `height` (a common TUI pattern — fixed-height rows, sidebars) acts as a Flutter-style relayout boundary, stopping dirty propagation. Combined with subtree dirty-tracking, the cache-hit path is O(dirty), not O(N). Closes the one workload Yoga used to win.
+>
+> Reproduce: `git clone github.com/pilatesjs/pilates && pnpm install && pnpm bench`
+>
+> Happy to answer questions about the cache-correctness work — three subtle bugs surfaced during Phase 2/3 that careful reasoning got wrong, and the differential-mode fuzzer caught all of them. There's a section in the [post draft](https://github.com/pilatesjs/pilates/blob/main/docs/announcements/2026-05-09-faster-than-yoga.md) on those.
 
 # Notes for the maintainer before posting
 
 - Don't post until `@pilates/core` 1.0.0 is on npm. The "1.0 next" framing only works if the next-week-tag is concrete.
 - Re-run `pnpm bench` on a clean machine before pasting numbers — local-dev variance can drift.
+- Best posting window: US Eastern Tuesday–Thursday, 8–10am.
+- Post the "Author's first comment" above as an immediate top-level reply once submitted. That's the pinned context.
 - Anticipate the following pushback in HN comments:
   - **"Why not just contribute to Yoga?"** Yoga's WASM compile target is the cost we're avoiding. Contributing to Yoga doesn't help if the bottleneck is the bridge.
   - **"Why not Bun + Zig like OpenTUI?"** OpenTUI uses Yoga under the hood (via `yoga-layout@3.2.1`). They get the WASM bridge cost too. We don't.
