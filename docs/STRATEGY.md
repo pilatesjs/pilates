@@ -25,10 +25,11 @@ standalone (or in combination):
 
 ## Goal
 
-Become the most capable JavaScript TUI library — surpassing Ink, Yoga
-(direct), and OpenTUI on capability and developer experience —
-without giving up the architectural commitments that make Pilates
-distinct (zero-dep, pure-TS, unbundled). "Lots of stars" is a stated
+Become the most capable JavaScript TUI library — matching and
+exceeding Ink, Yoga (direct), and OpenTUI on capability and
+developer experience — without giving up the architectural
+commitments that make Pilates distinct (zero-dep, pure-TS,
+unbundled). "Lots of stars" is a stated
 success metric: marketing / visibility / a flagship-app strategy is
 co-equal with engineering, not an afterthought. Multi-quarter
 commitment from a solo maintainer; pace accordingly.
@@ -54,8 +55,8 @@ Outside JS, the comparable libraries — Textual (Python), Ratatui
 language ecosystems entirely.
 
 **Pilates' positioning is the unbundled, faster alternative to Ink in
-the JS/TS niche.** Faster matters: Pilates beats WASM Yoga on every
-benchmarked workload (see `bench/RESULTS.md` and the Performance
+the JS/TS niche.** Faster matters: Pilates is faster than WASM Yoga on
+every benchmarked workload (see `bench/RESULTS.md` and the Performance
 section of the root README), including the hot-relayout pattern Yoga
 historically won on.
 
@@ -157,8 +158,8 @@ Ordered roughly by ship date. All on npm; no public API breakages.
   boundaries: a node with explicit `width` AND `height` AND default
   flex grow/shrink stops the upward `markDirty` propagation;
   `_hasDirtyDescendant` flag turns the root cache-hit path from
-  O(N) to O(dirty subtree). **Pilates now beats WASM Yoga ~9× on
-  hot-relayout** when consumers structure trees with explicit-sized
+  O(N) to O(dirty subtree). **Pilates is now ~9× faster than WASM Yoga
+  on hot-relayout** when consumers structure trees with explicit-sized
   containers (the idiomatic TUI pattern). Public API unchanged.
 
 ### Now (in flight)
