@@ -1,4 +1,4 @@
-export const VERSION = '1.0.0-rc.1';
+export const VERSION = '1.0.1';
 
 // Tree
 export { Node } from './node.js';

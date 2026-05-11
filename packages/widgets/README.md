@@ -19,7 +19,7 @@ Built on [`@pilates/react`](https://www.npmjs.com/package/@pilates/react). **Zer
 npm install @pilates/widgets @pilates/react react
 ```
 
-> **Status:** `0.1.0-rc.2` — release candidate baking until ~2026-05-15
+> **Status:** `0.1.0-rc.3` — release candidate baking until ~2026-05-15
 > ahead of the `0.2.0` promotion. All eight widgets listed above ship
 > in this rc.
 
