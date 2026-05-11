@@ -1,9 +1,9 @@
 # Recording the README hero demo
 
-The README has a commented-out section between the wordmark and the
-intro text expecting `assets/demo.gif`. Once recorded, drop the file
-into `assets/` and uncomment the `<p align="center">…<img …></p>`
-block in `README.md` (currently lines 17–24).
+`assets/demo.gif` is the README hero (between the wordmark and the
+intro text). The current GIF was recorded against `react-build-dashboard`
+on Windows Terminal at ~100×30. This doc covers how to record a
+replacement — same example or a different one.
 
 ## Recommended choice
 
@@ -123,19 +123,14 @@ open assets/demo.gif    # macOS
       typically). If it's too small, render the example with bigger
       text or at fewer columns.
 
-## Uncommenting the README
+## Replacing the existing GIF
 
-Once `assets/demo.gif` exists, in `README.md` find:
-
-```markdown
-<!-- Demo: once recorded, drop assets/demo.gif into ./assets/ and uncomment.
-…
--->
-```
-
-Delete the `<!--` and `-->` wrappers around the `<p align="center">`
-block. Verify the GIF renders on github.com (push to a temporary
-branch, view the README on GitHub, screenshot for HN if needed).
+If you're producing an updated GIF, overwrite `assets/demo.gif` in
+place. The README's `<img src="./assets/demo.gif">` block already
+references it (no comment toggling needed — that was the case when the
+GIF didn't yet exist, and is no longer relevant). Verify the
+replacement renders on github.com by pushing to a temporary branch and
+viewing the README before merging.
 
 ## Twitter / X clip variant
 

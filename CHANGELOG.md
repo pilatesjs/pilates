@@ -7,10 +7,16 @@ release-candidate train.
 
 ## Unreleased
 
-Pending — will land with the `@pilates/core@1.0.0` and `@pilates/render@1.0.0`
-promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
+Nothing pending. Next changes will accumulate here before the next
+package version cut.
 
-### Changed — `@pilates/core` (pre-1.0)
+## [@pilates/core@1.0.0, @pilates/render@1.0.0, @pilates/diff@0.2.0] — 2026-05-09
+
+Promotion to 1.0 for `core` and `render` after the Phase 3 perf-hardening
+work landed with no public API change. `diff` bumped to 0.2.0 alongside
+for monorepo consistency.
+
+### Changed — `@pilates/core` (1.0.0)
 
 - `Node.style` is now exposed as `Readonly<Style>` and `Node.layout` as
   `Readonly<ComputedLayout>` on the public surface. External callers that
@@ -23,8 +29,7 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   test files, so `@ts-expect-error` directives that document API contracts
   are validated.
 
-### Added — `@pilates/core` (pre-1.0)
-
+### Added — `@pilates/core`
 - `setAspectRatio(value: number | undefined)` and `style.aspectRatio` —
   CSS `aspect-ratio` (width / height). When set and exactly one of
   `width` / `height` is a number (the other being `'auto'`), the auto
@@ -36,15 +41,13 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   `<Box aspectRatio={...} />` (via `@pilates/render`'s `LayoutProps`)
   exposes the same prop to declarative consumers.
 
-### Fixed — `@pilates/render` (pre-1.0)
-
+### Fixed — `@pilates/render`
 - `wrapText`: trailing whitespace is trimmed at wrap boundaries when a
   whitespace token fits on the current line but the next word forces a
   wrap. Indent-only lines and end-of-paragraph whitespace are still
   preserved (CSS `white-space: normal` parity).
 
-### Added — `@pilates/react` (next minor)
-
+### Added — `@pilates/react`
 - `useWindowSize()` — convenience hook returning `{ columns, rows }`,
   re-rendering on terminal resize. Equivalent to picking those fields
   off `useStdout()`; offered for parity with the name peer libraries
@@ -63,8 +66,7 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   internal layout-key check prevents the hook from looping. `<Box>`
   and `<Text>` now accept `ref?: Ref<unknown>` (Ink v7 parity).
 
-### Fixed — `@pilates/react` (pre-1.0)
-
+### Fixed — `@pilates/react`
 - `commitUpdate` was reading the **oldProps** position instead of
   newProps under react-reconciler@0.31. The @types/react-reconciler@0.28.9
   signature shifts every arg one slot left from the runtime, and the
@@ -78,8 +80,7 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   caught while building `useBoxMetrics`. Two snapshots updated to the
   correct (now-fully-redrawn) deltas.
 
-### Changed — `@pilates/render` (pre-1.0)
-
+### Changed — `@pilates/render`
 - `renderToFrame` now mirrors each computed `{ left, top, width, height }`
   back onto the source `RenderNode` as `node._layout`. This lets the
   React layer expose `useBoxMetrics(ref)` without re-running layout from
@@ -140,8 +141,7 @@ promotions at end of bake (~2026-05-13). Source on `main` since PR #23.
   `{ name: 'tab', shift: true }`, so user `useInput` handlers and the
   internal focus-cycle listener can both treat Shift+Tab uniformly.
 
-### Added — `@pilates/widgets` (next minor)
-
+### Added — `@pilates/widgets`
 - `<ProgressBar>` — determinate or indeterminate progress bar.
   Determinate clamps `value` to `[0, total]` and rounds to a cell
   count; indeterminate animates a bouncing scanner of `scannerWidth`

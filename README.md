@@ -58,7 +58,7 @@ all of React. **Pilates** separates them:
   coordinates. Pure TypeScript, **zero runtime dependencies**. Handles
   CJK / emoji / wide-char widths, integer-cell rounding, the CSS Flexbox
   freeze loop, and absolute positioning. Validated cell-for-cell against a
-  reference WASM flexbox implementation across 30+ oracle fixtures.
+  reference WASM flexbox implementation across 33 oracle fixtures.
 - **`@pilates/render`** — the out-of-box renderer. Declarative POJO tree →
   painted ANSI string with borders, titles, colors, and text wrap. Uses core
   internally; depends only on it.
@@ -82,8 +82,8 @@ all of React. **Pilates** separates them:
 
 ## Examples
 
-Ten runnable examples live under [`examples/`](./examples/) — six built on
-the imperative `@pilates/render` API, four built on `@pilates/react`.
+Eleven runnable examples live under [`examples/`](./examples/) — six built
+on the imperative `@pilates/render` API, five built on `@pilates/react`.
 
 **Imperative (`@pilates/render`):**
 
@@ -138,8 +138,8 @@ root.insertChild(main, 0);
 root.insertChild(sidebar, 1);
 root.calculateLayout();
 
-main.getComputedLayout();    // { left:1, top:1, width:57, height:22 }
-sidebar.getComputedLayout(); // { left:58, top:1, width:20, height:22 }
+main.getComputedLayout();    // { left:1, top:1, width:58, height:22 }
+sidebar.getComputedLayout(); // { left:59, top:1, width:20, height:22 }
 ```
 
 You'd then paint to the terminal yourself — or pass the same shape via the
@@ -178,7 +178,7 @@ input handling, animations, scroll containers, style inheritance.
 ## Performance
 
 <p align="center">
-  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 7-12× faster across every workload, including the hot-relayout pattern Yoga used to win" width="100%">
+  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 7-10× faster across every workload, including the hot-relayout pattern Yoga used to win" width="100%">
 </p>
 
 Pure-TypeScript layout, validated cell-for-cell against WASM Yoga,
@@ -216,7 +216,7 @@ Reproduce with `pnpm bench`. Full numbers + scenario shapes in
 Every flex feature is verified cell-for-cell against a reference WASM
 flexbox implementation:
 
-- 30 oracle fixtures (fixed widths, flex distributions, padding, margin,
+- 33 oracle fixtures (fixed widths, flex distributions, padding, margin,
   gap, min/max, all `justifyContent` / `alignItems` / `alignSelf` /
   `alignContent` values, `flexWrap`, `flexWrap: wrap-reverse`, every absolute
   positioning anchor)
@@ -249,6 +249,15 @@ cell-for-cell against WASM Yoga, and faster than Yoga on every
 benchmarked workload (see Performance above). The React layer ships
 mouse, scroll, focus management, and typed errors.
 
+## Contributing
+
+Issues, discussions, and PRs welcome. Start with
+[CONTRIBUTING.md](./CONTRIBUTING.md) for setup, the test loop, and what
+the maintainer expects from layout-algorithm changes (oracle-fixture
+coverage). By participating you agree to follow the
+[Code of Conduct](./CODE_OF_CONDUCT.md). Security issues: see
+[SECURITY.md](./SECURITY.md) for the private disclosure channel.
+
 ## License
 
-MIT
+[MIT](./LICENSE) © Zhijie Wang.
