@@ -6,6 +6,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [1.0.1] — 2026-05-11
+
+### Fixed
+
+- Exported `VERSION` constant was stuck at `'1.0.0-rc.1'` in the 1.0.0
+  publish. Now reports `'1.0.1'` matching `package.json`. No other
+  changes; consumers can upgrade transparently.
+
 ## [1.0.0] — 2026-05-09
 
 The `@pilates/core` 1.0.0 milestone. Three rounds of performance

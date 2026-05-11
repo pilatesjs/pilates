@@ -5,6 +5,20 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 package follows [Semantic Versioning](https://semver.org/) once it leaves
 the release-candidate train.
 
+## [0.1.0-rc.3] — 2026-05-11
+
+### Fixed
+
+- `peerDependencies."@pilates/react"` was pinned to `^0.2.0` from the
+  rc.1 days; consumers installing with `@pilates/react@0.3.x` saw a
+  resolution warning. Bumped to `^0.3.0`.
+
+### Changed
+
+- `package.json` `description` now lists all eight widgets that
+  actually ship in this rc (previously listed only the original three).
+  The npm page now matches the README's feature list.
+
 ## [0.1.0-rc.2] — 2026-05-03
 
 ### Added
