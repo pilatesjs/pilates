@@ -12,13 +12,13 @@ Numbers:
 
 | Scenario | Pilates core | yoga-layout (WASM) | Pilates speedup |
 |---|---:|---:|---:|
-| 10-node tree | 2.5µs | 30µs | **12×** |
-| ~100-node tree | 67µs | 460µs | **7×** |
-| ~1000-node tree | 0.30ms | 2.65ms | **9×** |
-| ~5000-node tree | 1.5ms | 11.7ms | **8×** |
-| ~10000-node tree | 3.1ms | 22.3ms | **7×** |
-| 1k-node persistent tree, mutate one leaf/frame | 199µs | 100µs | Yoga wins ~2× |
-| **Same + explicit-sized container rows** | **10.8µs** | **95µs** | **9×** |
+| 10-node tree | 1.5µs | 15.1µs | **10×** |
+| ~100-node tree | 29µs | 263µs | **9×** |
+| ~1000-node tree | 0.17ms | 1.52ms | **9×** |
+| ~5000-node tree | 0.94ms | 7.26ms | **8×** |
+| ~10000-node tree | 2.16ms | 14.6ms | **7×** |
+| 1k-node persistent tree, mutate one leaf/frame | 129µs | 56µs | Yoga wins ~2.3× |
+| **Same + explicit-sized container rows** | **7.1µs** | **51µs** | **7×** |
 
 Reproduce: `git clone github.com/pilatesjs/pilates && pnpm install && pnpm bench`.
 
@@ -30,7 +30,7 @@ Pilates is a from-scratch flex layout engine in pure TypeScript, validated cell-
 
 For tree-build-then-layout (the natural shape of a TUI redrawing every frame from declarative state), Pilates has been faster than Yoga since day one: 7–12× across all scenarios. The one workload Yoga still won was *long-lived trees with hot relayouts* — build once, mutate one leaf, relayout, repeat. The build cost amortizes, only the layout pass is measured, and Yoga's compute speed shows.
 
-This week's Phase 3 release adds Flutter-style **relayout boundaries**: a node with explicit `width` AND `height` (the idiomatic TUI pattern, e.g. fixed-height rows or sidebars) acts as a barrier that stops dirty propagation. A leaf mutation inside such a container dirties the container but doesn't propagate to root, so Pilates' root layout cache stays valid and the next layout pass restores most of the tree from cache instead of re-running flex. Combined with the `_hasDirtyDescendant` optimization (so the cache-hit path skips clean subtrees in O(dirty), not O(N)), Pilates now runs the hot-relayout-with-boundaries scenario in ~10.8µs vs Yoga's ~95µs.
+This week's Phase 3 release adds Flutter-style **relayout boundaries**: a node with explicit `width` AND `height` (the idiomatic TUI pattern, e.g. fixed-height rows or sidebars) acts as a barrier that stops dirty propagation. A leaf mutation inside such a container dirties the container but doesn't propagate to root, so Pilates' root layout cache stays valid and the next layout pass restores most of the tree from cache instead of re-running flex. Combined with the `_hasDirtyDescendant` optimization (so the cache-hit path skips clean subtrees in O(dirty), not O(N)), Pilates now runs the hot-relayout-with-boundaries scenario in ~7.1µs vs Yoga's ~51µs.
 
 The boundary path is opt-in by tree shape, not API. Any explicit-sized container with default flex grow/shrink qualifies. No new public types, no new methods on `Node`. Existing trees benefit automatically as soon as a container above the mutation point has both axes pinned.
 
@@ -120,7 +120,7 @@ Strategy + roadmap: [docs/STRATEGY.md](https://github.com/pilatesjs/pilates/blob
 
 > Pilates 1.0 is shaping up. Pure-TS terminal-UI flex layout engine, validated cell-for-cell against WASM Yoga across 33 fixtures + a 500-run-per-CI property fuzzer.
 >
-> Phase 3 just landed: relayout boundaries. Pilates now beats Yoga 9× on the hot-relayout pattern Yoga used to win on.
+> Phase 3 just landed: relayout boundaries. Pilates now beats Yoga 7× on the hot-relayout pattern Yoga used to win on.
 >
 > github.com/pilatesjs/pilates
 
@@ -128,11 +128,11 @@ Strategy + roadmap: [docs/STRATEGY.md](https://github.com/pilatesjs/pilates/blob
 
 > Pure-TS layout engine vs WASM Yoga, mean latency:
 >
-> · 10 nodes: 2.5µs vs 30µs (12×)
-> · 100 nodes: 67µs vs 460µs (7×)
-> · 1k nodes: 0.3ms vs 2.65ms (9×)
-> · 10k nodes: 3.1ms vs 22ms (7×)
-> · hot-relayout w/ boundaries: 10.8µs vs 95µs (9×)
+> · 10 nodes: 1.5µs vs 15µs (10×)
+> · 100 nodes: 29µs vs 263µs (9×)
+> · 1k nodes: 0.17ms vs 1.52ms (9×)
+> · 10k nodes: 2.16ms vs 14.6ms (7×)
+> · hot-relayout w/ boundaries: 7.1µs vs 51µs (7×)
 >
 > JS↔WASM call overhead dominates Yoga's compute advantage at TUI sizes.
 
@@ -179,12 +179,12 @@ moderators to edit the title.
 >
 > | Scenario | Pilates | yoga-layout (WASM) | Speedup |
 > |---|---:|---:|---:|
-> | 10 nodes | 2.5µs | 30µs | 12× |
-> | 100 nodes | 67µs | 460µs | 7× |
-> | 1k nodes | 0.30ms | 2.65ms | 9× |
-> | 10k nodes | 3.1ms | 22.3ms | 7× |
-> | 1k tree, mutate one leaf/frame | 199µs | 100µs | Yoga wins ~2× |
-> | Same + explicit-sized container rows | 10.8µs | 95µs | 9× |
+> | 10 nodes | 1.5µs | 15.1µs | 10× |
+> | 100 nodes | 29µs | 263µs | 9× |
+> | 1k nodes | 0.17ms | 1.52ms | 9× |
+> | 10k nodes | 2.16ms | 14.6ms | 7× |
+> | 1k tree, mutate one leaf/frame | 129µs | 56µs | Yoga wins ~2.3× |
+> | Same + explicit-sized container rows | 7.1µs | 51µs | 7× |
 >
 > The last row is this week's headline: a node with explicit `width` AND `height` (a common TUI pattern — fixed-height rows, sidebars) acts as a Flutter-style relayout boundary, stopping dirty propagation. Combined with subtree dirty-tracking, the cache-hit path is O(dirty), not O(N). Closes the one workload Yoga used to win.
 >

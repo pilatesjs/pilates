@@ -1,6 +1,6 @@
 # Pilates benchmark results
 
-Generated: 2026-05-09 · Node v22.21.0 · win32/x64
+Generated: 2026-05-11 · Node v26.0.0 · darwin/arm64
 
 Reproduce: `pnpm bench`. Numbers vary by machine — relative
 positions are the interesting signal.
@@ -23,9 +23,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 3.1µs | 326.7k ops/s | 0 |
-| @pilates/render (full) | 72.6µs | 13.8k ops/s | 0 |
-| yoga-layout (WASM) | 19.9µs | 50.4k ops/s | 0 |
+| @pilates/core (layout) | 1.5µs | 671.9k ops/s | 0 |
+| @pilates/render (full) | 18.1µs | 55.1k ops/s | 0 |
+| yoga-layout (WASM) | 15.1µs | 66.4k ops/s | 0 |
 
 ## realistic
 
@@ -33,9 +33,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 64.1µs | 15.6k ops/s | 0 |
-| @pilates/render (full) | 261.2µs | 3.8k ops/s | 0 |
-| yoga-layout (WASM) | 329.2µs | 3.0k ops/s | 0 |
+| @pilates/core (layout) | 29.0µs | 34.5k ops/s | 0 |
+| @pilates/render (full) | 103.3µs | 9.7k ops/s | 0 |
+| yoga-layout (WASM) | 262.9µs | 3.8k ops/s | 0 |
 
 ## stress
 
@@ -43,9 +43,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 320.1µs | 3.1k ops/s | 0 |
-| @pilates/render (full) | 1.54ms | 648 ops/s | 0 |
-| yoga-layout (WASM) | 1.95ms | 513 ops/s | 0 |
+| @pilates/core (layout) | 171.4µs | 5.8k ops/s | 0 |
+| @pilates/render (full) | 623.0µs | 1.6k ops/s | 0 |
+| yoga-layout (WASM) | 1.52ms | 657 ops/s | 0 |
 
 ## big
 
@@ -53,9 +53,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 2.22ms | 451 ops/s | 0 |
-| @pilates/render (full) | 12.2ms | 82 ops/s | 0 |
-| yoga-layout (WASM) | 13.3ms | 75 ops/s | 0 |
+| @pilates/core (layout) | 939.6µs | 1.1k ops/s | 0 |
+| @pilates/render (full) | 3.80ms | 263 ops/s | 0 |
+| yoga-layout (WASM) | 7.26ms | 138 ops/s | 0 |
 
 ## huge
 
@@ -63,9 +63,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 7.50ms | 133 ops/s | 0 |
-| @pilates/render (full) | 29.5ms | 34 ops/s | 0 |
-| yoga-layout (WASM) | 27.1ms | 37 ops/s | 0 |
+| @pilates/core (layout) | 2.16ms | 463 ops/s | 0 |
+| @pilates/render (full) | 8.89ms | 112 ops/s | 0 |
+| yoga-layout (WASM) | 14.6ms | 68 ops/s | 0 |
 
 ## hotrelayout
 
@@ -73,9 +73,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 238.8µs | 4.2k ops/s | 0 |
-| @pilates/render (full) | 260.9µs | 3.8k ops/s | 0 |
-| yoga-layout (WASM) | 112.5µs | 8.9k ops/s | 0 |
+| @pilates/core (layout) | 128.6µs | 7.8k ops/s | 0 |
+| @pilates/render (full) | 127.9µs | 7.8k ops/s | 0 |
+| yoga-layout (WASM) | 55.7µs | 18.0k ops/s | 0 |
 
 ## hotrelayoutboundary
 
@@ -83,9 +83,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 11.4µs | 87.7k ops/s | 0 |
-| @pilates/render (full) | 12.0µs | 83.3k ops/s | 0 |
-| yoga-layout (WASM) | 104.1µs | 9.6k ops/s | 0 |
+| @pilates/core (layout) | 7.1µs | 140.1k ops/s | 0 |
+| @pilates/render (full) | 7.1µs | 140.4k ops/s | 0 |
+| yoga-layout (WASM) | 51.1µs | 19.6k ops/s | 0 |
 
 ## What's measured
 
@@ -128,7 +128,7 @@ shows up on. Two scenarios cover this shape:
   row acts as a relayout boundary: leaf mutations dirty the
   row but don't propagate to root, so Pilates' root layout
   cache hits and only the row subtree re-runs flex.
-  **Pilates is ~9× faster than Yoga** on this scenario.
+  **Pilates is ~7× faster than Yoga** on this scenario.
 
 The boundary path is opt-in by tree shape, not API: any
 explicit-sized container with default flex grow/shrink

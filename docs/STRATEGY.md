@@ -73,8 +73,8 @@ The wedge is *decoupling + speed + scope*, not "better DX yet":
    engine, no `WebAssembly.compile` startup cost, no JS↔WASM
    marshalling on every layout pass. Three perf phases shipped in
    2026-05 (measure-cache, layout-cache, relayout-boundaries) bring
-   Pilates 7–12× faster than Yoga on tree-build-then-layout AND
-   ~9× faster on the hot-relayout pattern (long-lived tree, mutate
+   Pilates 7–10× faster than Yoga on tree-build-then-layout AND
+   ~7× faster on the hot-relayout pattern (long-lived tree, mutate
    one leaf per frame) that Yoga had previously won. Validated
    cell-for-cell against Yoga across 33 oracle fixtures plus a
    500-runs/CI property-based fuzzer that compares cached vs.
@@ -158,7 +158,7 @@ Ordered roughly by ship date. All on npm; no public API breakages.
   boundaries: a node with explicit `width` AND `height` AND default
   flex grow/shrink stops the upward `markDirty` propagation;
   `_hasDirtyDescendant` flag turns the root cache-hit path from
-  O(N) to O(dirty subtree). **Pilates is now ~9× faster than WASM Yoga
+  O(N) to O(dirty subtree). **Pilates is now ~7× faster than WASM Yoga
   on hot-relayout** when consumers structure trees with explicit-sized
   containers (the idiomatic TUI pattern). Public API unchanged.
 
