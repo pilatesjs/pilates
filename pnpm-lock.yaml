@@ -63,8 +63,8 @@ importers:
         specifier: workspace:*
         version: link:../packages/widgets
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -132,8 +132,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/widgets
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -148,8 +148,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/react
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -164,8 +164,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/react
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -180,8 +180,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/react
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -202,8 +202,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/widgets
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -221,8 +221,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/widgets
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -262,7 +262,7 @@ importers:
         version: link:../render
       react-reconciler:
         specifier: ^0.31.0
-        version: 0.31.0(react@19.2.5)
+        version: 0.31.0(react@19.2.6)
     devDependencies:
       '@types/react':
         specifier: ^19.0.0
@@ -271,8 +271,8 @@ importers:
         specifier: ^0.28.9
         version: 0.28.9(@types/react@19.2.14)
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
 
   packages/render:
     dependencies:
@@ -293,8 +293,8 @@ importers:
         specifier: ^19.0.0
         version: 19.2.14
       react:
-        specifier: ^19.0.0
-        version: 19.2.5
+        specifier: ^19.2.6
+        version: 19.2.6
 
 packages:
 
@@ -1128,8 +1128,8 @@ packages:
     peerDependencies:
       react: ^19.0.0
 
-  react@19.2.5:
-    resolution: {integrity: sha512-llUJLzz1zTUBrskt2pwZgLq59AemifIftw4aB7JxOqf1HY2FDaGDxgwpAPVzHU1kdWabH7FauP4i1oEeer2WCA==}
+  react@19.2.6:
+    resolution: {integrity: sha512-sfWGGfavi0xr8Pg0sVsyHMAOziVYKgPLNrS7ig+ivMNb3wbCBw3KxtflsGBAwD3gYQlE/AEZsTLgToRrSCjb0Q==}
     engines: {node: '>=0.10.0'}
 
   resolve-pkg-maps@1.0.0:
@@ -1944,12 +1944,12 @@ snapshots:
 
   pure-rand@8.4.0: {}
 
-  react-reconciler@0.31.0(react@19.2.5):
+  react-reconciler@0.31.0(react@19.2.6):
     dependencies:
-      react: 19.2.5
+      react: 19.2.6
       scheduler: 0.25.0
 
-  react@19.2.5: {}
+  react@19.2.6: {}
 
   resolve-pkg-maps@1.0.0: {}
 
