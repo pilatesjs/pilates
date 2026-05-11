@@ -161,17 +161,25 @@ Ordered roughly by ship date. All on npm; no public API breakages.
   O(N) to O(dirty subtree). **Pilates is now ~7× faster than WASM Yoga
   on hot-relayout** when consumers structure trees with explicit-sized
   containers (the idiomatic TUI pattern). Public API unchanged.
+- **`@pilates/core` 1.0.0, `@pilates/render` 1.0.0, `@pilates/diff`
+  0.2.0 promoted to GA (2026-05-09).** Three perf phases on top of
+  rc.2 with no public API change cleared the API-stability bar. Live
+  on npm.
+- **Flagship example app shipped (2026-05-10).**
+  `examples/react-build-dashboard` — multi-pane interactive build
+  pipeline with `<ScrollView>` × 2, mouse, `useFocus`, keyboard nav,
+  live animation, `<ProgressBar>` + `<Spinner>` widgets. README hero
+  demo recorded against this example.
 
 ### Now (in flight)
 
-- **Promote `@pilates/core` rc.2 → 1.0.0 and `@pilates/render`
-  rc.3 → 1.0.0.** Three perf phases on top of rc.2 with no public
-  API change is strong signal of API stability. Issue #11.
-- **Bump `@pilates/diff` to 0.2.0** alongside the core / render
-  promotion (no diff changes, version bump for consistency).
-- **Bump `@pilates/widgets` to 0.2.0** (added in v1 capability
-  sprint: ProgressBar, TextArea, MultiSelect, Tabs, Table; widgets
-  gain `focusId` / `autoFocus`).
+- **Promote `@pilates/widgets` 0.1.0-rc.2 → 0.2.0** (added in v1
+  capability sprint: ProgressBar, TextArea, MultiSelect, Tabs, Table;
+  widgets gain `focusId` / `autoFocus`). Bake window currently
+  scheduled to ~2026-05-15.
+- **Public launch.** HN / Twitter / Reddit posts using the materials
+  at `docs/announcements/2026-05-09-faster-than-yoga.md` and
+  `docs/announcements/launch-day.md`.
 
 ### Plausibly next (not committed)
 

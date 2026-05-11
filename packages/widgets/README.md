@@ -19,10 +19,9 @@ Built on [`@pilates/react`](https://www.npmjs.com/package/@pilates/react). **Zer
 npm install @pilates/widgets @pilates/react react
 ```
 
-> **Status:** `0.1.0-rc.1` — release candidate baking until ~2026-05-15.
-> The trio (`<TextInput>`, `<Select>`, `<Spinner>`) is feature-complete
-> for the v0.1 line. `<MultiSelect>` and `<Table>` are deferred to a
-> later minor on demand.
+> **Status:** `0.1.0-rc.2` — release candidate baking until ~2026-05-15
+> ahead of the `0.2.0` promotion. All eight widgets listed above ship
+> in this rc.
 
 ## Quick example
 
