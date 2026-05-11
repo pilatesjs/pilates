@@ -183,18 +183,18 @@ input handling, animations, scroll containers, style inheritance.
 
 Pure-TypeScript layout, validated cell-for-cell against WASM Yoga,
 faster than WASM Yoga on every benchmarked workload. Numbers are mean
-latency from `pnpm bench` (Node 22, win32/x64; relative positions are
-the interesting signal):
+latency from `pnpm bench` (Node 26, darwin/arm64; relative positions
+are the interesting signal):
 
 | Scenario | Pilates core | yoga-layout (WASM) | Pilates speedup |
 |---|---:|---:|---:|
-| tiny (10 nodes) | 2.5µs | 30µs | **12× faster** |
-| realistic (~100) | 67µs | 460µs | **7× faster** |
-| stress (~1000) | 299µs | 2.65ms | **9× faster** |
-| big (~5000) | 1.5ms | 11.7ms | **8× faster** |
-| huge (~10000) | 3.1ms | 22.3ms | **7× faster** |
-| hot-relayout (1k persistent, mutate one leaf/frame) | 199µs | 100µs | Yoga wins ~2× |
-| **hot-relayout + boundaries** (same + explicit-sized rows) | **10.8µs** | **95µs** | **9× faster** |
+| tiny (10 nodes) | 1.5µs | 15.1µs | **10× faster** |
+| realistic (~100) | 29µs | 263µs | **9× faster** |
+| stress (~1000) | 171µs | 1.52ms | **9× faster** |
+| big (~5000) | 0.94ms | 7.26ms | **8× faster** |
+| huge (~10000) | 2.16ms | 14.6ms | **7× faster** |
+| hot-relayout (1k persistent, mutate one leaf/frame) | 129µs | 56µs | Yoga wins ~2× |
+| **hot-relayout + boundaries** (same + explicit-sized rows) | **7.1µs** | **51µs** | **7× faster** |
 
 The hot-relayout scenario was the only workload Yoga had been winning
 on — long-lived trees with hot per-frame mutations. With Phase 3's
