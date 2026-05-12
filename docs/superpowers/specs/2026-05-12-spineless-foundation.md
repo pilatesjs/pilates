@@ -108,14 +108,45 @@ the redistribution logic (count*2 ≤ span condition); fixed.
 Bender is **35× faster than Naive at N=10k inserts**. Both impls have
 identical compare costs (~13-29ns at scale).
 
+## What landed (priority queue, third commit on this PR)
+
+`OmPriorityQueue<T>` — min-heap with OM-comparator. Generic over the
+value type so the Spineless runtime can key on `(Node, fieldName)`
+pairs (or whatever shape the runtime uses).
+
+**Implementation:**
+- Binary min-heap over parallel arrays (`heapValue`, `heapOmNode`)
+  to avoid per-push pair-object allocation. Matters at Spineless
+  scale (1k-10k pushes per layout pass).
+- Membership tracking via internal `Set` for O(1) `has(value)` —
+  enables runtime-side dedup of "already-queued" fields.
+- O(log N) push / popMin, O(1) peek / size.
+
+**Correctness under OM relabel:** The Bender impl relabels OM tags
+on insert (windowed redistribute). The heap invariant is "parent
+precedes all descendants by OM compare". Relabel preserves the
+RELATIVE order of all live OM nodes, so `sign(compare(a, b))` is
+unchanged — the heap invariant holds without explicit reshuffling.
+
+**Cross-validation:** A 500-run property-based fuzzer compares
+the heap's extraction order against a sorted-array oracle. Each push
+uses a fresh OM node (mirroring the runtime's "one OM node per
+(Node, field)" invariant) so the oracle has unambiguous tie-breaking.
+
+**Microbench** (Bender OM under, Windows, Node 22):
+
+| Op | N=100 | N=1000 | N=10000 |
+|---|---:|---:|---:|
+| push | 141ns | 71ns | 100ns |
+| popMin | 143ns | 148ns | 152ns |
+
+Both ops stay flat-to-decreasing as N grows. **13-28× under the 2µs
+target.** Spineless runtime overhead at TUI scale (~10-100 dirty
+fields propagated per leaf mutation) will be ~30µs per layout pass.
+
 ## What's next (Phase 5a continuation)
 
-1. **Priority queue keyed on OM nodes** (~1 week)
-   - Min-heap with OM `compare` as ordering
-   - Operations: push, peek, extract-min, delete
-   - The Spineless runtime's hot data structure
-
-2. **Attribute grammar definition for flexbox** (~2-3 weeks)
+1. **Attribute grammar definition for flexbox** (~2-3 weeks)
    - Express the imperative flex algorithm (`packages/core/src/algorithm/main-axis.ts`)
      as a set of attribute-level dependencies
    - Each layout field (width, height, mainPos, finalMain, etc.) has
@@ -125,7 +156,7 @@ identical compare costs (~13-29ns at scale).
      results to imperative algorithm across the existing 891-test
      suite + 500-run fuzzer
 
-3. **Spineless runtime** (~3-4 weeks)
+2. **Spineless runtime** (~3-4 weeks)
    - `recompute(field)` driver: pop from priority queue, run the
      field's rule from the grammar, push dependents if value changed
    - The priority queue is keyed on OM timestamps, so traversal
@@ -133,7 +164,7 @@ identical compare costs (~13-29ns at scale).
    - Behind a `PILATES_SPINELESS_LAYOUT=1` env flag
    - Differential mode validates byte-identical results to imperative
 
-4. **Bench + ship** (~2 weeks)
+3. **Bench + ship** (~2 weeks)
    - New `hot-relayout-text` bench scenario (mutates leaf text content
      every frame, the realistic TUI workload)
    - Compare against current imperative + Yoga
