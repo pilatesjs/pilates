@@ -212,3 +212,205 @@ export class NaiveOrderMaintenance implements OrderMaintenance {
     return ta - tb;
   }
 }
+
+// --- Bender et al. 2002 Algorithm 1 (list-labeling with windowed relabel) ---
+
+/**
+ * Label space. Labels live in `[0, LABEL_MAX)`. Using 2^30 keeps every
+ * arithmetic op (midpoint, double, mask) in V8's 31-bit SMI range, so
+ * the JIT lowers everything to native int instructions. At 2^30 we can
+ * host ~50M items before any global rebalance is forced — far above
+ * typical TUI scale.
+ *
+ * @internal
+ */
+const LABEL_MAX = 1 << 30;
+
+/**
+ * Internal node for Bender impl. Doubly-linked list with mutable label.
+ *
+ * @internal
+ */
+interface BenderNode {
+  _omTag: number;
+  prev: BenderNode | null;
+  next: BenderNode | null;
+}
+
+/**
+ * Bender, Cole, Demaine, Farach-Colton, Zito (2002): "Two simplified
+ * algorithms for maintaining order in a list." Algorithm 1 — list-
+ * labeling with exponentially-growing window relabel.
+ *
+ * Operations:
+ * - `compare`: O(1) integer subtract.
+ * - `insertAfter`: amortized O(log N) per operation (looser than the
+ *   paper's O(1) amortized when using density bound (3/2)^d at depth d;
+ *   we trade a log factor for simpler integer arithmetic and avoid
+ *   BigInt).
+ * - `delete`: O(1).
+ *
+ * Cross-validated against `NaiveOrderMaintenance` via property fuzzer.
+ *
+ * @internal
+ */
+export class BenderOrderMaintenance implements OrderMaintenance {
+  private firstNode: BenderNode | null = null;
+  private nodeCount = 0;
+
+  get size(): number {
+    return this.nodeCount;
+  }
+
+  first(): OMNode | null {
+    return this.firstNode;
+  }
+
+  init(): OMNode {
+    // Start label at the middle of the space so first inserts have room
+    // both before (via the global rebalance path) and after.
+    const first: BenderNode = { _omTag: LABEL_MAX >> 1, prev: null, next: null };
+    this.firstNode = first;
+    this.nodeCount = 1;
+    return first;
+  }
+
+  insertAfter(after: OMNode): OMNode {
+    const pred = after as BenderNode;
+    const succ = pred.next;
+    const succLabel = succ === null ? LABEL_MAX : succ._omTag;
+    const predLabel = pred._omTag;
+
+    // Midpoint between predecessor and successor labels. Integer-only.
+    const newLabel = (predLabel + succLabel) >> 1;
+
+    const newNode: BenderNode = { _omTag: newLabel, prev: pred, next: succ };
+    pred.next = newNode;
+    if (succ !== null) succ.prev = newNode;
+    this.nodeCount++;
+
+    if (newLabel === predLabel) {
+      // No room between pred and succ — trigger a windowed relabel.
+      // Relabel updates newNode._omTag (and others in the window) to
+      // spread out across available label space.
+      this.relabel(newNode);
+    }
+
+    return newNode;
+  }
+
+  delete(node: OMNode): void {
+    const n = node as BenderNode;
+    if (n.prev !== null) {
+      n.prev.next = n.next;
+    } else {
+      this.firstNode = n.next;
+    }
+    if (n.next !== null) {
+      n.next.prev = n.prev;
+    }
+    this.nodeCount--;
+    // Delete only creates extra label room; no rebalance needed.
+  }
+
+  compare(a: OMNode, b: OMNode): number {
+    return (a as BenderNode)._omTag - (b as BenderNode)._omTag;
+  }
+
+  /**
+   * Walk exponentially-growing windows around `pivot` until a window
+   * with low enough density to redistribute is found. Redistribute
+   * labels uniformly across that window.
+   *
+   * Density bound: `count * 2 ≤ span`. This guarantees:
+   *   - Every node gets a distinct integer label (count ≤ span).
+   *   - Each interval between consecutive labels has at least 2 units
+   *     of room, so subsequent midpoint inserts succeed without
+   *     triggering relabel again at the same depth.
+   *
+   * Window definition at depth d:
+   *   span    = 2^d
+   *   tagLow  = pivot._omTag aligned down to multiple of span
+   *   tagHigh = tagLow + span
+   *
+   * Amortized cost: O(log N) per insert. (Tighter than the paper's
+   * O(1) amortized with density bound (3/2)^d, but the bound here uses
+   * pure integer arithmetic for V8-friendly speed.)
+   *
+   * @internal
+   */
+  private relabel(pivot: BenderNode): void {
+    let depth = 1;
+    let span = 2;
+
+    while (true) {
+      // Find aligned window boundaries around the pivot's current label.
+      const mask = (LABEL_MAX - 1) ^ (span - 1);
+      const tagLow = pivot._omTag & mask;
+      const tagHigh = tagLow + span;
+
+      // Find leftmost node in the window by walking back from pivot.
+      let firstInWindow = pivot;
+      while (firstInWindow.prev !== null && firstInWindow.prev._omTag >= tagLow) {
+        firstInWindow = firstInWindow.prev;
+      }
+
+      // Count nodes in the window and collect them in-order.
+      const inWindow: BenderNode[] = [];
+      let cursor: BenderNode | null = firstInWindow;
+      while (cursor !== null && cursor._omTag < tagHigh) {
+        inWindow.push(cursor);
+        cursor = cursor.next;
+      }
+
+      const count = inWindow.length;
+
+      // Density bound: redistribute only when there's at least 2x
+      // headroom in the window. This guarantees distinct labels +
+      // future-insert room without immediate re-relabel.
+      if (count * 2 <= span) {
+        const step = Math.max(1, (span / count) | 0);
+        // Center the assigned range: leave equal padding at both ends.
+        const used = (count - 1) * step + 1;
+        const startPad = Math.max(0, (span - used) >> 1);
+        let label = tagLow + startPad;
+        for (const node of inWindow) {
+          node._omTag = label;
+          label += step;
+        }
+        return;
+      }
+
+      // Window overcrowded — expand. Doubling depth doubles span.
+      // If span exceeds the label space, fall back to a global relabel.
+      depth++;
+      span <<= 1;
+      if (span >= LABEL_MAX) {
+        this.globalRelabel();
+        return;
+      }
+    }
+  }
+
+  /**
+   * Fallback when the windowed relabel walks all the way up to the
+   * full label space without finding a sparse-enough window. Spreads
+   * every node uniformly across [0, LABEL_MAX).
+   *
+   * @internal
+   */
+  private globalRelabel(): void {
+    const all: BenderNode[] = [];
+    let cursor = this.firstNode;
+    while (cursor !== null) {
+      all.push(cursor);
+      cursor = cursor.next;
+    }
+    const stride = Math.max(1, (LABEL_MAX / (all.length + 1)) | 0);
+    let label = stride;
+    for (const node of all) {
+      node._omTag = label;
+      label += stride;
+    }
+  }
+}

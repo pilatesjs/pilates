@@ -22,7 +22,12 @@
  * @internal
  */
 
-import { NaiveOrderMaintenance, type OMNode } from './order-maintenance.js';
+import {
+  BenderOrderMaintenance,
+  NaiveOrderMaintenance,
+  type OMNode,
+  type OrderMaintenance,
+} from './order-maintenance.js';
 
 function median(xs: number[]): number {
   const sorted = [...xs].sort((a, b) => a - b);
@@ -31,6 +36,7 @@ function median(xs: number[]): number {
 
 function bench(
   label: string,
+  make: () => OrderMaintenance,
   sizes: number[],
   opsPerTrial: number,
   trials: number,
@@ -40,7 +46,7 @@ function bench(
   for (const N of sizes) {
     const trialMs: number[] = [];
     for (let t = 0; t < trials; t++) {
-      const om = new NaiveOrderMaintenance();
+      const om = make();
       const nodes: OMNode[] = [om.init()];
       // Pre-build N-1 more nodes
       for (let i = 1; i < N; i++) nodes.push(om.insertAfter(nodes[i - 1]!));
@@ -77,8 +83,20 @@ function bench(
   }
 }
 
-console.log('Naive Order Maintenance microbench (single-threaded JS, Node.js)');
+console.log('Order Maintenance microbench (single-threaded JS, Node.js)');
 console.log('Targets: compare < 0.2µs, insertAfter amortized < 5µs at N=10k');
 
-bench('compare (hot path)', [100, 1000, 10000], 100_000, 5, 'compare');
-bench('insertAfter (renumber cost)', [100, 1000, 10000], 1_000, 5, 'insertAfter');
+const naive = () => new NaiveOrderMaintenance();
+const bender = () => new BenderOrderMaintenance();
+
+bench('Naive compare', naive, [100, 1000, 10000], 100_000, 5, 'compare');
+bench('Bender compare', bender, [100, 1000, 10000], 100_000, 5, 'compare');
+bench('Naive insertAfter (O(N) renumber)', naive, [100, 1000, 10000], 1_000, 5, 'insertAfter');
+bench(
+  'Bender insertAfter (amortized O(log N))',
+  bender,
+  [100, 1000, 10000],
+  1_000,
+  5,
+  'insertAfter',
+);
