@@ -144,17 +144,51 @@ Both ops stay flat-to-decreasing as N grows. **13-28× under the 2µs
 target.** Spineless runtime overhead at TUI scale (~10-100 dirty
 fields propagated per leaf mutation) will be ~30µs per layout pass.
 
+## What landed (grammar foundation, fourth commit on this PR)
+
+Type system + naive interpreter for the attribute grammar. The
+architectural skeleton that the full flexbox grammar (next sub-phase)
+and Spineless runtime (the one after) build on.
+
+**`packages/core/src/algorithm/spineless/grammar.ts`:**
+
+- **`Field<T>`** — `(Node, name)` pair identifying a single attribute.
+  Identity-stable via the `field(node, name)` helper backed by a
+  per-node `WeakMap`. Two `field()` calls with the same args return
+  the same object → usable as `Map`/`Set` keys without custom hashing.
+- **`FieldRule<T>`** — `{ deps, compute(read) }`. The unit of
+  declarative layout: each rule reads its declared dependencies and
+  produces a value. Pure-function contract (interpreter enforces:
+  `compute` callback throws if a rule reads outside its `deps`).
+- **`Grammar`** — `Map<Field, FieldRule>`. The whole layout
+  algorithm, expressed as a static map.
+- **`TopoInterpreter`** — naive evaluator. DFS over the dependency
+  DAG, evaluates each reachable field exactly once per `evaluate()`
+  call, caches by field identity, throws on cycles. **Not
+  incremental** — that's what the Spineless runtime adds in the next
+  sub-phase. The interpreter serves two roles:
+  1. Correctness oracle (Spineless runtime asserts byte-identical
+     output via differential mode).
+  2. Bootstrap path — grammar correctness can be developed and
+     validated independently of the runtime.
+
+**Tests (13):** identity invariants, basic evaluation, dep chains,
+caching, reset, cycle detection, undeclared-dep enforcement, demo
+grammar (2-element fixed-width row with butt-joint invariant).
+
+Coverage: 93.19% on `spineless/` overall, 90.74% on `packages/core/src/**`.
+
 ## What's next (Phase 5a continuation)
 
-1. **Attribute grammar definition for flexbox** (~2-3 weeks)
+1. **Flexbox grammar in this type system** (~2-3 weeks)
    - Express the imperative flex algorithm (`packages/core/src/algorithm/main-axis.ts`)
-     as a set of attribute-level dependencies
-   - Each layout field (width, height, mainPos, finalMain, etc.) has
-     a rule that computes it from other fields
-   - Output: `packages/core/src/algorithm/spineless/grammar.ts`
-   - Validation: a "grammar interpreter" produces byte-identical
-     results to imperative algorithm across the existing 891-test
-     suite + 500-run fuzzer
+     as ~50 field rules in this type system
+   - Each layout field (width, height, mainPos, finalMain, etc.)
+     declares its deps and compute fn
+   - Output: `packages/core/src/algorithm/spineless/grammar/flex.ts`
+   - Validation: `TopoInterpreter` produces byte-identical layouts
+     to imperative algorithm across the 33 oracle fixtures + 500-run
+     fuzzer
 
 2. **Spineless runtime** (~3-4 weeks)
    - `recompute(field)` driver: pop from priority queue, run the
