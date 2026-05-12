@@ -29,7 +29,13 @@ function median(xs: number[]): number {
   return sorted[Math.floor(sorted.length / 2)]!;
 }
 
-function bench(label: string, sizes: number[], opsPerTrial: number, trials: number, op: 'compare' | 'insertAfter'): void {
+function bench(
+  label: string,
+  sizes: number[],
+  opsPerTrial: number,
+  trials: number,
+  op: 'compare' | 'insertAfter',
+): void {
   console.log(`\n## ${label} — ${op}`);
   for (const N of sizes) {
     const trialMs: number[] = [];
