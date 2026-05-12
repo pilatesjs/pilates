@@ -6,6 +6,31 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+### Performance
+
+- **Phase 4 cold-path cache reach.** `layoutChildren` now consults the
+  per-node `_layoutCache` on the cold path (root-dirty) in addition to
+  the previous `useCache=true` fast path. When a subtree is fully clean
+  (`!isDirty && !_hasDirtyDescendant`) AND its float absolute position
+  is integer-aligned, the cached layout is restored without re-running
+  the flex pipeline.
+
+  The integer-absolute guard is a correctness constraint: cached values
+  are post-round (integer-rounded) for the previous pass's absolute
+  position. When an ancestor's flex distribution shifts a subtree to a
+  different fractional absolute position, the rounding boundaries fall
+  differently and cached values become stale. The fuzzer (seed
+  915170359 during Phase 4 development) caught this exact case; the
+  guard restricts short-circuit to integer-absolute subtrees where
+  rounding is a no-op.
+
+  Impact at present: a 1k-tree leaf mutation triggers 49/50 cache hits
+  on sibling rows, skipping per-row flex computation. Hot-relayout
+  bench moves ~5% (full subtree-walk cost in `roundLayout` and
+  `computeScrollSizes` is the next bottleneck — Phase 5 territory).
+  Sets up the cache-consultation pattern that the Spineless Traversal
+  refactor (Phase 5) builds on.
+
 ## [1.0.1] — 2026-05-11
 
 ### Fixed

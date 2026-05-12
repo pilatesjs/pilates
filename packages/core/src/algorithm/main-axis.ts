@@ -170,6 +170,57 @@ export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, par
     }
   }
 
+  // Phase 4 cold-path cache short-circuit: when this subtree is provably
+  // unchanged AND no descendant was mutated, skip the entire flex
+  // recomputation. The parent's flex distribution has just set our
+  // _layout.width/height; if those match the cache and the cache is
+  // fresh (nothing inside this subtree dirty), the cached layout is
+  // byte-identical to what cold path would produce.
+  //
+  // Mirrors the useCache=true fast path above, but works on the cold path
+  // (the case where the root is dirty and useCache=false propagates down).
+  // Requires the stricter !node._hasDirtyDescendant guard because we
+  // return without recursing into children — any dirty descendant must
+  // run the cold path, which it can't if we short-circuit here.
+  //
+  // CORRECTNESS GUARD — fractional absolute position. The cached values are
+  // POST-ROUND (integer-cell coordinates). After Phase 4 short-circuit,
+  // roundLayout(root) still walks the full tree and re-rounds using
+  // (parent_abs + node._layout.left) as the float absolute. If the new
+  // float absolute has a different fractional part than when the cache was
+  // stored, the new rounding may fall on a different integer boundary —
+  // making the cached values stale.
+  //
+  // To prevent this, we only short-circuit when the node's float absolute
+  // position is integer-valued. With integer absolute, Math.round is a
+  // no-op and rounding produces the same result regardless of which pass
+  // computed the cache. Hot-relayout's natural shape (all positions integer
+  // after parent's flex) hits this case ~100% of the time; pathological
+  // trees where ancestor flex shifts subtree positions by fractional amounts
+  // fall through to the cold path here, which is correct.
+  //
+  // Note: roundLayout(root) still walks this subtree. For integer-positioned
+  // nodes restored from cache, applyRounding's Math.round is a no-op —
+  // wasted but harmless work. Phase C (if needed) skips the round walk
+  // for short-circuited subtrees.
+  if (!node.isDirty() && !node._hasDirtyDescendant && node._layoutCache !== undefined) {
+    const nodeAbsX = parentAbsX + node._layout.left;
+    const nodeAbsY = parentAbsY + node._layout.top;
+    if (Number.isInteger(nodeAbsX) && Number.isInteger(nodeAbsY)) {
+      const key = {
+        availableWidth: node.layout.width,
+        widthMode: 'exactly' as const,
+        availableHeight: node.layout.height,
+        heightMode: 'exactly' as const,
+      };
+      const hit = node._layoutCache.lookup(key);
+      if (hit !== undefined) {
+        restoreFromCache(node, hit);
+        return;
+      }
+    }
+  }
+
   // Cold path:
   const flowChildren = visibleChildrenOf(node);
   const absoluteList = absoluteChildrenOf(node);
@@ -198,10 +249,17 @@ export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, par
   // prevents children from reading stale cache entries whose keys were keyed
   // on pre-mutation sizes (the parent just assigned them new widths/heights
   // via the cold flex path, so their sizes may have changed).
+  //
+  // Pass node's float absolute position down so the Phase 4 short-circuit
+  // can verify its own absolute is integer-aligned (correctness guard against
+  // rounding-boundary shifts when an ancestor's flex altered fractional
+  // positions).
+  const nodeAbsX = parentAbsX + node._layout.left;
+  const nodeAbsY = parentAbsY + node._layout.top;
   for (let i = 0; i < node.getChildCount(); i++) {
     const c = node.getChild(i)!;
     if (c.style.display === 'none') continue;
-    layoutChildren(c, false);
+    layoutChildren(c, false, nodeAbsX, nodeAbsY);
   }
 
   // When we are inside a root cache-hit pass (useCache=true) and this node
