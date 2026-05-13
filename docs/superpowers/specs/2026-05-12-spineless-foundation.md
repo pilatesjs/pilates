@@ -178,14 +178,47 @@ grammar (2-element fixed-width row with butt-joint invariant).
 
 Coverage: 93.19% on `spineless/` overall, 90.74% on `packages/core/src/**`.
 
+## What landed (flex grammar v1, fifth commit on this PR)
+
+**First flex slice expressed as an attribute grammar** —
+`packages/core/src/algorithm/spineless/flex-grammar.ts`.
+
+This is the SMALLEST useful slice. Future slices expand the feature
+set one chunk at a time, each gated by a differential test against
+the imperative algorithm.
+
+| Feature | v1 | Roadmap |
+|---|---|---|
+| flex-direction: row | ✅ | |
+| Explicit width / height | ✅ | |
+| flex-direction: column | ❌ | v2 |
+| flex grow / shrink | ❌ | v3 |
+| Margin / padding / gap | ❌ | v4 |
+| Alignment (justify, align-items) | ❌ | v5 |
+| flex-wrap | ❌ | v6 |
+| Absolute positioning | ❌ | v7 |
+
+**Differential validation (9 tests, all pass):** every fixed-width-row
+tree in the test corpus produces byte-identical layouts from the
+grammar via `TopoInterpreter` and from the imperative algorithm via
+`calculateLayout()`. The `evaluateGrammar()` and `evaluateImperative()`
+helpers are the gate every future slice must keep green.
+
+**Fields emitted per node:** `width`, `height`, `left`, `top`. Rules
+wire deps explicitly: a child's `left` reads all prior siblings'
+`width` (sparse-and-explicit dependency DAG, optimal for Spineless).
+
+Coverage: 94.69% on `spineless/`, 90.86% overall.
+
 ## What's next (Phase 5a continuation)
 
-1. **Flexbox grammar in this type system** (~2-3 weeks)
-   - Express the imperative flex algorithm (`packages/core/src/algorithm/main-axis.ts`)
-     as ~50 field rules in this type system
-   - Each layout field (width, height, mainPos, finalMain, etc.)
-     declares its deps and compute fn
-   - Output: `packages/core/src/algorithm/spineless/grammar/flex.ts`
+1. **Expand flex grammar coverage** (~2-3 weeks total, in slices)
+   - Each new feature lands as a separate PR with its own differential
+     tests against the imperative algorithm
+   - Slices: column direction → flex grow/shrink → margin/padding/gap →
+     alignment → wrap → absolute positioning
+   - Output: `packages/core/src/algorithm/spineless/flex-grammar.ts`
+     grows incrementally
    - Validation: `TopoInterpreter` produces byte-identical layouts
      to imperative algorithm across the 33 oracle fixtures + 500-run
      fuzzer
