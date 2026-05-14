@@ -1,7 +1,7 @@
 # Phase 5 Spineless Traversal — Foundation (Phase 5a, OM data structure)
 
 **Date:** 2026-05-12
-**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Flex grammar v5 (margin / padding / gap) ✅. Next slice: alignment (v6).
+**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Flex grammar v5 (margin / padding / gap) ✅. Flex grammar v6 (justify-content + align-items / align-self) ✅. Next slice: flex-wrap (v7).
 **Plan reference:** `~/.claude/plans/precious-plotting-willow.md`
 
 ## Context
@@ -196,7 +196,7 @@ the imperative algorithm.
 | flex-shrink | ✅ v4 | |
 | flex-basis (separate property) | ✅ v4 | |
 | Margin / padding / gap | ✅ v5 | |
-| Alignment (justify, align-items) | ❌ | v6 |
+| Alignment (justify, align-items / self) | ✅ v6 | |
 | flex-wrap | ❌ | v7 |
 | Absolute positioning | ❌ | v8 |
 | flex-direction: row-reverse / column-reverse | ❌ | later |
@@ -350,6 +350,54 @@ combined padding+gap+margin trees in row and column, plus two
 regression tests for prior slices.
 
 Coverage: 100% on `flex-grammar.ts`, 96.09% on `spineless/` overall.
+
+## What landed (alignment, v6 — tenth commit on this PR series)
+
+The sixth flex slice adds the alignment family: `justify-content`
+(main-axis distribution), `align-items` + `align-self` (cross-axis
+placement). With explicit child cross sizes already required by the
+slice family, `stretch` collapses to flex-start placement (no stretch
+target available), matching the imperative algorithm.
+
+**Implementation change — main axis:** A new code path runs when
+`parent.style.justifyContent !== 'flex-start'`. The leftover is
+`max(0, innerMain - usedMain)`, derived inside `compute()` from the
+parent's main size plus every sibling's post-distribution main size.
+That leftover converts (per the CSS rules) to a leading cursor offset
+and/or an extra gap between items; the cursor then walks each prior
+sibling exactly as `positionItemsInLine` does in the imperative
+pipeline. This is the first time the main-position dep set grows
+beyond "prior siblings only" — under space-* or center, any sibling
+size change can re-position every item, so the grammar declares the
+fuller dep set.
+
+**Implementation change — cross axis:** `align-self` (with `'auto'`
+falling back to `align-items`) selects the cross-pos rule:
+- `flex-end`: `parent.crossSize - padCrossEnd - childCrossSize -
+  marginCrossEnd` (a constant computation gated on a new dep on the
+  parent's cross-axis size field).
+- `center`: `padCrossStart + marginCrossStart + max(0, (innerLine -
+  childCrossSize) / 2)`, also depending on the parent's cross size.
+- Anything else (flex-start, stretch, baseline, space-*): the v5
+  constant offset `padCrossStart + marginCrossStart`.
+
+The default-flex-start fast path is preserved exactly — the 60
+pre-v6 tests stay green untouched.
+
+**Differential validation (20 new tests, 75 total, all pass):**
+- 9 justify-content tests: each of the six values in a row, leftover-
+  consumed-by-grow no-op, column-direction justify, padding
+  interaction.
+- 7 align-items tests: flex-start, flex-end, center, stretch (with
+  explicit child size), column-direction align, end-margin
+  interaction, cross-axis padding interaction.
+- 2 align-self tests: per-child override, `'auto'` fallback.
+- 1 combined justify + align test.
+- 1 regression test confirming v5 spacing trees still match with
+  default alignment.
+
+Coverage: 100% on `flex-grammar.ts`, 96.96% on `spineless/` overall
+(up from 96.09% at v5).
 
 ## What's next (Phase 5a continuation)
 
