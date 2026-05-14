@@ -1,7 +1,7 @@
 # Phase 5 Spineless Traversal — Foundation (Phase 5a, OM data structure)
 
 **Date:** 2026-05-12
-**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Next slice: margin / padding / gap (v5).
+**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Flex grammar v5 (margin / padding / gap) ✅. Next slice: alignment (v6).
 **Plan reference:** `~/.claude/plans/precious-plotting-willow.md`
 
 ## Context
@@ -195,7 +195,7 @@ the imperative algorithm.
 | flex-grow | ✅ v3 | |
 | flex-shrink | ✅ v4 | |
 | flex-basis (separate property) | ✅ v4 | |
-| Margin / padding / gap | ❌ | v5 |
+| Margin / padding / gap | ✅ v5 | |
 | Alignment (justify, align-items) | ❌ | v6 |
 | flex-wrap | ❌ | v7 |
 | Absolute positioning | ❌ | v8 |
@@ -313,6 +313,43 @@ and a v3 regression check.
 
 Coverage: 100% on `flex-grammar.ts` (all branches), 95.66% on
 `spineless/` overall.
+
+## What landed (margin + padding + gap, v5 — ninth commit on this PR series)
+
+The fifth flex slice — spacing. Three CSS properties land together
+because they share the same mechanic: each shifts positions and
+contributes to the flex-distribution hypothetical sum without itself
+being a distributable quantity.
+
+**Implementation change:** The visit function gains axis-aware
+spacing readers. Per child:
+- `mainPos = padMainStart + myMarginMainStart + sum_priors(marginMainStart + mainSize + marginMainEnd) + indexInParent * gapMain`
+- `crossPos = padCrossStart + myMarginCrossStart` (was 0)
+- `mainSize`: when flex-distributing, the budget becomes
+  `containerMain - padMainStart - padMainEnd`, and the hypothetical
+  sum picks up `sum(basis + marginStart + marginEnd) + (n-1)*gap`.
+  Both grow and shrink continue to redistribute on the basis part
+  only — margins and gaps are fixed-width spacers.
+
+Margin, padding, and gap default to 0 across the codebase, so the
+v1–v4 fast paths reduce to the same constant offsets they did before
+the change (no behavioural regression — the 42 prior tests stay
+green untouched).
+
+The previous "main pos depends on the sum of prior siblings'
+mainSizes" dep graph is preserved: only the SIZES vary
+incrementally; margins, padding, and gaps fold into a constant
+offset captured at grammar-build time.
+
+**Differential validation (13 new tests, 55 total, all pass):**
+padding on row + column (shifts main and cross axes), padding
+shrinks the grow budget, column-gap spaces row items, row-gap
+spaces column items, gap subtracts from the grow budget,
+per-child margins on both axes, margins in grow + shrink budgets,
+combined padding+gap+margin trees in row and column, plus two
+regression tests for prior slices.
+
+Coverage: 100% on `flex-grammar.ts`, 96.09% on `spineless/` overall.
 
 ## What's next (Phase 5a continuation)
 
