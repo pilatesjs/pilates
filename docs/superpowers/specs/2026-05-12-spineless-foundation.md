@@ -1,7 +1,7 @@
 # Phase 5 Spineless Traversal — Foundation (Phase 5a, OM data structure)
 
 **Date:** 2026-05-12
-**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Next slice: flex-shrink (v4).
+**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Next slice: margin / padding / gap (v5).
 **Plan reference:** `~/.claude/plans/precious-plotting-willow.md`
 
 ## Context
@@ -193,13 +193,14 @@ the imperative algorithm.
 | Explicit width / height | ✅ v1 | |
 | flex-direction: column | ✅ v2 | |
 | flex-grow | ✅ v3 | |
-| flex-shrink | ❌ | v4 |
-| flex-basis (separate property) | ❌ | v4 |
+| flex-shrink | ✅ v4 | |
+| flex-basis (separate property) | ✅ v4 | |
 | Margin / padding / gap | ❌ | v5 |
 | Alignment (justify, align-items) | ❌ | v6 |
 | flex-wrap | ❌ | v7 |
 | Absolute positioning | ❌ | v8 |
 | flex-direction: row-reverse / column-reverse | ❌ | later |
+| min/max width/height (multi-pass freeze loop) | ❌ | later |
 | Integer-cell rounding folded into the grammar | ❌ (post-pass for now) | later |
 
 **Differential validation (9 tests, all pass):** every fixed-width-row
@@ -278,6 +279,39 @@ sibling basis under flex-grow, plus regression tests confirming v1
 and v2 trees still match.
 
 Coverage: 100% on `flex-grammar.ts` (all branches), 95.39% on
+`spineless/` overall.
+
+## What landed (flex-shrink + flexBasis, v4 — eighth commit on this PR series)
+
+The fourth flex slice closes out CSS flex distribution by adding the
+shrink half plus the `flexBasis` property:
+
+- **flex-shrink:** when sum of bases > budget and any sibling has
+  `flexShrink > 0`, each shrink-positive sibling loses
+  `(overflow * shrink * basis) / sum(shrink * basis)` — the CSS
+  scaled-shrink rule. Mirrors the imperative `distributeShrink` in
+  `main-axis.ts`, minus the freeze loop (no min/max clamping in this
+  slice, so distribution still terminates in one pass).
+- **flexBasis as a separate property:** a numeric `style.flexBasis`
+  overrides `style.{width|height}` as the hypothetical main size used
+  by distribution. Falls back to the style size when basis is `'auto'`.
+  Mirrors `resolveHypotheticalMainSize`.
+
+The "needs flex distribution?" predicate generalised from
+"any child has grow > 0" to "any child has grow > 0, shrink > 0, or
+numeric flexBasis". Outside that predicate the main size collapses to
+the resolved basis (the v1/v2 fast path is preserved exactly).
+
+**Differential validation (10 new tests, 40 total, all pass):**
+two equal-shrink children (overflow split proportionally to basis),
+asymmetric shrink weights (1 vs 2), shrink=0 + shrink=1 mix (only
+the shrink-positive sibling absorbs overflow), different bases with
+equal shrink (larger child shrinks more), column-direction shrink,
+flexBasis overrides style.width, flexBasis + flexGrow, flexBasis +
+flexShrink, a precondition test for non-numeric basis under shrink,
+and a v3 regression check.
+
+Coverage: 100% on `flex-grammar.ts` (all branches), 95.66% on
 `spineless/` overall.
 
 ## What's next (Phase 5a continuation)

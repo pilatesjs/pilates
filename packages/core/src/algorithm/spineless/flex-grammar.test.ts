@@ -489,3 +489,196 @@ describe('buildFlexGrammar — flex-grow (slice v3)', () => {
     });
   });
 });
+
+describe('buildFlexGrammar — flex-shrink + flex-basis (slice v4)', () => {
+  describe('shrink in row direction', () => {
+    it('two equal-shrink children split overflow proportionally to basis', () => {
+      // Bases sum 120, budget 100 → overflow 20. Equal shrink=1 and equal
+      // bases → each shrinks by 10. Result: both children at 50.
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(30);
+        c.setFlexShrink(1);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('asymmetric shrink weights (1 vs 2) shrink proportionally to shrink*basis', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(60);
+      a.setHeight(30);
+      a.setFlexShrink(1);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(60);
+      b.setHeight(30);
+      b.setFlexShrink(2);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('shrink=0 sibling stays fixed while shrink=1 sibling absorbs all overflow', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const fixed = Node.create();
+      fixed.setWidth(60);
+      fixed.setHeight(30);
+      // No setFlexShrink → default 0, so 'fixed' must stay at 60.
+      root.insertChild(fixed, 0);
+      const shrink = Node.create();
+      shrink.setWidth(60);
+      shrink.setHeight(30);
+      shrink.setFlexShrink(1);
+      root.insertChild(shrink, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('different bases with equal shrink: larger child shrinks more', () => {
+      // basis 90 + basis 30 = 120, budget 100 → overflow 20.
+      // Scaled: 90*1 = 90; 30*1 = 30; total 120.
+      // Reductions: 20*(90/120)=15 and 20*(30/120)=5. → finals 75 and 25.
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const big = Node.create();
+      big.setWidth(90);
+      big.setHeight(30);
+      big.setFlexShrink(1);
+      root.insertChild(big, 0);
+      const small = Node.create();
+      small.setWidth(30);
+      small.setHeight(30);
+      small.setFlexShrink(1);
+      root.insertChild(small, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('shrink in column direction', () => {
+    it('two equal-shrink column children shrink along the height axis', () => {
+      const root = Node.create();
+      root.setWidth(40);
+      root.setHeight(100);
+      root.setFlexDirection('column');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(60);
+        c.setFlexShrink(1);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('flex-basis as a separate property', () => {
+    it('flexBasis overrides style.width as the hypothetical main size', () => {
+      // The hypothetical for distribution uses flexBasis (20), not the
+      // style.width (50). With no grow or shrink, the final size equals
+      // the hypothetical, so the child ends up at width 20 even though
+      // style.width was 50.
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const c = Node.create();
+      c.setWidth(50);
+      c.setHeight(30);
+      c.setFlexBasis(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('flexBasis combined with flexGrow: distribution sums from basis values', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(99); // ignored
+      a.setHeight(30);
+      a.setFlexBasis(20);
+      a.setFlexGrow(1);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(99); // ignored
+      b.setHeight(30);
+      b.setFlexBasis(30);
+      b.setFlexGrow(1);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('flexBasis combined with flexShrink: overflow shrinks from basis values', () => {
+      const root = Node.create();
+      root.setWidth(60);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(0);
+      a.setHeight(30);
+      a.setFlexBasis(50);
+      a.setFlexShrink(1);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(0);
+      b.setHeight(30);
+      b.setFlexBasis(30);
+      b.setFlexShrink(1);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('precondition errors', () => {
+    it('throws when a shrink sibling lacks an explicit numeric basis', () => {
+      const root = Node.create();
+      root.setWidth(50);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(40);
+      a.setHeight(30);
+      a.setFlexShrink(1);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      // No setWidth and no setFlexBasis — both are 'auto'.
+      b.setHeight(30);
+      root.insertChild(b, 1);
+      expect(() => buildFlexGrammar(root)).toThrow(/flex sibling requires explicit numeric/);
+    });
+  });
+
+  describe('regression: prior slices still match', () => {
+    it('v3 grow tree (no shrink, no basis) still matches imperative', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(10);
+      a.setHeight(30);
+      a.setFlexGrow(1);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(10);
+      b.setHeight(30);
+      b.setFlexGrow(2);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+});
