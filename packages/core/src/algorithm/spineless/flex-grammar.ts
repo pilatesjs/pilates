@@ -159,8 +159,13 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         `[flex-grammar] node requires explicit numeric height; got ${JSON.stringify(styleHRaw)}`,
       );
     }
-    const styleW: number = styleWRaw;
-    const styleH: number = styleHRaw;
+    // styleWRaw / styleHRaw are now type-asserted numbers (proved by
+    // the preceding checks). Compute callbacks re-read `node.style`
+    // live so width / height mutations propagate through recompute()
+    // — these declarations stay only to gate the build-time
+    // precondition, not to be captured.
+    void styleWRaw;
+    void styleHRaw;
 
     // The parent's direction decides which of {width, height} is the
     // main-axis size for THIS child (and which of {left, top} is the
@@ -179,7 +184,6 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       parentDirection === 'column' ? (top as Field<unknown>) : (left as Field<unknown>);
     const crossPosField =
       parentDirection === 'column' ? (left as Field<unknown>) : (top as Field<unknown>);
-    const crossSizeStyle = parentDirection === 'column' ? styleW : styleH;
     const mainSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
 
     // Parent's spacing for this child: padding along both axes, gap
@@ -210,12 +214,14 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     // This node's own resolved basis: flexBasis if numeric, otherwise
     // style.{width|height}. Both the no-flex-distribution path (basis
     // == final size) and the flex-distribution path use this value.
-    const myBasis = resolveBasis(node, mainSizeName);
-
     // Cross-axis size: always reads style in this slice (no stretch).
+    // The compute closes over `node` and reads its style at evaluate
+    // time so a style mutation followed by `markDirty(crossSizeField)`
+    // + `recompute()` picks up the new value.
+    const crossKey: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
     grammar.set(crossSizeField, {
       deps: [],
-      compute: () => crossSizeStyle,
+      compute: () => node.style[crossKey] as number,
     } satisfies FieldRule<number>);
 
     // When the parent has flex-wrap='wrap', all three position fields
@@ -308,9 +314,11 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     // style.{width|height}. Outside this case the main size is just
     // the resolved basis.
     if (parent === null || !parentNeedsFlexDistribution(parent)) {
+      // Live-read via resolveBasis so a style mutation flows through
+      // recompute() when `markDirty(mainSizeField)` is called.
       grammar.set(mainSizeField, {
         deps: [],
-        compute: () => myBasis,
+        compute: () => resolveBasis(node, mainSizeName),
       } satisfies FieldRule<number>);
     } else {
       // Flex distribution. Capture every sibling's resolved basis,
@@ -427,7 +435,10 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         grammar.set(crossPosField, {
           deps: [parentCrossField as Field<unknown>],
           compute: (read) =>
-            read(parentCrossField) - padCrossEnd - crossSizeStyle - myMarginCrossEnd,
+            read(parentCrossField) -
+            padCrossEnd -
+            (node.style[crossKey] as number) -
+            myMarginCrossEnd,
         } satisfies FieldRule<number>);
       } else {
         // Root: no parent, no alignment to apply — anchor at 0.
@@ -446,7 +457,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         compute: (read) => {
           const innerCross = Math.max(0, read(parentCrossField) - padCrossStart - padCrossEnd);
           const innerLine = innerCross - myMarginCrossStart - myMarginCrossEnd;
-          return padCrossStart + myMarginCrossStart + Math.max(0, (innerLine - crossSizeStyle) / 2);
+          const myCross = node.style[crossKey] as number;
+          return padCrossStart + myMarginCrossStart + Math.max(0, (innerLine - myCross) / 2);
         },
       } satisfies FieldRule<number>);
     } else {
@@ -794,11 +806,15 @@ function emitAbsoluteRules(
   const parentWField = field<number>(parent, 'width');
   const parentHField = field<number>(parent, 'height');
 
-  // Width
+  // Width. The explicit-width branch live-reads child.style.width
+  // so a `setWidth` on the absolute child propagates through
+  // markDirty + recompute. Mutating the child from explicit to
+  // 'auto' (or vice-versa) requires a fresh grammar build since
+  // that crosses branch boundaries — out of scope here.
   if (typeof styleW === 'number') {
     grammar.set(width as Field<unknown>, {
       deps: [],
-      compute: () => styleW,
+      compute: () => child.style.width as number,
     } satisfies FieldRule<number>);
   } else if (posLeft !== undefined && posRight !== undefined) {
     grammar.set(width as Field<unknown>, {
@@ -813,11 +829,11 @@ function emitAbsoluteRules(
     } satisfies FieldRule<number>);
   }
 
-  // Height
+  // Height — symmetric to width.
   if (typeof styleH === 'number') {
     grammar.set(height as Field<unknown>, {
       deps: [],
-      compute: () => styleH,
+      compute: () => child.style.height as number,
     } satisfies FieldRule<number>);
   } else if (posTop !== undefined && posBottom !== undefined) {
     grammar.set(height as Field<unknown>, {

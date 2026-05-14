@@ -77,7 +77,7 @@ Full `packages/core` suite: 475 tests pass (up from 460).
 
 ## What's next
 
-1. **Style-mutation wiring.** Hook `node.setWidth(...)` etc. into the runtime's `markDirty`. The trick: figure out which fields a given style mutation actually invalidates. For the v1-v8 flex grammar, this is mostly mechanical — `style.width` invalidates the node's `width` field (and any field that captured it inline, but we may decide to read style lazily inside `compute` to keep this clean).
-2. **Differential mode harness.** Adapt the 100 flex-grammar differential tests to also run the layout through `SpinelessRuntime` and assert the same byte-identical output.
-3. **Behind a feature flag.** A `PILATES_SPINELESS_LAYOUT=1` env flag lets the runtime opt into shipping to early users while the imperative path stays the default.
-4. **Bench.** A new `hot-relayout-text` scenario that mutates leaf text each frame, compared against the imperative algorithm. Expected wins: the smaller the dirty fragment per frame, the bigger the gap.
+1. **Style-mutation wiring — first cut landed.** A follow-up commit on this PR series refactors the **size** compute callbacks in `flex-grammar.ts` to live-read `node.style.{width|height|flexBasis}` at evaluate time, and adds `SpinelessRuntime.markAllDirty()` as a coarse escape hatch alongside the existing `markDirty(field)`. After this, the full end-to-end loop works for size mutations: build runtime → mutate `setWidth` / `setHeight` / `setFlexBasis` → `markDirty(field)` (or `markAllDirty()`) → `recompute()` → layout matches a fresh build. Padding, margin, gap, flex-grow, flex-shrink, flex-wrap, and align-content are still inline-captured at build time; the next slice extends the live-read to those props.
+2. **Behind a feature flag.** A `PILATES_SPINELESS_LAYOUT=1` env flag lets the runtime opt into shipping to early users while the imperative path stays the default.
+3. **Bench.** A new `hot-relayout-text` scenario that mutates leaf text each frame, compared against the imperative algorithm. Expected wins: the smaller the dirty fragment per frame, the bigger the gap.
+4. **Cover the rest of style-mutation.** Refactor `padding` / `margin` / `gap` / flex distribution / wrap captures to also live-read, then either add fine-grained `markStyleDirty(node, propName)` or expose a `Node` setter hook that the runtime can subscribe to.

@@ -155,6 +155,24 @@ export class SpinelessRuntime {
   }
 
   /**
+   * Mark every field tracked by this runtime as dirty. Useful as an
+   * escape hatch when callers don't have fine-grained style-mutation
+   * wiring yet: mutate styles, call `markAllDirty()`, then
+   * `recompute()`. Each field re-runs its rule once, but the "skip
+   * dependents when value unchanged" property still applies — so
+   * cost is one compute per field plus propagation only along
+   * actually-changed values, rather than a full re-init.
+   */
+  markAllDirty(): void {
+    if (!this.initDone) {
+      throw new Error('[spineless-runtime] markAllDirty called before init()');
+    }
+    for (const [field, omNode] of this.omNodes) {
+      this.pq.push(field, omNode);
+    }
+  }
+
+  /**
    * Mark a field as dirty. Its rule will be re-run on the next
    * `recompute()`. If the new value differs from the cached one,
    * dependents are scheduled in turn.
