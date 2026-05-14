@@ -126,15 +126,10 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     // uses 0 for both.
     const parentDirection = parent === null ? null : parent.style.flexDirection;
     const mainAxisField =
-      parentDirection === 'column'
-        ? (top as Field<unknown>)
-        : (left as Field<unknown>);
+      parentDirection === 'column' ? (top as Field<unknown>) : (left as Field<unknown>);
     const crossAxisField =
-      parentDirection === 'column'
-        ? (left as Field<unknown>)
-        : (top as Field<unknown>);
-    const mainAxisSizeName: 'width' | 'height' =
-      parentDirection === 'column' ? 'height' : 'width';
+      parentDirection === 'column' ? (left as Field<unknown>) : (top as Field<unknown>);
+    const mainAxisSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
 
     if (parent === null || indexInParent === 0) {
       grammar.set(mainAxisField, {
@@ -146,9 +141,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       // main-axis size. The Spineless runtime relies on this shape;
       // equivalent to "last sibling's main offset + last sibling's
       // main size" but reasons more cleanly under incremental updates.
-      const priorMainSizes = priorSiblings.map((s) =>
-        field<number>(s, mainAxisSizeName),
-      );
+      const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainAxisSizeName));
       grammar.set(mainAxisField, {
         deps: priorMainSizes as Field<unknown>[],
         compute: (read) => {

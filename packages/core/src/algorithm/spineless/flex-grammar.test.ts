@@ -26,11 +26,7 @@ function buildFixedRowTree(rootWidth: number, rootHeight: number, childWidths: n
  * Column analogue of `buildFixedRowTree`: children stack vertically.
  * Each child shares the root's width; heights vary across `childHeights`.
  */
-function buildFixedColumnTree(
-  rootWidth: number,
-  rootHeight: number,
-  childHeights: number[],
-): Node {
+function buildFixedColumnTree(rootWidth: number, rootHeight: number, childHeights: number[]): Node {
   const root = Node.create();
   root.setWidth(rootWidth);
   root.setHeight(rootHeight);
