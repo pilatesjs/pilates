@@ -67,7 +67,7 @@ These are deliberate hold-outs for the next slice, not bugs:
 
 - **Style mutation does not auto-dirty fields.** The runtime exposes `markDirty(field)` as a manual API. Wiring it up to `node.setWidth(...)` (and figuring out exactly which fields a style mutation invalidates) lands in the next slice.
 - **Grammar mutation is unsupported.** Adding / removing nodes between layouts, or changing what fields a rule depends on, means a fresh `SpinelessRuntime` instance. The grammar is fixed at init time.
-- **No differential mode harness yet.** The correctness oracle for the runtime is the existing `TopoInterpreter` over the same grammar. The flex grammar already validates byte-identically against the imperative pipeline; if the runtime matches the interpreter, the imperative parity flows through transitively. A formal differential test that asserts this on the full flex test corpus is a small follow-up.
+- **Differential mode harness — landed.** A second commit on this PR series (`runtime-differential.test.ts`) drives the `SpinelessRuntime` across a one-per-slice corpus (v1 fixed row → v8 absolute, plus a nested column-of-rows). Each tree's runtime output (after the same integer-cell rounding pass) is asserted equal to the imperative `root.calculateLayout()` output. A separate test exercises `init + markDirty(*) + recompute()` and asserts the result matches a fresh init — the core "incremental == from-scratch" invariant.
 
 ## Test coverage
 
