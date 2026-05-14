@@ -1,27 +1,27 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v6) covers:
+ * Current slice (v7) covers:
  *
  *   - flex-direction: `row` and `column`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
  *   - padding / margin / gap (v5)
- *   - justify-content: all six values (flex-start, flex-end, center,
- *     space-between, space-around, space-evenly). Leftover along the
- *     main axis is distributed as a leading offset and/or extra gap.
- *   - align-items + align-self (with `'auto'` fallback): flex-start,
- *     flex-end, center, and stretch (with explicit cross size,
- *     stretch is equivalent to flex-start since there's nothing to
- *     stretch into).
- *   - No flex-wrap, no align-content (single-line containers only)
+ *   - justify-content + align-items / align-self (v6)
+ *   - flex-wrap: `'nowrap'` (default) and `'wrap'`. Greedy packing,
+ *     per-line flex distribution, per-line cross sizing (max of
+ *     items' cross + margins), line stacking with cross-axis gap.
+ *     Each line is independently justified and per-line aligned.
+ *     `align-content` must remain `'flex-start'` under wrap;
+ *     other values are reserved for a later slice.
  *   - No absolute positioning
- *   - `row-reverse` and `column-reverse` rejected at build time
+ *   - `row-reverse`, `column-reverse`, `wrap-reverse` rejected at
+ *     build time
  *
- * Subsequent PRs expand the feature set (wrap, abs positioning,
- * reverse directions, min/max clamping with the multi-iteration
- * freeze loop) one chunk at a time, each gated by a differential test
- * that asserts the grammar produces byte-identical output to the
- * imperative algorithm.
+ * Subsequent PRs expand the feature set (align-content variants,
+ * wrap-reverse, abs positioning, reverse directions, min/max
+ * clamping with the multi-iteration freeze loop) one chunk at a time,
+ * each gated by a differential test that asserts the grammar produces
+ * byte-identical output to the imperative algorithm.
  *
  * Fields emitted per node:
  *
@@ -119,6 +119,17 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         `[flex-grammar] flex-direction '${direction}' is not yet supported; only 'row' and 'column' are implemented in this slice`,
       );
     }
+    const wrap = node.style.flexWrap;
+    if (wrap === 'wrap-reverse') {
+      throw new Error(
+        `[flex-grammar] flex-wrap 'wrap-reverse' is not yet supported; only 'nowrap' and 'wrap' are implemented in this slice`,
+      );
+    }
+    if (wrap === 'wrap' && node.style.alignContent !== 'flex-start') {
+      throw new Error(
+        `[flex-grammar] under flex-wrap='wrap', align-content other than 'flex-start' is not yet supported; got '${node.style.alignContent}'`,
+      );
+    }
 
     // The parent's direction decides which of {width, height} is the
     // main-axis size for THIS child (and which of {left, top} is the
@@ -175,6 +186,88 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       deps: [],
       compute: () => crossSizeStyle,
     } satisfies FieldRule<number>);
+
+    // When the parent has flex-wrap='wrap', all three position fields
+    // (mainSize, mainPos, crossPos) flow through a single per-line
+    // helper that packs the line set on demand. The helper depends on
+    // the parent's main-axis size (line capacity), the parent's
+    // cross-axis size (for the single-line-wrap case), and only on
+    // the constant sibling style data — bases, margins, cross sizes
+    // are all captured inline. The dep graph stays compact (parent
+    // size fields only) at the cost of redoing the packing once per
+    // child read.
+    if (parent !== null && parent.style.flexWrap === 'wrap') {
+      const wrapSiblings: WrapSibling[] = [];
+      let myIndex = -1;
+      for (let i = 0; i < parent.getChildCount(); i++) {
+        const sib = parent.getChild(i)!;
+        if (sib === node) myIndex = wrapSiblings.length;
+        const sibBasis = resolveBasis(sib, mainSizeName);
+        const sibCross =
+          parentDirection === 'column' ? (sib.style.width as number) : (sib.style.height as number);
+        const sibAlignSelf = sib.style.alignSelf;
+        wrapSiblings.push({
+          basis: sibBasis,
+          grow: sib.style.flexGrow,
+          shrink: sib.style.flexShrink,
+          mainMarginStart: readMarginMainStart(sib, parentDirection!),
+          mainMarginEnd: readMarginMainEnd(sib, parentDirection!),
+          crossSize: sibCross,
+          crossMarginStart: readMarginCrossStart(sib, parentDirection!),
+          crossMarginEnd: readMarginCrossEnd(sib, parentDirection!),
+          align: sibAlignSelf === 'auto' ? parent.style.alignItems : sibAlignSelf,
+        });
+      }
+      const parentMainField = field<number>(parent, mainSizeName);
+      const parentCrossField = field<number>(
+        parent,
+        parentDirection === 'column' ? 'width' : 'height',
+      );
+      const crossGap = parentDirection === 'column' ? parent.style.gapColumn : parent.style.gapRow;
+      const wrapDeps: Field<unknown>[] = [
+        parentMainField as Field<unknown>,
+        parentCrossField as Field<unknown>,
+      ];
+      const evalWrapped = (read: (f: Field<unknown>) => unknown) => {
+        const containerMain = read(parentMainField as Field<unknown>) as number;
+        const containerCross = read(parentCrossField as Field<unknown>) as number;
+        const innerMain = Math.max(0, containerMain - padMainStart - padMainEnd);
+        const innerCross = Math.max(0, containerCross - padCrossStart - padCrossEnd);
+        return evaluateWrappedChild(
+          wrapSiblings,
+          myIndex,
+          innerMain,
+          innerCross,
+          gapMain,
+          crossGap,
+          justify,
+          padMainStart,
+          padCrossStart,
+        );
+      };
+      grammar.set(mainSizeField, {
+        deps: wrapDeps,
+        compute: (read) => evalWrapped(read as (f: Field<unknown>) => unknown).mainSize,
+      } satisfies FieldRule<number>);
+      grammar.set(mainPosField, {
+        deps: wrapDeps,
+        compute: (read) => evalWrapped(read as (f: Field<unknown>) => unknown).mainPos,
+      } satisfies FieldRule<number>);
+      grammar.set(crossPosField, {
+        deps: wrapDeps,
+        compute: (read) => evalWrapped(read as (f: Field<unknown>) => unknown).crossPos,
+      } satisfies FieldRule<number>);
+      allFields.push({ node, width, height, left, top });
+      // Recurse into children.
+      const childCount = node.getChildCount();
+      const childSiblings: Node[] = [];
+      for (let i = 0; i < childCount; i++) {
+        const child = node.getChild(i)!;
+        visit(child, node, i, [...childSiblings]);
+        childSiblings.push(child);
+      }
+      return;
+    }
 
     // Main-axis size: depends on whether the parent flex-distributes
     // its children. A parent flex-distributes when ANY of its children
@@ -607,4 +700,217 @@ function readMarginCrossStart(child: Node, direction: 'row' | 'column'): number 
 
 function readMarginCrossEnd(child: Node, direction: 'row' | 'column'): number {
   return child.style.margin[direction === 'column' ? RIGHT : BOTTOM] ?? 0;
+}
+
+// ─── wrap-aware line layout ─────────────────────────────────────────────
+
+interface WrapSibling {
+  basis: number;
+  grow: number;
+  shrink: number;
+  mainMarginStart: number;
+  mainMarginEnd: number;
+  crossSize: number;
+  crossMarginStart: number;
+  crossMarginEnd: number;
+  align: Align;
+}
+
+/**
+ * Pack `siblings` greedily into lines along the main axis, run flex
+ * distribution per line, compute each line's cross size and start,
+ * then resolve the indicated child's `{mainSize, mainPos, crossPos}`.
+ *
+ * Mirrors the imperative `packIntoLines` → `distributeFlexInLine` →
+ * `computeLineCrossSizes` → `positionLinesOnCross` →
+ * `positionItemsInLine` → `crossAlignItemsInLine` chain. The
+ * single-line case (one packed line) collapses crossSize to
+ * `innerCross` and crossPos of the line to 0, matching the
+ * imperative's `singleLineMode` branch.
+ *
+ * Called once per child per layout pass; the per-child callbacks pick
+ * out their own value from the returned struct. Total work is O(N²)
+ * for an N-child wrapped container — acceptable for v7; later
+ * Spineless tiers can extract shared per-line fields.
+ *
+ * @internal
+ */
+function evaluateWrappedChild(
+  siblings: readonly WrapSibling[],
+  childIndex: number,
+  innerMain: number,
+  innerCross: number,
+  mainGap: number,
+  crossGap: number,
+  justify: Justify,
+  padMainStart: number,
+  padCrossStart: number,
+): { mainSize: number; mainPos: number; crossPos: number } {
+  const n = siblings.length;
+
+  // Pack greedily, recording per-line start index and count.
+  const lineFirst: number[] = [];
+  const lineCount: number[] = [];
+  {
+    let start = 0;
+    let acc = 0;
+    for (let i = 0; i < n; i++) {
+      const s = siblings[i]!;
+      const itemMain = s.basis + s.mainMarginStart + s.mainMarginEnd;
+      const inLine = i > start;
+      const wouldUse = acc + (inLine ? mainGap : 0) + itemMain;
+      if (inLine && wouldUse > innerMain) {
+        lineFirst.push(start);
+        lineCount.push(i - start);
+        start = i;
+        acc = itemMain;
+      } else {
+        if (inLine) acc += mainGap;
+        acc += itemMain;
+      }
+    }
+    if (start < n) {
+      lineFirst.push(start);
+      lineCount.push(n - start);
+    }
+  }
+  const numLines = lineFirst.length;
+  const isMultiline = numLines > 1;
+
+  // Per-line distribution. WrapSibling renames the main-axis margins
+  // to `mainMargin*` (they share fields with the cross-axis margins);
+  // distributeMainAxis takes a smaller shape so we map at the boundary.
+  const finalMainSizes: number[] = new Array(n);
+  for (let li = 0; li < numLines; li++) {
+    const first = lineFirst[li]!;
+    const count = lineCount[li]!;
+    const lineSiblings = siblings.slice(first, first + count).map((s) => ({
+      basis: s.basis,
+      grow: s.grow,
+      shrink: s.shrink,
+      marginStart: s.mainMarginStart,
+      marginEnd: s.mainMarginEnd,
+    }));
+    const distributed = distributeMainAxis(lineSiblings, innerMain, mainGap);
+    for (let k = 0; k < count; k++) {
+      finalMainSizes[first + k] = distributed[k]!;
+    }
+  }
+
+  // Per-line cross size: container's inner cross for single-line,
+  // max of (item.crossSize + cross margins) otherwise.
+  const lineCrossSizes: number[] = new Array(numLines);
+  if (!isMultiline) {
+    lineCrossSizes[0] = innerCross;
+  } else {
+    for (let li = 0; li < numLines; li++) {
+      const first = lineFirst[li]!;
+      const count = lineCount[li]!;
+      let max = 0;
+      for (let k = 0; k < count; k++) {
+        const s = siblings[first + k]!;
+        const candidate = s.crossSize + s.crossMarginStart + s.crossMarginEnd;
+        if (candidate > max) max = candidate;
+      }
+      lineCrossSizes[li] = max;
+    }
+  }
+
+  // Per-line cross start: 0 for single-line; cumulative + crossGap
+  // for multi-line (matches imperative's positionLinesOnCross with
+  // align-content='flex-start').
+  const lineCrossStarts: number[] = new Array(numLines);
+  if (!isMultiline) {
+    lineCrossStarts[0] = 0;
+  } else {
+    let cursor = 0;
+    for (let li = 0; li < numLines; li++) {
+      lineCrossStarts[li] = cursor;
+      cursor += lineCrossSizes[li]! + crossGap;
+    }
+  }
+
+  // Locate the target child.
+  let myLine = 0;
+  let myPositionInLine = 0;
+  for (let li = 0; li < numLines; li++) {
+    const first = lineFirst[li]!;
+    const count = lineCount[li]!;
+    if (childIndex >= first && childIndex < first + count) {
+      myLine = li;
+      myPositionInLine = childIndex - first;
+      break;
+    }
+  }
+  const myLineFirst = lineFirst[myLine]!;
+  const myLineCount = lineCount[myLine]!;
+  const myLineCrossSize = lineCrossSizes[myLine]!;
+  const myLineCrossStart = lineCrossStarts[myLine]!;
+  const me = siblings[childIndex]!;
+
+  // justify-content per line: compute leftover from this line's
+  // used main, then leading offset / extra gap.
+  let usedMain = 0;
+  for (let k = 0; k < myLineCount; k++) {
+    const idx = myLineFirst + k;
+    const s = siblings[idx]!;
+    usedMain += finalMainSizes[idx]! + s.mainMarginStart + s.mainMarginEnd;
+  }
+  if (myLineCount > 1) usedMain += (myLineCount - 1) * mainGap;
+  const leftover = Math.max(0, innerMain - usedMain);
+  let leadingOffset = 0;
+  let extraGap = 0;
+  switch (justify) {
+    case 'flex-end':
+      leadingOffset = leftover;
+      break;
+    case 'center':
+      leadingOffset = leftover / 2;
+      break;
+    case 'space-between':
+      if (myLineCount > 1) extraGap = leftover / (myLineCount - 1);
+      break;
+    case 'space-around': {
+      const slot = leftover / myLineCount;
+      leadingOffset = slot / 2;
+      extraGap = slot;
+      break;
+    }
+    case 'space-evenly': {
+      const slot = leftover / (myLineCount + 1);
+      leadingOffset = slot;
+      extraGap = slot;
+      break;
+    }
+    default:
+      // flex-start
+      break;
+  }
+
+  // Main-axis cursor walks this line up to the target child.
+  let cursor = padMainStart + leadingOffset;
+  for (let k = 0; k < myPositionInLine; k++) {
+    const idx = myLineFirst + k;
+    const s = siblings[idx]!;
+    cursor += s.mainMarginStart + finalMainSizes[idx]! + s.mainMarginEnd;
+    cursor += mainGap + extraGap;
+  }
+  cursor += me.mainMarginStart;
+  const mainPos = cursor;
+
+  // Cross-axis position via align-items / align-self within line.
+  let withinLineCross = me.crossMarginStart;
+  if (me.align === 'flex-end') {
+    withinLineCross = myLineCrossSize - me.crossSize - me.crossMarginEnd;
+  } else if (me.align === 'center') {
+    const innerLine = myLineCrossSize - me.crossMarginStart - me.crossMarginEnd;
+    withinLineCross = me.crossMarginStart + Math.max(0, (innerLine - me.crossSize) / 2);
+  }
+  const crossPos = padCrossStart + myLineCrossStart + withinLineCross;
+
+  return {
+    mainSize: finalMainSizes[childIndex]!,
+    mainPos,
+    crossPos,
+  };
 }
