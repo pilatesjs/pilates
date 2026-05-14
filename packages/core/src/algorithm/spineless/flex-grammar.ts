@@ -1,27 +1,29 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v7) covers:
+ * Current slice (v8) covers:
  *
  *   - flex-direction: `row` and `column`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
  *   - padding / margin / gap (v5)
  *   - justify-content + align-items / align-self (v6)
- *   - flex-wrap: `'nowrap'` (default) and `'wrap'`. Greedy packing,
- *     per-line flex distribution, per-line cross sizing (max of
- *     items' cross + margins), line stacking with cross-axis gap.
- *     Each line is independently justified and per-line aligned.
- *     `align-content` must remain `'flex-start'` under wrap;
- *     other values are reserved for a later slice.
- *   - No absolute positioning
+ *   - flex-wrap (v7) — single-line wrap and multi-line packing,
+ *     each line independently distributed / justified / aligned
+ *   - positionType: `'absolute'` (v8) — out-of-flow children
+ *     positioned against the parent's OUTER box via `style.position`
+ *     and `style.margin`. Width / height resolve from explicit
+ *     style, from opposing edges (`left`+`right` or `top`+`bottom`),
+ *     or fall back to 0. Absolute children are filtered out of every
+ *     in-flow computation (flex distribution, justify leftover,
+ *     wrap line packing).
  *   - `row-reverse`, `column-reverse`, `wrap-reverse` rejected at
  *     build time
  *
  * Subsequent PRs expand the feature set (align-content variants,
- * wrap-reverse, abs positioning, reverse directions, min/max
- * clamping with the multi-iteration freeze loop) one chunk at a time,
- * each gated by a differential test that asserts the grammar produces
- * byte-identical output to the imperative algorithm.
+ * wrap-reverse, reverse directions, min/max clamping with the
+ * multi-iteration freeze loop) one chunk at a time, each gated by a
+ * differential test that asserts the grammar produces byte-identical
+ * output to the imperative algorithm.
  *
  * Fields emitted per node:
  *
@@ -99,20 +101,9 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     const left = field<number>(node, 'left');
     const top = field<number>(node, 'top');
 
-    // Validate preconditions: every node has an explicit numeric basis
-    // on both axes, and the direction is one we support.
-    const styleW = node.style.width;
-    const styleH = node.style.height;
-    if (typeof styleW !== 'number') {
-      throw new Error(
-        `[flex-grammar] node requires explicit numeric width; got ${JSON.stringify(styleW)}`,
-      );
-    }
-    if (typeof styleH !== 'number') {
-      throw new Error(
-        `[flex-grammar] node requires explicit numeric height; got ${JSON.stringify(styleH)}`,
-      );
-    }
+    // Universal preconditions: direction / wrap / align-content
+    // policy applies to every node (in-flow or absolute) since they
+    // describe THIS node as a potential flex container.
     const direction = node.style.flexDirection;
     if (direction !== 'row' && direction !== 'column') {
       throw new Error(
@@ -130,6 +121,46 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         `[flex-grammar] under flex-wrap='wrap', align-content other than 'flex-start' is not yet supported; got '${node.style.alignContent}'`,
       );
     }
+
+    // Absolute children short-circuit the in-flow flex pipeline:
+    // they're positioned independently against the parent's OUTER
+    // box (no padding subtraction) using their own `style.position`
+    // and `style.margin`. Their width / height can be `'auto'`, with
+    // size derived from opposing edges or falling back to 0 — so the
+    // in-flow "explicit numeric size" precondition is relaxed here.
+    if (parent !== null && node.style.positionType === 'absolute') {
+      emitAbsoluteRules(grammar, parent, node, width, height, left, top);
+      allFields.push({ node, width, height, left, top });
+      const childCount = node.getChildCount();
+      const childSiblings: Node[] = [];
+      for (let i = 0; i < childCount; i++) {
+        const child = node.getChild(i)!;
+        if (child.style.positionType === 'absolute') {
+          visit(child, node, -1, []);
+        } else {
+          visit(child, node, childSiblings.length, [...childSiblings]);
+          childSiblings.push(child);
+        }
+      }
+      return;
+    }
+
+    // In-flow precondition: every node has an explicit numeric basis
+    // on both axes.
+    const styleWRaw = node.style.width;
+    const styleHRaw = node.style.height;
+    if (typeof styleWRaw !== 'number') {
+      throw new Error(
+        `[flex-grammar] node requires explicit numeric width; got ${JSON.stringify(styleWRaw)}`,
+      );
+    }
+    if (typeof styleHRaw !== 'number') {
+      throw new Error(
+        `[flex-grammar] node requires explicit numeric height; got ${JSON.stringify(styleHRaw)}`,
+      );
+    }
+    const styleW: number = styleWRaw;
+    const styleH: number = styleHRaw;
 
     // The parent's direction decides which of {width, height} is the
     // main-axis size for THIS child (and which of {left, top} is the
@@ -201,6 +232,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       let myIndex = -1;
       for (let i = 0; i < parent.getChildCount(); i++) {
         const sib = parent.getChild(i)!;
+        if (sib.style.positionType === 'absolute') continue;
         if (sib === node) myIndex = wrapSiblings.length;
         const sibBasis = resolveBasis(sib, mainSizeName);
         const sibCross =
@@ -295,6 +327,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       let myIndex = -1;
       for (let i = 0; i < parent.getChildCount(); i++) {
         const sib = parent.getChild(i)!;
+        if (sib.style.positionType === 'absolute') continue;
         if (sib === node) myIndex = siblings.length;
         const sibBasis = resolveBasis(sib, mainSizeName);
         siblings.push({
@@ -429,13 +462,20 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
 
     allFields.push({ node, width, height, left, top });
 
-    // Recurse into children.
+    // Recurse into children. Absolute children are out-of-flow: they
+    // get visited (so their own subtree emits rules) but they don't
+    // contribute to the in-flow sibling index or the priorSiblings
+    // list that fuels positioning of subsequent in-flow siblings.
     const childCount = node.getChildCount();
-    const childSiblings: Node[] = [];
+    const inFlowSiblings: Node[] = [];
     for (let i = 0; i < childCount; i++) {
       const child = node.getChild(i)!;
-      visit(child, node, i, [...childSiblings]);
-      childSiblings.push(child);
+      if (child.style.positionType === 'absolute') {
+        visit(child, node, -1, []);
+      } else {
+        visit(child, node, inFlowSiblings.length, [...inFlowSiblings]);
+        inFlowSiblings.push(child);
+      }
     }
   }
 
@@ -504,17 +544,21 @@ function emitJustifiedMainPos(
   myMarginMainStart: number,
   parentDirection: 'row' | 'column',
 ): void {
-  const n = parent.getChildCount();
+  // In-flow siblings only — absolute children don't contribute to
+  // justify-content's leftover calculation.
+  const childCount = parent.getChildCount();
   const allSizes: Field<number>[] = [];
   const sibMargins: { start: number; end: number }[] = [];
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < childCount; i++) {
     const sib = parent.getChild(i)!;
+    if (sib.style.positionType === 'absolute') continue;
     allSizes.push(field<number>(sib, mainSizeName));
     sibMargins.push({
       start: readMarginMainStart(sib, parentDirection),
       end: readMarginMainEnd(sib, parentDirection),
     });
   }
+  const n = allSizes.length;
   const parentMainField = field<number>(parent, mainSizeName);
   grammar.set(mainPosField, {
     deps: [parentMainField as Field<unknown>, ...(allSizes as Field<unknown>[])],
@@ -573,7 +617,9 @@ function emitJustifiedMainPos(
 function parentNeedsFlexDistribution(parent: Node): boolean {
   const count = parent.getChildCount();
   for (let i = 0; i < count; i++) {
-    const s = parent.getChild(i)!.style;
+    const c = parent.getChild(i)!;
+    if (c.style.positionType === 'absolute') continue;
+    const s = c.style;
     if (s.flexGrow > 0) return true;
     if (s.flexShrink > 0) return true;
     if (typeof s.flexBasis === 'number') return true;
@@ -700,6 +746,129 @@ function readMarginCrossStart(child: Node, direction: 'row' | 'column'): number 
 
 function readMarginCrossEnd(child: Node, direction: 'row' | 'column'): number {
   return child.style.margin[direction === 'column' ? RIGHT : BOTTOM] ?? 0;
+}
+
+// ─── absolute positioning ───────────────────────────────────────────────
+
+/**
+ * Emit the four field rules for an out-of-flow (`positionType ===
+ * 'absolute'`) child. Mirrors the imperative `layoutAbsoluteChild`
+ * in `main-axis.ts`:
+ *
+ *   - width: explicit `style.width` if numeric, else (if both LEFT
+ *     and RIGHT edges are set) derived from `parent.width - left -
+ *     right - margins`, else 0.
+ *   - height: symmetric, using TOP / BOTTOM edges.
+ *   - left: if LEFT edge set, `left + margin.left`; else if RIGHT
+ *     edge set, `parent.width - width - right - margin.right`; else
+ *     `margin.left`.
+ *   - top: symmetric, using TOP / BOTTOM and `parent.height`.
+ *
+ * The parent's OUTER size is used (no padding subtraction) —
+ * matches Yoga / RN semantics that Pilates follows. No min/max
+ * clamping in this slice (matches every other v8-and-prior slice).
+ *
+ * @internal
+ */
+function emitAbsoluteRules(
+  grammar: Grammar,
+  parent: Node,
+  child: Node,
+  width: Field<number>,
+  height: Field<number>,
+  left: Field<number>,
+  top: Field<number>,
+): void {
+  const pos = child.style.position;
+  const margin = child.style.margin;
+  const posTop = pos[TOP];
+  const posRight = pos[RIGHT];
+  const posBottom = pos[BOTTOM];
+  const posLeft = pos[LEFT];
+  const marginTop = margin[TOP] ?? 0;
+  const marginRight = margin[RIGHT] ?? 0;
+  const marginBottom = margin[BOTTOM] ?? 0;
+  const marginLeft = margin[LEFT] ?? 0;
+  const styleW = child.style.width;
+  const styleH = child.style.height;
+  const parentWField = field<number>(parent, 'width');
+  const parentHField = field<number>(parent, 'height');
+
+  // Width
+  if (typeof styleW === 'number') {
+    grammar.set(width as Field<unknown>, {
+      deps: [],
+      compute: () => styleW,
+    } satisfies FieldRule<number>);
+  } else if (posLeft !== undefined && posRight !== undefined) {
+    grammar.set(width as Field<unknown>, {
+      deps: [parentWField as Field<unknown>],
+      compute: (read) =>
+        Math.max(0, read(parentWField) - posLeft - posRight - marginLeft - marginRight),
+    } satisfies FieldRule<number>);
+  } else {
+    grammar.set(width as Field<unknown>, {
+      deps: [],
+      compute: () => 0,
+    } satisfies FieldRule<number>);
+  }
+
+  // Height
+  if (typeof styleH === 'number') {
+    grammar.set(height as Field<unknown>, {
+      deps: [],
+      compute: () => styleH,
+    } satisfies FieldRule<number>);
+  } else if (posTop !== undefined && posBottom !== undefined) {
+    grammar.set(height as Field<unknown>, {
+      deps: [parentHField as Field<unknown>],
+      compute: (read) =>
+        Math.max(0, read(parentHField) - posTop - posBottom - marginTop - marginBottom),
+    } satisfies FieldRule<number>);
+  } else {
+    grammar.set(height as Field<unknown>, {
+      deps: [],
+      compute: () => 0,
+    } satisfies FieldRule<number>);
+  }
+
+  // Left
+  if (posLeft !== undefined) {
+    const constantLeft = posLeft + marginLeft;
+    grammar.set(left as Field<unknown>, {
+      deps: [],
+      compute: () => constantLeft,
+    } satisfies FieldRule<number>);
+  } else if (posRight !== undefined) {
+    grammar.set(left as Field<unknown>, {
+      deps: [parentWField as Field<unknown>, width as Field<unknown>],
+      compute: (read) => read(parentWField) - read(width) - posRight - marginRight,
+    } satisfies FieldRule<number>);
+  } else {
+    grammar.set(left as Field<unknown>, {
+      deps: [],
+      compute: () => marginLeft,
+    } satisfies FieldRule<number>);
+  }
+
+  // Top
+  if (posTop !== undefined) {
+    const constantTop = posTop + marginTop;
+    grammar.set(top as Field<unknown>, {
+      deps: [],
+      compute: () => constantTop,
+    } satisfies FieldRule<number>);
+  } else if (posBottom !== undefined) {
+    grammar.set(top as Field<unknown>, {
+      deps: [parentHField as Field<unknown>, height as Field<unknown>],
+      compute: (read) => read(parentHField) - read(height) - posBottom - marginBottom,
+    } satisfies FieldRule<number>);
+  } else {
+    grammar.set(top as Field<unknown>, {
+      deps: [],
+      compute: () => marginTop,
+    } satisfies FieldRule<number>);
+  }
 }
 
 // ─── wrap-aware line layout ─────────────────────────────────────────────

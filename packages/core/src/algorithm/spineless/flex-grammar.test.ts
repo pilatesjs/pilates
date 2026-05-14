@@ -1448,3 +1448,180 @@ describe('buildFlexGrammar — flex-wrap (slice v7)', () => {
     });
   });
 });
+
+describe('buildFlexGrammar — absolute positioning (slice v8)', () => {
+  describe('basic absolute layout', () => {
+    it('absolute child with explicit size + top/left edges anchors to parent outer corner', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      const c = Node.create();
+      c.setPositionType('absolute');
+      c.setWidth(20);
+      c.setHeight(15);
+      c.setPosition(Edge.Top, 4);
+      c.setPosition(Edge.Left, 8);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('absolute child anchored to right edge', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      const c = Node.create();
+      c.setPositionType('absolute');
+      c.setWidth(20);
+      c.setHeight(15);
+      c.setPosition(Edge.Right, 10);
+      c.setPosition(Edge.Top, 4);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('absolute child anchored to bottom edge', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      const c = Node.create();
+      c.setPositionType('absolute');
+      c.setWidth(20);
+      c.setHeight(15);
+      c.setPosition(Edge.Bottom, 6);
+      c.setPosition(Edge.Left, 4);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('absolute child with no edges uses its margins as offsets', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      const c = Node.create();
+      c.setPositionType('absolute');
+      c.setWidth(20);
+      c.setHeight(15);
+      c.setMargin(Edge.Left, 5);
+      c.setMargin(Edge.Top, 3);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('derived size from opposing edges', () => {
+    it('absolute child with left + right edges derives width', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      const c = Node.create();
+      c.setPositionType('absolute');
+      c.setHeight(15);
+      c.setPosition(Edge.Left, 10);
+      c.setPosition(Edge.Right, 20);
+      c.setPosition(Edge.Top, 4);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('absolute child with top + bottom edges derives height', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      const c = Node.create();
+      c.setPositionType('absolute');
+      c.setWidth(20);
+      c.setPosition(Edge.Top, 4);
+      c.setPosition(Edge.Bottom, 6);
+      c.setPosition(Edge.Left, 10);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('coexistence with in-flow siblings', () => {
+    it('absolute children do not shift in-flow siblings', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      // Two in-flow children at widths 30 each.
+      const a = Node.create();
+      a.setWidth(30);
+      a.setHeight(40);
+      root.insertChild(a, 0);
+      // Absolute child in the middle of the children list.
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setWidth(20);
+      abs.setHeight(20);
+      abs.setPosition(Edge.Top, 5);
+      abs.setPosition(Edge.Left, 5);
+      root.insertChild(abs, 1);
+      const b = Node.create();
+      b.setWidth(30);
+      b.setHeight(40);
+      root.insertChild(b, 2);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('in-flow flex-grow correctly ignores absolute siblings', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      // Two in-flow children: one fixed, one grow=1. Plus an absolute.
+      const fixed = Node.create();
+      fixed.setWidth(20);
+      fixed.setHeight(40);
+      root.insertChild(fixed, 0);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setWidth(15);
+      abs.setHeight(15);
+      abs.setPosition(Edge.Right, 4);
+      abs.setPosition(Edge.Top, 4);
+      root.insertChild(abs, 1);
+      const grow = Node.create();
+      grow.setWidth(0);
+      grow.setHeight(40);
+      grow.setFlexGrow(1);
+      root.insertChild(grow, 2);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('parent outer box semantics', () => {
+    it('absolute children ignore parent padding (use outer corner)', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      root.setPadding(Edge.Left, 10);
+      root.setPadding(Edge.Top, 8);
+      const c = Node.create();
+      c.setPositionType('absolute');
+      c.setWidth(20);
+      c.setHeight(15);
+      c.setPosition(Edge.Left, 5);
+      c.setPosition(Edge.Top, 5);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('regression: prior slices unaffected', () => {
+    it('a v7 wrap tree still matches when no children are absolute', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(80);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+});
