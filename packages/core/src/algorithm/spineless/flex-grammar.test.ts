@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Edge } from '../../edge.js';
 import { Node } from '../../node.js';
 import { buildFlexGrammar } from './flex-grammar.js';
 import { TopoInterpreter } from './grammar.js';
@@ -678,6 +679,261 @@ describe('buildFlexGrammar — flex-shrink + flex-basis (slice v4)', () => {
       b.setHeight(30);
       b.setFlexGrow(2);
       root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+});
+
+describe('buildFlexGrammar — margin + padding + gap (slice v5)', () => {
+  describe('padding', () => {
+    it('row parent padding shifts children to the right', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      root.setPadding(Edge.Left, 10);
+      root.setPadding(Edge.Right, 5);
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('column parent padding shifts children downward', () => {
+      const root = Node.create();
+      root.setWidth(30);
+      root.setHeight(100);
+      root.setFlexDirection('column');
+      root.setPadding(Edge.Top, 8);
+      root.setPadding(Edge.Bottom, 4);
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('row padding affects cross-axis position (children shift down by padding-top)', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setPadding(Edge.Top, 6);
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('padding shrinks the flex-grow budget', () => {
+      // Container 100 wide, padding 10+10 → inner 80. Two grow=1 children
+      // with basis 0 → each gets 40.
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      root.setPadding(Edge.Left, 10);
+      root.setPadding(Edge.Right, 10);
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(0);
+        c.setHeight(30);
+        c.setFlexGrow(1);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('gap', () => {
+    it('column-gap spaces row children horizontally', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      root.setGap('column', 8);
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('row-gap spaces column children vertically', () => {
+      const root = Node.create();
+      root.setWidth(30);
+      root.setHeight(100);
+      root.setFlexDirection('column');
+      root.setGap('row', 6);
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('gap is subtracted from the flex-grow budget', () => {
+      // 100 wide, gap 10, two grow=1 children of basis 0 → leftover 90,
+      // split 45/45, second child sits at 45+10 = 55.
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      root.setGap('column', 10);
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(0);
+        c.setHeight(30);
+        c.setFlexGrow(1);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('margin', () => {
+    it('per-child margins shift their position along the main axis', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(20);
+      a.setHeight(30);
+      a.setMargin(Edge.Left, 5);
+      a.setMargin(Edge.Right, 3);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(20);
+      b.setHeight(30);
+      b.setMargin(Edge.Left, 2);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('cross-axis margin shifts the cross-axis position', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      c.setMargin(Edge.Top, 6);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('margins are accounted for in the flex-grow budget', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(0);
+      a.setHeight(30);
+      a.setFlexGrow(1);
+      a.setMargin(Edge.Left, 4);
+      a.setMargin(Edge.Right, 4);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(0);
+      b.setHeight(30);
+      b.setFlexGrow(1);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('margins are accounted for in the flex-shrink overflow', () => {
+      const root = Node.create();
+      root.setWidth(60);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      const a = Node.create();
+      a.setWidth(40);
+      a.setHeight(30);
+      a.setFlexShrink(1);
+      a.setMargin(Edge.Left, 5);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(40);
+      b.setHeight(30);
+      b.setFlexShrink(1);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('combined', () => {
+    it('padding + gap + margin together in a row, no flex', () => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      root.setPadding(Edge.Left, 6);
+      root.setPadding(Edge.Top, 4);
+      root.setGap('column', 8);
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(20);
+        c.setMargin(Edge.Top, 2);
+        if (i === 1) c.setMargin(Edge.Left, 3);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('padding + gap + margin together in a column with flex-grow', () => {
+      const root = Node.create();
+      root.setWidth(40);
+      root.setHeight(120);
+      root.setFlexDirection('column');
+      root.setPadding(Edge.Top, 6);
+      root.setPadding(Edge.Left, 4);
+      root.setGap('row', 8);
+      const a = Node.create();
+      a.setWidth(40);
+      a.setHeight(20);
+      a.setMargin(Edge.Top, 2);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(40);
+      b.setHeight(0);
+      b.setFlexGrow(1);
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('regression: prior slices still match', () => {
+    it('v4 shrink tree with default zero spacing still matches imperative', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(30);
+        c.setFlexShrink(1);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('v2 column tree with default zero spacing still matches', () => {
+      const root = buildFixedColumnTree(100, 50, [10, 20, 30]);
       expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
     });
   });
