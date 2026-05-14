@@ -1,7 +1,7 @@
 # Phase 5 Spineless Traversal — Foundation (Phase 5a, OM data structure)
 
 **Date:** 2026-05-12
-**Status:** Both Naive and Bender impls in place. Cross-validated. Bender is 35× faster than Naive on inserts at N=10k. Phase 5a continues with priority queue, then attribute grammar refactor.
+**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Next slice: flex grow / shrink (v3).
 **Plan reference:** `~/.claude/plans/precious-plotting-willow.md`
 
 ## Context
@@ -187,16 +187,17 @@ This is the SMALLEST useful slice. Future slices expand the feature
 set one chunk at a time, each gated by a differential test against
 the imperative algorithm.
 
-| Feature | v1 | Roadmap |
+| Feature | Status | Roadmap |
 |---|---|---|
-| flex-direction: row | ✅ | |
-| Explicit width / height | ✅ | |
-| flex-direction: column | ❌ | v2 |
+| flex-direction: row | ✅ v1 | |
+| Explicit width / height | ✅ v1 | |
+| flex-direction: column | ✅ v2 | |
 | flex grow / shrink | ❌ | v3 |
 | Margin / padding / gap | ❌ | v4 |
 | Alignment (justify, align-items) | ❌ | v5 |
 | flex-wrap | ❌ | v6 |
 | Absolute positioning | ❌ | v7 |
+| flex-direction: row-reverse / column-reverse | ❌ | later |
 
 **Differential validation (9 tests, all pass):** every fixed-width-row
 tree in the test corpus produces byte-identical layouts from the
@@ -209,6 +210,31 @@ wire deps explicitly: a child's `left` reads all prior siblings'
 `width` (sparse-and-explicit dependency DAG, optimal for Spineless).
 
 Coverage: 94.69% on `spineless/`, 90.86% overall.
+
+## What landed (column direction, v2 — sixth commit on this PR series)
+
+The second flex slice: `flex-direction: column` joins `row` as a
+supported parent direction. Row-reverse and column-reverse are
+explicitly rejected for now — they need the main-axis accumulator to
+walk backwards, which is its own slice.
+
+**Implementation change:** `buildFlexGrammar` no longer hard-codes
+`left` and `top` to their row meanings. Instead, the parent's
+`flexDirection` selects which of `{left, top}` is the main axis vs
+the cross axis, and which child size (`width` vs `height`) gets
+summed across prior siblings. The cross-axis offset stays 0 (no
+alignment in this slice). The dependency DAG remains sparse-and-
+explicit: a child's main-axis offset depends on every prior
+sibling's main-axis size, mirroring the row case but in the
+flipped dimension.
+
+**Differential validation (8 new tests, 18 total, all pass):**
+column-only trees (single, two, five, overflow), butt-joint
+invariant, plus mixed-direction nesting (column-of-rows and
+row-of-columns). Two negative tests confirm `row-reverse` and
+`column-reverse` throw at build time.
+
+Coverage: 100% on `flex-grammar.ts`, 94.83% on `spineless/` overall.
 
 ## What's next (Phase 5a continuation)
 
