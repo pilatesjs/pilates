@@ -1,7 +1,7 @@
 # Phase 5 Spineless Traversal — Foundation (Phase 5a, OM data structure)
 
 **Date:** 2026-05-12
-**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Flex grammar v5 (margin / padding / gap) ✅. Flex grammar v6 (justify-content + align-items / align-self) ✅. Next slice: flex-wrap (v7).
+**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Flex grammar v5 (margin / padding / gap) ✅. Flex grammar v6 (justify-content + align-items / align-self) ✅. Flex grammar v7 (flex-wrap) ✅. Next slice: absolute positioning (v8).
 **Plan reference:** `~/.claude/plans/precious-plotting-willow.md`
 
 ## Context
@@ -197,8 +197,9 @@ the imperative algorithm.
 | flex-basis (separate property) | ✅ v4 | |
 | Margin / padding / gap | ✅ v5 | |
 | Alignment (justify, align-items / self) | ✅ v6 | |
-| flex-wrap | ❌ | v7 |
+| flex-wrap (no wrap-reverse, no non-flex-start align-content) | ✅ v7 | |
 | Absolute positioning | ❌ | v8 |
+| align-content (non-default), wrap-reverse | ❌ | later |
 | flex-direction: row-reverse / column-reverse | ❌ | later |
 | min/max width/height (multi-pass freeze loop) | ❌ | later |
 | Integer-cell rounding folded into the grammar | ❌ (post-pass for now) | later |
@@ -398,6 +399,64 @@ pre-v6 tests stay green untouched.
 
 Coverage: 100% on `flex-grammar.ts`, 96.96% on `spineless/` overall
 (up from 96.09% at v5).
+
+## What landed (flex-wrap, v7 — eleventh commit on this PR series)
+
+The seventh flex slice — wrap support. The container's `flexWrap`
+toggles between single-line packing (v1-v6) and per-line packing
+along the main axis. Each line independently runs flex distribution,
+computes its own cross-axis size (max of items' cross + cross
+margins), and stacks below the prior line with the cross-axis gap.
+
+**Implementation change:** when `parent.style.flexWrap === 'wrap'`,
+all three position fields (mainSize, mainPos, crossPos) for every
+child go through a single helper `evaluateWrappedChild`. The helper:
+1. Greedily packs items into lines using bases + main-axis margins
+   + gap against the container's `innerMain` (`mainSize -
+   padMainStart - padMainEnd`).
+2. Runs the per-line distribution (the existing
+   `distributeMainAxis` with each line's siblings).
+3. Computes per-line cross sizes — `innerCross` for the single-line
+   case, max of items' (cross + margins) otherwise (matches the
+   imperative's `singleLineMode` branch in `computeLineCrossSizes`).
+4. Stacks lines along the cross axis from 0 with cross-axis gap
+   (matches `align-content === 'flex-start'`, which is the only
+   value supported in this slice).
+5. Walks the line's main-axis cursor with justify-content's leading
+   offset / extra gap to land each child's main position.
+6. Applies align-items / align-self within the line using the
+   per-line cross size.
+
+The non-wrap (default) code path is preserved unchanged — the 75
+pre-v7 tests stay green untouched. Under wrap, mainSize, mainPos,
+and crossPos all share two deps (parent's main-axis size and
+parent's cross-axis size); the cross-axis dep is for the
+single-line wrap case where the line's cross size equals
+`innerCross`.
+
+**Out-of-scope (rejected at build time):**
+- `flexWrap === 'wrap-reverse'`: reverses the line stack on the
+  cross axis. Separate slice.
+- `alignContent !== 'flex-start'` under wrap: stretches / centers /
+  space-distributes lines. Separate slice.
+
+**Differential validation (15 new tests, 90 total, all pass):**
+- 7 row-wrap tests: nowrap-equivalent fit, two-item overflow,
+  three-item per-line, column-gap reduces capacity, row-gap
+  separates lines, per-line flex-grow, container padding shrinks
+  capacity.
+- 1 column-direction wrap.
+- 4 alignment-within-wrap tests: flex-end align, center justify,
+  space-evenly justify, center align within multi-line.
+- 2 precondition-throw tests: wrap-reverse, non-flex-start
+  align-content.
+- 1 v6 regression test.
+
+Coverage: 97.84% lines / 93.57% branches on `flex-grammar.ts`
+(100% on functions). `spineless/` overall: 96.31% (small drop from
+96.96% at v6, owing to two uncovered space-* justify branches in
+the wrap path that are mechanically identical to the well-covered
+non-wrap path).
 
 ## What's next (Phase 5a continuation)
 
