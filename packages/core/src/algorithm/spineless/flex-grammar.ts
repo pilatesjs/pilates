@@ -1,31 +1,27 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v5) covers:
+ * Current slice (v6) covers:
  *
- *   - flex-direction: `row` and `column` (parent's direction governs how
- *     its children stack along the main axis)
- *   - Explicit `width` and `height` on every node (the cross-axis reads
- *     directly; the main-axis side is the basis input when no
- *     `flexBasis` is set)
- *   - flex-grow / flex-shrink / flex-basis as in v4
- *   - padding on the container (shifts children inward, shrinks the
- *     flex-distribution budget)
- *   - margin per child (shifts the child's own position, contributes
- *     to the flex-distribution hypothetical sum, never resizes)
- *   - gap between flex items (`gapColumn` between row-stacked items,
- *     `gapRow` between column-stacked items) — same role as margins
- *     in the hypothetical sum
- *   - No flex-wrap, no alignment (cross-axis offset is
- *     `padCrossStart + marginCrossStart` only)
+ *   - flex-direction: `row` and `column`
+ *   - flex-grow / flex-shrink / flex-basis (v3-v4)
+ *   - padding / margin / gap (v5)
+ *   - justify-content: all six values (flex-start, flex-end, center,
+ *     space-between, space-around, space-evenly). Leftover along the
+ *     main axis is distributed as a leading offset and/or extra gap.
+ *   - align-items + align-self (with `'auto'` fallback): flex-start,
+ *     flex-end, center, and stretch (with explicit cross size,
+ *     stretch is equivalent to flex-start since there's nothing to
+ *     stretch into).
+ *   - No flex-wrap, no align-content (single-line containers only)
  *   - No absolute positioning
  *   - `row-reverse` and `column-reverse` rejected at build time
  *
- * Subsequent PRs expand the feature set (alignment, wrap, abs
- * positioning, reverse directions, min/max clamping with the
- * multi-iteration freeze loop) one chunk at a time, each gated by a
- * differential test that asserts the grammar produces byte-identical
- * output to the imperative algorithm.
+ * Subsequent PRs expand the feature set (wrap, abs positioning,
+ * reverse directions, min/max clamping with the multi-iteration
+ * freeze loop) one chunk at a time, each gated by a differential test
+ * that asserts the grammar produces byte-identical output to the
+ * imperative algorithm.
  *
  * Fields emitted per node:
  *
@@ -48,6 +44,7 @@
  */
 
 import type { Node } from '../../node.js';
+import type { Align, Justify } from '../../style.js';
 import { type Field, type FieldRule, type Grammar, field } from './grammar.js';
 
 /**
@@ -150,9 +147,23 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     const padMainStart = parent === null ? 0 : readPaddingStart(parent, parentDirection!);
     const padMainEnd = parent === null ? 0 : readPaddingEnd(parent, parentDirection!);
     const padCrossStart = parent === null ? 0 : readCrossPaddingStart(parent, parentDirection!);
+    const padCrossEnd = parent === null ? 0 : readCrossPaddingEnd(parent, parentDirection!);
     const gapMain = parent === null ? 0 : readMainGap(parent, parentDirection!);
     const myMarginMainStart = parent === null ? 0 : readMarginMainStart(node, parentDirection!);
     const myMarginCrossStart = parent === null ? 0 : readMarginCrossStart(node, parentDirection!);
+    const myMarginCrossEnd = parent === null ? 0 : readMarginCrossEnd(node, parentDirection!);
+
+    // Alignment for this child: justify-content lives on the parent,
+    // applies along the main axis once per line. align-items lives
+    // on the parent; align-self overrides per child (with 'auto'
+    // falling back to align-items).
+    const justify: Justify = parent === null ? 'flex-start' : parent.style.justifyContent;
+    const align: Align =
+      parent === null
+        ? 'auto'
+        : node.style.alignSelf === 'auto'
+          ? parent.style.alignItems
+          : node.style.alignSelf;
 
     // This node's own resolved basis: flexBasis if numeric, otherwise
     // style.{width|height}. Both the no-flex-distribution path (basis
@@ -212,17 +223,41 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       } satisfies FieldRule<number>);
     }
 
-    // Main-axis position: cursor walks padMainStart → (for each prior
-    // sibling: marginStart + size + marginEnd + gap) → myMarginStart.
-    // Same sparse-and-explicit DAG as v1/v2; gaps and margins are
-    // constants folded into the offset; only prior sibling MAIN SIZES
-    // are dependencies that may change incrementally.
+    // Main-axis position. Two regimes:
+    //   - Default (justify === 'flex-start'): a child's main position
+    //     depends only on its prior siblings' main sizes — a constant
+    //     offset (padding + own margins + sum of prior margins + gaps)
+    //     plus the read of prior sizes. This is the v1-v5 dep
+    //     pattern; no value redistribution along the main axis.
+    //   - Any other justify value: leftover space is computed from
+    //     ALL siblings' final main sizes, then distributed as a
+    //     leading offset and/or extra gap. mainPos now depends on
+    //     every sibling's main size and on the parent's main size.
     if (parent === null || indexInParent === 0) {
-      grammar.set(mainPosField, {
-        deps: [],
-        compute: () => padMainStart + myMarginMainStart,
-      } satisfies FieldRule<number>);
-    } else {
+      if (parent === null || justify === 'flex-start') {
+        grammar.set(mainPosField, {
+          deps: [],
+          compute: () => padMainStart + myMarginMainStart,
+        } satisfies FieldRule<number>);
+      } else {
+        // First child but parent uses non-default justify. Leading
+        // offset still depends on leftover, which depends on every
+        // sibling's main size.
+        emitJustifiedMainPos(
+          grammar,
+          parent,
+          mainPosField,
+          mainSizeName,
+          justify,
+          indexInParent,
+          padMainStart,
+          padMainEnd,
+          gapMain,
+          myMarginMainStart,
+          parentDirection!,
+        );
+      }
+    } else if (justify === 'flex-start') {
       const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
       let constantOffset = padMainStart + myMarginMainStart + indexInParent * gapMain;
       for (const p of priorSiblings) {
@@ -237,16 +272,67 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           return sum;
         },
       } satisfies FieldRule<number>);
+    } else {
+      emitJustifiedMainPos(
+        grammar,
+        parent,
+        mainPosField,
+        mainSizeName,
+        justify,
+        indexInParent,
+        padMainStart,
+        padMainEnd,
+        gapMain,
+        myMarginMainStart,
+        parentDirection!,
+      );
     }
 
-    // Cross-axis position: parent's leading cross-axis padding plus
-    // this child's leading cross-axis margin (no alignment in v5, so
-    // no leftover-redistribution along the cross axis).
-    const crossOffset = padCrossStart + myMarginCrossStart;
-    grammar.set(crossPosField, {
-      deps: [],
-      compute: () => crossOffset,
-    } satisfies FieldRule<number>);
+    // Cross-axis position. Default (flex-start, stretch with explicit
+    // cross size, and any other value the imperative doesn't special-
+    // case) is a constant offset. flex-end and center derive an offset
+    // from the parent's cross-axis size, gaining a dep edge on it.
+    if (parent === null || align === 'flex-end') {
+      if (parent !== null && align === 'flex-end') {
+        const parentCrossField = field<number>(
+          parent,
+          parentDirection === 'column' ? 'width' : 'height',
+        );
+        grammar.set(crossPosField, {
+          deps: [parentCrossField as Field<unknown>],
+          compute: (read) =>
+            read(parentCrossField) - padCrossEnd - crossSizeStyle - myMarginCrossEnd,
+        } satisfies FieldRule<number>);
+      } else {
+        // Root: no parent, no alignment to apply — anchor at 0.
+        grammar.set(crossPosField, {
+          deps: [],
+          compute: () => 0,
+        } satisfies FieldRule<number>);
+      }
+    } else if (align === 'center') {
+      const parentCrossField = field<number>(
+        parent,
+        parentDirection === 'column' ? 'width' : 'height',
+      );
+      grammar.set(crossPosField, {
+        deps: [parentCrossField as Field<unknown>],
+        compute: (read) => {
+          const innerCross = Math.max(0, read(parentCrossField) - padCrossStart - padCrossEnd);
+          const innerLine = innerCross - myMarginCrossStart - myMarginCrossEnd;
+          return padCrossStart + myMarginCrossStart + Math.max(0, (innerLine - crossSizeStyle) / 2);
+        },
+      } satisfies FieldRule<number>);
+    } else {
+      // flex-start, stretch (with explicit cross size — no resize),
+      // and any other value (the imperative falls through to
+      // flex-start) all share this constant offset.
+      const crossOffset = padCrossStart + myMarginCrossStart;
+      grammar.set(crossPosField, {
+        deps: [],
+        compute: () => crossOffset,
+      } satisfies FieldRule<number>);
+    }
 
     allFields.push({ node, width, height, left, top });
 
@@ -295,6 +381,94 @@ function resolveBasis(node: Node, mainSizeName: 'width' | 'height'): number {
     );
   }
   return styleSize;
+}
+
+/**
+ * Emit the main-position rule for a child when the parent's
+ * `justify-content` is not the default `flex-start`. The leftover
+ * along the main axis is `max(0, innerMain - usedMain)`, where
+ * `usedMain` is the sum of post-distribution main sizes plus margins
+ * plus inter-item gaps. The leftover is distributed as a leading
+ * cursor offset and/or an extra gap between items (the CSS rule).
+ *
+ * Dep graph: every sibling's main size and the parent's main size.
+ * This is broader than the default flex-start case (priors only) but
+ * matches what CSS requires — change any sibling's size and every
+ * item's position can move under space-* or center.
+ *
+ * @internal
+ */
+function emitJustifiedMainPos(
+  grammar: Grammar,
+  parent: Node,
+  mainPosField: Field<unknown>,
+  mainSizeName: 'width' | 'height',
+  justify: Justify,
+  indexInParent: number,
+  padMainStart: number,
+  padMainEnd: number,
+  gapMain: number,
+  myMarginMainStart: number,
+  parentDirection: 'row' | 'column',
+): void {
+  const n = parent.getChildCount();
+  const allSizes: Field<number>[] = [];
+  const sibMargins: { start: number; end: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const sib = parent.getChild(i)!;
+    allSizes.push(field<number>(sib, mainSizeName));
+    sibMargins.push({
+      start: readMarginMainStart(sib, parentDirection),
+      end: readMarginMainEnd(sib, parentDirection),
+    });
+  }
+  const parentMainField = field<number>(parent, mainSizeName);
+  grammar.set(mainPosField, {
+    deps: [parentMainField as Field<unknown>, ...(allSizes as Field<unknown>[])],
+    compute: (read) => {
+      const innerMain = Math.max(0, read(parentMainField) - padMainStart - padMainEnd);
+      let usedMain = 0;
+      for (let i = 0; i < n; i++) {
+        usedMain += read(allSizes[i]!) + sibMargins[i]!.start + sibMargins[i]!.end;
+      }
+      if (n > 1) usedMain += (n - 1) * gapMain;
+      const leftover = Math.max(0, innerMain - usedMain);
+      let leadingOffset = 0;
+      let extraGap = 0;
+      switch (justify) {
+        case 'flex-end':
+          leadingOffset = leftover;
+          break;
+        case 'center':
+          leadingOffset = leftover / 2;
+          break;
+        case 'space-between':
+          if (n > 1) extraGap = leftover / (n - 1);
+          break;
+        case 'space-around': {
+          const slot = leftover / n;
+          leadingOffset = slot / 2;
+          extraGap = slot;
+          break;
+        }
+        case 'space-evenly': {
+          const slot = leftover / (n + 1);
+          leadingOffset = slot;
+          extraGap = slot;
+          break;
+        }
+      }
+      // Cursor walks the line up to this child, mirroring the
+      // imperative positionItemsInLine.
+      let cursor = padMainStart + leadingOffset;
+      for (let i = 0; i < indexInParent; i++) {
+        cursor += sibMargins[i]!.start + read(allSizes[i]!) + sibMargins[i]!.end;
+        cursor += gapMain + extraGap;
+      }
+      cursor += myMarginMainStart;
+      return cursor;
+    },
+  } satisfies FieldRule<number>);
 }
 
 /**
@@ -409,6 +583,12 @@ function readCrossPaddingStart(parent: Node, direction: 'row' | 'column'): numbe
   return parent.style.padding[crossStartEdge(direction)] ?? 0;
 }
 
+function readCrossPaddingEnd(parent: Node, direction: 'row' | 'column'): number {
+  // Cross axis is perpendicular to the main axis; its end edge sits
+  // opposite the cross start edge.
+  return parent.style.padding[direction === 'column' ? RIGHT : BOTTOM] ?? 0;
+}
+
 function readMainGap(parent: Node, direction: 'row' | 'column'): number {
   return direction === 'column' ? parent.style.gapRow : parent.style.gapColumn;
 }
@@ -423,4 +603,8 @@ function readMarginMainEnd(child: Node, direction: 'row' | 'column'): number {
 
 function readMarginCrossStart(child: Node, direction: 'row' | 'column'): number {
   return child.style.margin[crossStartEdge(direction)] ?? 0;
+}
+
+function readMarginCrossEnd(child: Node, direction: 'row' | 'column'): number {
+  return child.style.margin[direction === 'column' ? RIGHT : BOTTOM] ?? 0;
 }

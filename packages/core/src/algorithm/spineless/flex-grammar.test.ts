@@ -938,3 +938,259 @@ describe('buildFlexGrammar — margin + padding + gap (slice v5)', () => {
     });
   });
 });
+
+describe('buildFlexGrammar — alignment (slice v6)', () => {
+  function makeRow(rootWidth: number, rootHeight: number, childWidths: number[]): Node {
+    const root = Node.create();
+    root.setWidth(rootWidth);
+    root.setHeight(rootHeight);
+    root.setFlexDirection('row');
+    for (let i = 0; i < childWidths.length; i++) {
+      const c = Node.create();
+      c.setWidth(childWidths[i]!);
+      c.setHeight(rootHeight);
+      root.insertChild(c, i);
+    }
+    return root;
+  }
+
+  describe('justify-content', () => {
+    it('flex-start (default) leaves children butt-jointed from the start edge', () => {
+      const root = makeRow(120, 30, [20, 30]);
+      root.setJustifyContent('flex-start');
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('flex-end pushes children to the trailing edge', () => {
+      const root = makeRow(120, 30, [20, 30]);
+      root.setJustifyContent('flex-end');
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('center centers the children as a group', () => {
+      const root = makeRow(120, 30, [20, 30]);
+      root.setJustifyContent('center');
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('space-between spreads gaps between (not before/after)', () => {
+      const root = makeRow(120, 30, [20, 20, 20]);
+      root.setJustifyContent('space-between');
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('space-around gives half-slot leading + full slot between', () => {
+      const root = makeRow(120, 30, [20, 20, 20]);
+      root.setJustifyContent('space-around');
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('space-evenly gives equal slots around every item', () => {
+      const root = makeRow(120, 30, [20, 20, 20]);
+      root.setJustifyContent('space-evenly');
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('justify with leftover=0 (grow consumed all space) is a no-op', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(30);
+      root.setFlexDirection('row');
+      root.setJustifyContent('center');
+      const c = Node.create();
+      c.setWidth(0);
+      c.setHeight(30);
+      c.setFlexGrow(1);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('justify on a column container distributes along the height axis', () => {
+      const root = Node.create();
+      root.setWidth(30);
+      root.setHeight(120);
+      root.setFlexDirection('column');
+      root.setJustifyContent('center');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('justify interacts with padding: leftover is computed in inner space', () => {
+      const root = makeRow(120, 30, [20, 30]);
+      root.setJustifyContent('center');
+      root.setPadding(Edge.Left, 10);
+      root.setPadding(Edge.Right, 10);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('align-items', () => {
+    it('flex-start (explicit) places child cross-pos at marginCrossStart', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('flex-start');
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('flex-end pushes child to the trailing cross edge', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('flex-end');
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('center centers the child along the cross axis', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('center');
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('stretch with explicit child cross size keeps the explicit size', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('stretch');
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('column-direction align-items centers along the horizontal axis', () => {
+      const root = Node.create();
+      root.setWidth(60);
+      root.setHeight(100);
+      root.setFlexDirection('column');
+      root.setAlignItems('center');
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(30);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('align-items=flex-end accounts for the child cross-end margin', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('flex-end');
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      c.setMargin(Edge.Bottom, 4);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('align-items interacts with cross-axis padding', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('center');
+      root.setPadding(Edge.Top, 4);
+      root.setPadding(Edge.Bottom, 6);
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('align-self', () => {
+    it('align-self=center overrides container align-items=flex-start for one child', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('flex-start');
+      const a = Node.create();
+      a.setWidth(20);
+      a.setHeight(20);
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(20);
+      b.setHeight(20);
+      b.setAlignSelf('center');
+      root.insertChild(b, 1);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+
+    it('align-self=auto falls back to container align-items', () => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      root.setAlignItems('flex-end');
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      c.setAlignSelf('auto');
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('combined justify + align', () => {
+    it('row container with center justify and flex-end align places child in correct corner', () => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(60);
+      root.setFlexDirection('row');
+      root.setJustifyContent('center');
+      root.setAlignItems('flex-end');
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+
+  describe('regression: v5 spacing trees still match with default alignment', () => {
+    it('v5 padding + gap + margin tree (default flex-start / stretch) still matches', () => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      root.setPadding(Edge.Left, 6);
+      root.setGap('column', 8);
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(20);
+        c.setMargin(Edge.Top, 2);
+        root.insertChild(c, i);
+      }
+      expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
+    });
+  });
+});
