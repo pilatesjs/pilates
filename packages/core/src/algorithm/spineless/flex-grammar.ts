@@ -1,12 +1,18 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v2) covers:
+ * Current slice (v3) covers:
  *
  *   - flex-direction: `row` and `column` (parent's direction governs how
  *     its children stack along the main axis)
- *   - Explicit `width` and `height` on every node
- *   - No flex grow, no flex shrink
+ *   - Explicit `width` and `height` on every node (the basis values)
+ *   - flex-grow: positive values redistribute leftover main-axis space
+ *     proportionally to grow weights. No clamping is performed, so the
+ *     freeze loop reduces to a single pass.
+ *   - flex-shrink and flex-basis (the separate property): not yet
+ *     supported. With Pilates's default `flexShrink: 0`, overflowing
+ *     containers leave child sizes alone, matching the imperative
+ *     algorithm exactly when no child sets shrink > 0.
  *   - No margin, no padding, no gap
  *   - No flex-wrap, no alignment (cross-axis offset is always 0)
  *   - No absolute positioning
@@ -14,22 +20,25 @@
  *     require the main-axis accumulator to walk in the opposite
  *     direction, which is a separate slice.
  *
- * Subsequent PRs expand the feature set (flex grow, margin, padding,
- * wrap, alignment, abs positioning, direction-reverse) one chunk at a
- * time, each gated by a differential test that asserts the grammar
- * produces byte-identical output to the imperative algorithm.
+ * Subsequent PRs expand the feature set (flex-shrink, flex-basis,
+ * margin/padding/gap, alignment, wrap, abs positioning, reverse
+ * directions) one chunk at a time, each gated by a differential test
+ * that asserts the grammar produces byte-identical output to the
+ * imperative algorithm.
  *
  * Fields emitted per node:
  *
- *   - `width`   — read from `node.style.width` (must be explicit number)
- *   - `height`  — read from `node.style.height` (must be explicit number)
- *   - `left`    — position relative to parent. 0 for root and for any
- *                 child whose parent is `column` (cross-axis). For
- *                 children of a `row` parent: sum of prior siblings'
- *                 widths.
- *   - `top`     — symmetric to `left`: 0 for root and for any child
- *                 whose parent is `row`. For children of a `column`
- *                 parent: sum of prior siblings' heights.
+ *   - `width`  — main-axis size when parent is `row`, cross-axis size
+ *                when parent is `column`. Cross axis reads
+ *                `style.width` verbatim. Main axis is the flex-grow
+ *                redistribution when any sibling has grow > 0,
+ *                otherwise `style.width`.
+ *   - `height` — symmetric to `width`.
+ *   - `left`   — position relative to parent. 0 for root, for first
+ *                child, and for any child whose parent is `column`
+ *                (cross-axis). For row-parent children: sum of prior
+ *                siblings' (computed) widths.
+ *   - `top`    — symmetric to `left`.
  *
  * @internal
  */
@@ -69,8 +78,8 @@ export interface FlexGrammarOutput {
  *
  * Requires every node to have `style.width` and `style.height` set to
  * numeric values. Throws if any node has them as `'auto'` or `undefined`
- * — those cases need flex grow/shrink semantics which this slice does
- * not yet support.
+ * — those cases need flex-basis / measure-func semantics which this
+ * slice does not yet support.
  *
  * @internal
  */
@@ -89,7 +98,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     const left = field<number>(node, 'left');
     const top = field<number>(node, 'top');
 
-    // Validate that this slice's preconditions are met.
+    // Validate preconditions: every node has an explicit numeric basis
+    // on both axes, and the direction is one we support.
     const styleW = node.style.width;
     const styleH = node.style.height;
     if (typeof styleW !== 'number') {
@@ -109,40 +119,83 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       );
     }
 
-    // width / height rules: just read style.
-    grammar.set(width as Field<unknown>, {
-      deps: [],
-      compute: () => styleW,
-    } satisfies FieldRule<number>);
-    grammar.set(height as Field<unknown>, {
-      deps: [],
-      compute: () => styleH,
-    } satisfies FieldRule<number>);
-
-    // Main-axis offset = sum of prior siblings' main-axis sizes (or 0
-    // for root / first child). Cross-axis offset is always 0 in this
-    // slice (no alignment, no wrap). The parent's direction decides
-    // which of {left, top} is main vs cross — root is parent-less and
-    // uses 0 for both.
+    // The parent's direction decides which of {width, height} is the
+    // main-axis size for THIS child (and which of {left, top} is the
+    // main-axis position). Root is parent-less and treats both axes as
+    // cross — sizes from style, positions at 0.
     const parentDirection = parent === null ? null : parent.style.flexDirection;
-    const mainAxisField =
+    const mainSizeField =
+      parentDirection === 'column' ? (height as Field<unknown>) : (width as Field<unknown>);
+    const crossSizeField =
+      parentDirection === 'column' ? (width as Field<unknown>) : (height as Field<unknown>);
+    const mainPosField =
       parentDirection === 'column' ? (top as Field<unknown>) : (left as Field<unknown>);
-    const crossAxisField =
+    const crossPosField =
       parentDirection === 'column' ? (left as Field<unknown>) : (top as Field<unknown>);
-    const mainAxisSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
+    const mainSizeStyle = parentDirection === 'column' ? styleH : styleW;
+    const crossSizeStyle = parentDirection === 'column' ? styleW : styleH;
+    const mainSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
 
+    // Cross-axis size: always reads style in this slice (no stretch).
+    grammar.set(crossSizeField, {
+      deps: [],
+      compute: () => crossSizeStyle,
+    } satisfies FieldRule<number>);
+
+    // Main-axis size: depends on whether the parent flex-distributes
+    // its children. A parent flex-distributes when ANY of its children
+    // has flexGrow > 0; in that case every sibling's main size is
+    // potentially altered. Otherwise the main size is the unaltered
+    // style basis (v1/v2 behaviour).
+    if (parent === null || !parentHasFlexGrow(parent)) {
+      grammar.set(mainSizeField, {
+        deps: [],
+        compute: () => mainSizeStyle,
+      } satisfies FieldRule<number>);
+    } else {
+      // Flex-grow redistribution. Capture every sibling's basis & grow
+      // inline (they're constants per the v3 precondition that all
+      // sizes are explicit numbers), look up our own index within
+      // siblings, and compute the post-grow size from the parent's
+      // main-axis size.
+      const siblings: { basis: number; grow: number }[] = [];
+      let myIndex = -1;
+      for (let i = 0; i < parent.getChildCount(); i++) {
+        const sib = parent.getChild(i)!;
+        const sibStyle = sib.style;
+        if (sib === node) myIndex = siblings.length;
+        const sibBasis = parentDirection === 'column' ? sibStyle.height : sibStyle.width;
+        // The outer visit() over each child re-validates basis numerics,
+        // but we may not have reached every sibling yet — re-check here.
+        if (typeof sibBasis !== 'number') {
+          throw new Error(
+            `[flex-grammar] flex sibling requires explicit numeric ${mainSizeName}; got ${JSON.stringify(sibBasis)}`,
+          );
+        }
+        siblings.push({ basis: sibBasis, grow: sibStyle.flexGrow });
+      }
+      const parentMainField = field<number>(parent, mainSizeName);
+      grammar.set(mainSizeField, {
+        deps: [parentMainField as Field<unknown>],
+        compute: (read) => {
+          const budget = read(parentMainField);
+          return distributeMainAxis(siblings, budget)[myIndex]!;
+        },
+      } satisfies FieldRule<number>);
+    }
+
+    // Main-axis position: sum of prior siblings' main-axis sizes.
+    // (Sparse-and-explicit DAG, optimal for Spineless: equivalent to
+    // "last sibling's main pos + last sibling's main size" but reasons
+    // more cleanly under incremental updates.)
     if (parent === null || indexInParent === 0) {
-      grammar.set(mainAxisField, {
+      grammar.set(mainPosField, {
         deps: [],
         compute: () => 0,
       } satisfies FieldRule<number>);
     } else {
-      // Sparse-and-explicit DAG: depend on every prior sibling's
-      // main-axis size. The Spineless runtime relies on this shape;
-      // equivalent to "last sibling's main offset + last sibling's
-      // main size" but reasons more cleanly under incremental updates.
-      const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainAxisSizeName));
-      grammar.set(mainAxisField, {
+      const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
+      grammar.set(mainPosField, {
         deps: priorMainSizes as Field<unknown>[],
         compute: (read) => {
           let sum = 0;
@@ -152,7 +205,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       } satisfies FieldRule<number>);
     }
 
-    grammar.set(crossAxisField, {
+    // Cross-axis position: 0 in this slice (no alignment, no wrap).
+    grammar.set(crossPosField, {
       deps: [],
       compute: () => 0,
     } satisfies FieldRule<number>);
@@ -181,4 +235,43 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     rootFields: { width: rootW, height: rootH, left: rootL, top: rootT },
     allFields,
   };
+}
+
+/** True iff at least one of `parent`'s children has `flexGrow > 0`. */
+function parentHasFlexGrow(parent: Node): boolean {
+  const count = parent.getChildCount();
+  for (let i = 0; i < count; i++) {
+    if (parent.getChild(i)!.style.flexGrow > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Distribute `budget` across siblings using CSS flex-grow semantics
+ * (without min/max clamping). Returns each sibling's final main-axis
+ * size in input order.
+ *
+ * Mirrors the imperative `distributeGrow` in `main-axis.ts`: when there
+ * is leftover space (budget > sum of bases), each grow-positive sibling
+ * receives a share proportional to its `flexGrow` weight. Without
+ * clamping the CSS freeze loop terminates in one iteration, so we
+ * fold it down to a single pass.
+ *
+ * @internal
+ */
+function distributeMainAxis(
+  siblings: readonly { basis: number; grow: number }[],
+  budget: number,
+): number[] {
+  let totalBasis = 0;
+  let totalGrow = 0;
+  for (const s of siblings) {
+    totalBasis += s.basis;
+    if (s.grow > 0) totalGrow += s.grow;
+  }
+  const leftover = budget - totalBasis;
+  if (leftover <= 0 || totalGrow <= 0) {
+    return siblings.map((s) => s.basis);
+  }
+  return siblings.map((s) => (s.grow > 0 ? s.basis + (leftover * s.grow) / totalGrow : s.basis));
 }

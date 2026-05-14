@@ -1,7 +1,7 @@
 # Phase 5 Spineless Traversal — Foundation (Phase 5a, OM data structure)
 
 **Date:** 2026-05-12
-**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Next slice: flex grow / shrink (v3).
+**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Next slice: flex-shrink (v4).
 **Plan reference:** `~/.claude/plans/precious-plotting-willow.md`
 
 ## Context
@@ -192,12 +192,15 @@ the imperative algorithm.
 | flex-direction: row | ✅ v1 | |
 | Explicit width / height | ✅ v1 | |
 | flex-direction: column | ✅ v2 | |
-| flex grow / shrink | ❌ | v3 |
-| Margin / padding / gap | ❌ | v4 |
-| Alignment (justify, align-items) | ❌ | v5 |
-| flex-wrap | ❌ | v6 |
-| Absolute positioning | ❌ | v7 |
+| flex-grow | ✅ v3 | |
+| flex-shrink | ❌ | v4 |
+| flex-basis (separate property) | ❌ | v4 |
+| Margin / padding / gap | ❌ | v5 |
+| Alignment (justify, align-items) | ❌ | v6 |
+| flex-wrap | ❌ | v7 |
+| Absolute positioning | ❌ | v8 |
 | flex-direction: row-reverse / column-reverse | ❌ | later |
+| Integer-cell rounding folded into the grammar | ❌ (post-pass for now) | later |
 
 **Differential validation (9 tests, all pass):** every fixed-width-row
 tree in the test corpus produces byte-identical layouts from the
@@ -235,6 +238,47 @@ row-of-columns). Two negative tests confirm `row-reverse` and
 `column-reverse` throw at build time.
 
 Coverage: 100% on `flex-grammar.ts`, 94.83% on `spineless/` overall.
+
+## What landed (flex-grow, v3 — seventh commit on this PR series)
+
+The third flex slice: positive `flexGrow` values now redistribute
+leftover main-axis space across siblings, proportionally to their
+weights. With Pilates's default `flexShrink: 0`, overflow cases leave
+basis values intact (matching the imperative algorithm exactly), so
+shrink is deferred to its own slice.
+
+**Implementation change:** A child's main-axis size used to read
+`style.{width|height}` directly. Now it splits in two:
+- If the parent has zero children with `flexGrow > 0` → unchanged
+  (basis-equals-style, v1/v2 behaviour).
+- Otherwise → the child's main-axis size depends on the parent's
+  main-axis size (the budget) and runs CSS flex-grow distribution
+  with all sibling bases & grow weights captured inline. Since this
+  slice intentionally has no min/max clamps, the freeze loop reduces
+  to a single pass.
+
+Position rules (`left`, `top`) are unchanged: they continue to sum
+prior siblings' main-axis sizes, which now resolve to grown values
+through the dep graph.
+
+**Rounding — out-of-scope for v3:** Floating-point widths arise as
+soon as a flex-grow ratio doesn't divide cleanly into the budget. The
+imperative pipeline applies `roundLayout` at the end (round absolute
+corners, derive sizes from rounded edges). For v3 the differential
+test helper applies the same rule to the grammar's float output,
+keeping comparisons byte-identical. Folding rounding into the field
+graph as derived fields is reserved for a later slice.
+
+**Differential validation (12 new tests, 30 total, all pass):**
+single grow child in a row, two equal-grow siblings, weighted grow
+(1:2), fixed + grow mix, exact-fit case (no growth), overflow case
+(no shrink), column-direction single grow, column fixed + grow,
+column weighted grow (1:3), a precondition test for non-numeric
+sibling basis under flex-grow, plus regression tests confirming v1
+and v2 trees still match.
+
+Coverage: 100% on `flex-grammar.ts` (all branches), 95.39% on
+`spineless/` overall.
 
 ## What's next (Phase 5a continuation)
 
