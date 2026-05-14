@@ -1,30 +1,35 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * This is the first slice — covers the simplest possible flex case:
+ * Current slice (v2) covers:
  *
- *   - flex-direction: row (only)
+ *   - flex-direction: `row` and `column` (parent's direction governs how
+ *     its children stack along the main axis)
  *   - Explicit `width` and `height` on every node
  *   - No flex grow, no flex shrink
  *   - No margin, no padding, no gap
- *   - No flex-wrap, no alignment (children always start at top=0)
+ *   - No flex-wrap, no alignment (cross-axis offset is always 0)
  *   - No absolute positioning
+ *   - `row-reverse` and `column-reverse` rejected at build time — they
+ *     require the main-axis accumulator to walk in the opposite
+ *     direction, which is a separate slice.
  *
- * Even this minimal case exercises the full type system: per-node
- * field allocation, dependency wiring across nodes, container-to-child
- * positioning. Subsequent PRs expand the feature set (flex grow, margin,
- * padding, wrap, alignment, abs positioning, multi-direction) one chunk
- * at a time, each gated by a differential test that asserts the grammar
+ * Subsequent PRs expand the feature set (flex grow, margin, padding,
+ * wrap, alignment, abs positioning, direction-reverse) one chunk at a
+ * time, each gated by a differential test that asserts the grammar
  * produces byte-identical output to the imperative algorithm.
  *
  * Fields emitted per node:
  *
  *   - `width`   — read from `node.style.width` (must be explicit number)
  *   - `height`  — read from `node.style.height` (must be explicit number)
- *   - `left`    — position relative to parent. 0 for root; for non-root,
- *                 sum of prior siblings' widths.
- *   - `top`     — position relative to parent. 0 for root and all
- *                 non-root nodes in this slice (no wrap, no alignment).
+ *   - `left`    — position relative to parent. 0 for root and for any
+ *                 child whose parent is `column` (cross-axis). For
+ *                 children of a `row` parent: sum of prior siblings'
+ *                 widths.
+ *   - `top`     — symmetric to `left`: 0 for root and for any child
+ *                 whose parent is `row`. For children of a `column`
+ *                 parent: sum of prior siblings' heights.
  *
  * @internal
  */
@@ -89,12 +94,18 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     const styleH = node.style.height;
     if (typeof styleW !== 'number') {
       throw new Error(
-        `[flex-grammar v1] node requires explicit numeric width; got ${JSON.stringify(styleW)}`,
+        `[flex-grammar] node requires explicit numeric width; got ${JSON.stringify(styleW)}`,
       );
     }
     if (typeof styleH !== 'number') {
       throw new Error(
-        `[flex-grammar v1] node requires explicit numeric height; got ${JSON.stringify(styleH)}`,
+        `[flex-grammar] node requires explicit numeric height; got ${JSON.stringify(styleH)}`,
+      );
+    }
+    const direction = node.style.flexDirection;
+    if (direction !== 'row' && direction !== 'column') {
+      throw new Error(
+        `[flex-grammar] flex-direction '${direction}' is not yet supported; only 'row' and 'column' are implemented in this slice`,
       );
     }
 
@@ -108,44 +119,47 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       compute: () => styleH,
     } satisfies FieldRule<number>);
 
-    // left rule
-    if (parent === null) {
-      // Root is anchored at 0.
-      grammar.set(left as Field<unknown>, {
-        deps: [],
-        compute: () => 0,
-      } satisfies FieldRule<number>);
-    } else if (indexInParent === 0) {
-      // First child sits at parent's content origin (left = 0 since
-      // there's no padding in this slice).
-      grammar.set(left as Field<unknown>, {
+    // Main-axis offset = sum of prior siblings' main-axis sizes (or 0
+    // for root / first child). Cross-axis offset is always 0 in this
+    // slice (no alignment, no wrap). The parent's direction decides
+    // which of {left, top} is main vs cross — root is parent-less and
+    // uses 0 for both.
+    const parentDirection = parent === null ? null : parent.style.flexDirection;
+    const mainAxisField =
+      parentDirection === 'column'
+        ? (top as Field<unknown>)
+        : (left as Field<unknown>);
+    const crossAxisField =
+      parentDirection === 'column'
+        ? (left as Field<unknown>)
+        : (top as Field<unknown>);
+    const mainAxisSizeName: 'width' | 'height' =
+      parentDirection === 'column' ? 'height' : 'width';
+
+    if (parent === null || indexInParent === 0) {
+      grammar.set(mainAxisField, {
         deps: [],
         compute: () => 0,
       } satisfies FieldRule<number>);
     } else {
-      // Non-first child: left = sum of prior siblings' widths.
-      // (For row direction; column would use heights here.)
-      const priorWidths = priorSiblings.map((s) => field<number>(s, 'width'));
-      const priorLefts: Field<number>[] = [];
-      if (indexInParent > 0) {
-        // We only need the LAST sibling's left + width to compute ours,
-        // not the full sum. But declaring the full chain keeps the
-        // dependency DAG sparse-and-explicit, which is what Spineless
-        // wants. Equivalent value, cleaner reasoning.
-      }
-      const deps: Field<number>[] = [...priorWidths, ...priorLefts];
-      grammar.set(left as Field<unknown>, {
-        deps: deps as Field<unknown>[],
+      // Sparse-and-explicit DAG: depend on every prior sibling's
+      // main-axis size. The Spineless runtime relies on this shape;
+      // equivalent to "last sibling's main offset + last sibling's
+      // main size" but reasons more cleanly under incremental updates.
+      const priorMainSizes = priorSiblings.map((s) =>
+        field<number>(s, mainAxisSizeName),
+      );
+      grammar.set(mainAxisField, {
+        deps: priorMainSizes as Field<unknown>[],
         compute: (read) => {
           let sum = 0;
-          for (const w of priorWidths) sum += read(w);
+          for (const m of priorMainSizes) sum += read(m);
           return sum;
         },
       } satisfies FieldRule<number>);
     }
 
-    // top rule: always 0 in this slice (no wrap, no alignment).
-    grammar.set(top as Field<unknown>, {
+    grammar.set(crossAxisField, {
       deps: [],
       compute: () => 0,
     } satisfies FieldRule<number>);
