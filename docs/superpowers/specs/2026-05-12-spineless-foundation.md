@@ -1,7 +1,7 @@
 # Phase 5 Spineless Traversal — Foundation (Phase 5a, OM data structure)
 
 **Date:** 2026-05-12
-**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Flex grammar v5 (margin / padding / gap) ✅. Flex grammar v6 (justify-content + align-items / align-self) ✅. Flex grammar v7 (flex-wrap) ✅. Next slice: absolute positioning (v8).
+**Status:** OM (Naive + Bender) ✅. OM-keyed priority queue ✅. Attribute grammar type system + topological interpreter ✅. Flex grammar v1 (row, fixed-width) ✅. Flex grammar v2 (column joins row) ✅. Flex grammar v3 (flex-grow distribution) ✅. Flex grammar v4 (flex-shrink + flexBasis) ✅. Flex grammar v5 (margin / padding / gap) ✅. Flex grammar v6 (justify-content + align-items / align-self) ✅. Flex grammar v7 (flex-wrap) ✅. Flex grammar v8 (absolute positioning) ✅. Flex grammar feature surface is now complete enough to start work on the Spineless runtime.
 **Plan reference:** `~/.claude/plans/precious-plotting-willow.md`
 
 ## Context
@@ -198,7 +198,7 @@ the imperative algorithm.
 | Margin / padding / gap | ✅ v5 | |
 | Alignment (justify, align-items / self) | ✅ v6 | |
 | flex-wrap (no wrap-reverse, no non-flex-start align-content) | ✅ v7 | |
-| Absolute positioning | ❌ | v8 |
+| Absolute positioning | ✅ v8 | |
 | align-content (non-default), wrap-reverse | ❌ | later |
 | flex-direction: row-reverse / column-reverse | ❌ | later |
 | min/max width/height (multi-pass freeze loop) | ❌ | later |
@@ -457,6 +457,55 @@ Coverage: 97.84% lines / 93.57% branches on `flex-grammar.ts`
 96.96% at v6, owing to two uncovered space-* justify branches in
 the wrap path that are mechanically identical to the well-covered
 non-wrap path).
+
+## What landed (absolute positioning, v8 — twelfth commit on this PR series)
+
+The eighth and feature-completing flex slice — absolute children
+(out-of-flow). Mirrors the imperative `layoutAbsoluteChild`:
+
+- **Width**: `style.width` if numeric, else (if both LEFT and
+  RIGHT edges are set) `parent.width - left - right - margins`,
+  else 0.
+- **Height**: symmetric, using TOP/BOTTOM edges and `parent.height`.
+- **Left**: `pos.left + margin.left` when LEFT set; else `parent.width
+  - width - pos.right - margin.right` when RIGHT set; else
+  `margin.left`. The RIGHT-anchored path picks up a dep on the
+  child's own width field (which itself may depend on parent.width).
+- **Top**: symmetric.
+
+Parent's OUTER size (the parent's own `width`/`height` field) is
+used, with no padding subtraction — matches Yoga / RN semantics
+that Pilates inherits.
+
+**Filtering:** absolute children are skipped from every in-flow
+computation:
+- `parentNeedsFlexDistribution`
+- The flex-distribution siblings loop (mainSize compute)
+- The wrap siblings loop (`evaluateWrappedChild` input)
+- The justified main-pos helper (justify leftover calc)
+- The in-flow sibling index passed to the recursion
+
+The in-flow precondition (numeric `style.width` / `style.height`)
+is relaxed for absolute children — their auto axes derive from
+opposing edges. The direction / wrap / align-content validations
+still apply to absolute children (since they may themselves be
+flex containers).
+
+**Differential validation (10 new tests, 100 total, all pass):**
+- 4 basic absolute layouts (top+left explicit; right-anchored;
+  bottom-anchored; margin-only no-edges).
+- 2 derived-size tests (left+right→width; top+bottom→height).
+- 2 coexistence tests (absolute alongside in-flow; in-flow flex-grow
+  ignores absolute siblings).
+- 1 outer-box test (absolute child ignores parent padding).
+- 1 v7 regression.
+
+Coverage: 95.7% lines / 91.11% branches / 95.65% functions on
+`flex-grammar.ts`. `spineless/` overall: 94.98%. The dip reflects
+new lines added (most of `emitAbsoluteRules` is covered; the
+zero-fallback width / height cases under absent edges remain
+uncovered — they're testable in principle but unimportant in
+practice).
 
 ## What's next (Phase 5a continuation)
 
