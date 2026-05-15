@@ -65,6 +65,12 @@ export interface StyleInputs {
   flexBasis?: Field<number>;
   gapRow?: Field<number>;
   gapColumn?: Field<number>;
+  /**
+   * Per-edge `padding` input Fields, indexed `[top, right, bottom,
+   * left]`. Entries are present only for edges the grammar reads
+   * (a container reads all four of its own padding edges).
+   */
+  padding?: Array<Field<number> | undefined>;
 }
 
 /**
@@ -169,6 +175,23 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     return f;
   }
 
+  // Register (once) the leaf input Field for one `padding` edge of a
+  // container (`edge` is a [top,right,bottom,left] index). Defaults
+  // to 0 when that edge is unset.
+  function paddingInput(n: Node, edge: number): Field<number> {
+    const f = field<number>(n, `style:padding:${edge}`);
+    if (!grammar.has(f as Field<unknown>)) {
+      grammar.set(f as Field<unknown>, {
+        deps: [],
+        compute: () => n.style.padding[edge] ?? 0,
+      } satisfies FieldRule<number>);
+      const entry = styleInputEntry(n);
+      if (entry.padding === undefined) entry.padding = [];
+      entry.padding[edge] = f;
+    }
+    return f;
+  }
+
   function visit(
     node: Node,
     parent: Node | null,
@@ -265,30 +288,31 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       parentDirection === 'column' ? (left as Field<unknown>) : (top as Field<unknown>);
     const mainSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
 
-    // Parent's spacing for this child: padding along both axes plus
-    // this child's own margins. Each is a THUNK, not a captured
-    // number — every compute callback below calls it, so a
-    // `setPadding` / `setMargin` mutation followed by `markDirty`
-    // (or `markAllDirty`) + `recompute()` picks up the new value.
-    // Padding / margin are pure numeric offsets: mutating them never
-    // reshapes the dependency graph, so live-reading them is always
+    // This child's own margins are still THUNKS — every compute
+    // callback below calls one, so a `setMargin` mutation followed
+    // by `markDirty` (or `markAllDirty`) + `recompute()` picks up
+    // the new value. Margins are pure numeric offsets: mutating them
+    // never reshapes the dependency graph, so live-reading is always
     // correct. (Structural mutations — flex-direction, flex-wrap
     // on/off, justify / align category — still need a fresh
-    // `buildFlexGrammar()`.) All default to 0, reducing v5 to v1-v4
-    // when no spacing is set anywhere.
+    // `buildFlexGrammar()`.) Margins default to 0.
     //
-    // `gap` is one step further along: it is modelled as a leaf
-    // input Field (see `gapInput`) so its consumers declare it as a
-    // dependency and a `setGap` propagates precisely. The thunks for
-    // padding / margin are the next slices' conversion targets.
-    const padMainStart = (): number =>
-      parent === null ? 0 : readPaddingStart(parent, parentDirection!);
-    const padMainEnd = (): number =>
-      parent === null ? 0 : readPaddingEnd(parent, parentDirection!);
-    const padCrossStart = (): number =>
-      parent === null ? 0 : readCrossPaddingStart(parent, parentDirection!);
-    const padCrossEnd = (): number =>
-      parent === null ? 0 : readCrossPaddingEnd(parent, parentDirection!);
+    // The parent's padding is modelled as leaf input Fields (see
+    // `paddingInput`) — one per [top,right,bottom,left] edge — so
+    // each consumer declares the edge it reads as a dependency and a
+    // `setPadding` propagates precisely. The four below are the edges
+    // THIS child's layout reads: padding on the parent's main / cross
+    // axes. They are `null` for the root (which has no parent and
+    // takes the constant path in every position rule). The thunks
+    // for margin are the next slice's conversion target.
+    const padMainStartF =
+      parent === null ? null : paddingInput(parent, mainStartEdge(parentDirection!));
+    const padMainEndF =
+      parent === null ? null : paddingInput(parent, mainEndEdge(parentDirection!));
+    const padCrossStartF =
+      parent === null ? null : paddingInput(parent, crossStartEdge(parentDirection!));
+    const padCrossEndF =
+      parent === null ? null : paddingInput(parent, crossEndEdge(parentDirection!));
     const myMarginMainStart = (): number =>
       parent === null ? 0 : readMarginMainStart(node, parentDirection!);
     const myMarginCrossStart = (): number =>
@@ -364,6 +388,10 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         parentCrossField as Field<unknown>,
         mainGapInput as Field<unknown>,
         crossGapInput as Field<unknown>,
+        padMainStartF as Field<unknown>,
+        padMainEndF as Field<unknown>,
+        padCrossStartF as Field<unknown>,
+        padCrossEndF as Field<unknown>,
       ];
       for (const s of wrapSibs) {
         wrapDeps.push(
@@ -375,8 +403,10 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       const evalWrapped = (read: ReadFn) => {
         const containerMain = read(parentMainField);
         const containerCross = read(parentCrossField);
-        const innerMain = Math.max(0, containerMain - padMainStart() - padMainEnd());
-        const innerCross = Math.max(0, containerCross - padCrossStart() - padCrossEnd());
+        const padMainStart = read(padMainStartF!);
+        const padCrossStart = read(padCrossStartF!);
+        const innerMain = Math.max(0, containerMain - padMainStart - read(padMainEndF!));
+        const innerCross = Math.max(0, containerCross - padCrossStart - read(padCrossEndF!));
         return evaluateWrappedChild(
           liveWrapSiblings(wrapSibs, parent, read, parentDirection!),
           myIndex,
@@ -385,8 +415,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           read(mainGapInput),
           read(crossGapInput),
           justify,
-          padMainStart(),
-          padCrossStart(),
+          padMainStart,
+          padCrossStart,
         );
       };
       grammar.set(mainSizeField, {
@@ -454,6 +484,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       const deps: Field<unknown>[] = [
         parentMainField as Field<unknown>,
         mainGapInput as Field<unknown>,
+        padMainStartF as Field<unknown>,
+        padMainEndF as Field<unknown>,
       ];
       for (const s of flexSibs) {
         deps.push(s.flexBasisInput as Field<unknown>, s.mainInput as Field<unknown>);
@@ -461,7 +493,10 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       grammar.set(mainSizeField, {
         deps,
         compute: (read) => {
-          const innerMain = Math.max(0, read(parentMainField) - padMainStart() - padMainEnd());
+          const innerMain = Math.max(
+            0,
+            read(parentMainField) - read(padMainStartF!) - read(padMainEndF!),
+          );
           const siblings = liveFlexSiblings(flexSibs, read, parentDirection!);
           return distributeMainAxis(siblings, innerMain, read(mainGapInput))[myIndex]!;
         },
@@ -479,10 +514,16 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     //     leading offset and/or extra gap. mainPos now depends on
     //     every sibling's main size and on the parent's main size.
     if (parent === null || indexInParent === 0) {
-      if (parent === null || justify === 'flex-start') {
+      if (parent === null) {
+        // Root is parent-less — anchor at 0.
         grammar.set(mainPosField, {
           deps: [],
-          compute: () => padMainStart() + myMarginMainStart(),
+          compute: () => 0,
+        } satisfies FieldRule<number>);
+      } else if (justify === 'flex-start') {
+        grammar.set(mainPosField, {
+          deps: [padMainStartF as Field<unknown>],
+          compute: (read) => read(padMainStartF!) + myMarginMainStart(),
         } satisfies FieldRule<number>);
       } else {
         // First child but parent uses non-default justify. Leading
@@ -498,6 +539,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           indexInParent,
           parentDirection!,
           gapInput(parent, parentDirection === 'column' ? 'row' : 'column'),
+          padMainStartF!,
+          padMainEndF!,
         );
       }
     } else if (justify === 'flex-start') {
@@ -508,9 +551,13 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
       const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
       grammar.set(mainPosField, {
-        deps: [mainGapInput as Field<unknown>, ...(priorMainSizes as Field<unknown>[])],
+        deps: [
+          mainGapInput as Field<unknown>,
+          padMainStartF as Field<unknown>,
+          ...(priorMainSizes as Field<unknown>[]),
+        ],
         compute: (read) => {
-          let sum = padMainStart() + myMarginMainStart() + indexInParent * read(mainGapInput);
+          let sum = read(padMainStartF!) + myMarginMainStart() + indexInParent * read(mainGapInput);
           for (const p of priorSiblings) {
             sum += readMarginMainStart(p, parentDirection!);
             sum += readMarginMainEnd(p, parentDirection!);
@@ -530,6 +577,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         indexInParent,
         parentDirection!,
         gapInput(parent, parentDirection === 'column' ? 'row' : 'column'),
+        padMainStartF!,
+        padMainEndF!,
       );
     }
 
@@ -544,9 +593,16 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           parentDirection === 'column' ? 'width' : 'height',
         );
         grammar.set(crossPosField, {
-          deps: [parentCrossField as Field<unknown>, crossSizeInput as Field<unknown>],
+          deps: [
+            parentCrossField as Field<unknown>,
+            crossSizeInput as Field<unknown>,
+            padCrossEndF as Field<unknown>,
+          ],
           compute: (read) =>
-            read(parentCrossField) - padCrossEnd() - read(crossSizeInput) - myMarginCrossEnd(),
+            read(parentCrossField) -
+            read(padCrossEndF!) -
+            read(crossSizeInput) -
+            myMarginCrossEnd(),
         } satisfies FieldRule<number>);
       } else {
         // Root: no parent, no alignment to apply — anchor at 0.
@@ -561,10 +617,15 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         parentDirection === 'column' ? 'width' : 'height',
       );
       grammar.set(crossPosField, {
-        deps: [parentCrossField as Field<unknown>, crossSizeInput as Field<unknown>],
+        deps: [
+          parentCrossField as Field<unknown>,
+          crossSizeInput as Field<unknown>,
+          padCrossStartF as Field<unknown>,
+          padCrossEndF as Field<unknown>,
+        ],
         compute: (read) => {
-          const padStart = padCrossStart();
-          const innerCross = Math.max(0, read(parentCrossField) - padStart - padCrossEnd());
+          const padStart = read(padCrossStartF!);
+          const innerCross = Math.max(0, read(parentCrossField) - padStart - read(padCrossEndF!));
           const marginStart = myMarginCrossStart();
           const innerLine = innerCross - marginStart - myMarginCrossEnd();
           const myCross = read(crossSizeInput);
@@ -574,11 +635,12 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     } else {
       // flex-start, stretch (with explicit cross size — no resize),
       // and any other value (the imperative falls through to
-      // flex-start) all share this offset, read live so a padding /
-      // margin mutation flows through recompute().
+      // flex-start) all share this offset: the parent's cross-start
+      // padding (a declared input dep) plus this child's cross-start
+      // margin (still a live-read thunk).
       grammar.set(crossPosField, {
-        deps: [],
-        compute: () => padCrossStart() + myMarginCrossStart(),
+        deps: [padCrossStartF as Field<unknown>],
+        compute: (read) => read(padCrossStartF!) + myMarginCrossStart(),
       } satisfies FieldRule<number>);
     }
 
@@ -736,10 +798,11 @@ function liveWrapSiblings(
  * matches what CSS requires — change any sibling's size and every
  * item's position can move under space-* or center.
  *
- * Padding / margins are read live inside compute (the in-flow
- * sibling NODES are captured; their margins are not), so a spacing
- * mutation flows through recompute() without a fresh build. `gap` is
- * a declared dep — the caller passes its input Field.
+ * Margins are read live inside compute (the in-flow sibling NODES
+ * are captured; their margins are not), so a margin mutation flows
+ * through recompute() without a fresh build. `gap` and the parent's
+ * main-axis `padding` edges are declared deps — the caller passes
+ * their input Fields.
  *
  * @internal
  */
@@ -753,6 +816,8 @@ function emitJustifiedMainPos(
   indexInParent: number,
   direction: 'row' | 'column',
   gapField: Field<number>,
+  padStartField: Field<number>,
+  padEndField: Field<number>,
 ): void {
   // In-flow siblings only — absolute children don't contribute to
   // justify-content's leftover calculation.
@@ -769,15 +834,14 @@ function emitJustifiedMainPos(
     deps: [
       parentMainField as Field<unknown>,
       gapField as Field<unknown>,
+      padStartField as Field<unknown>,
+      padEndField as Field<unknown>,
       ...(allSizes as Field<unknown>[]),
     ],
     compute: (read) => {
-      const padStart = readPaddingStart(parent, direction);
+      const padStart = read(padStartField);
       const gap = read(gapField);
-      const innerMain = Math.max(
-        0,
-        read(parentMainField) - padStart - readPaddingEnd(parent, direction),
-      );
+      const innerMain = Math.max(0, read(parentMainField) - padStart - read(padEndField));
       let usedMain = 0;
       for (let i = 0; i < n; i++) {
         const sib = inFlow[i]!;
@@ -932,22 +996,10 @@ function crossStartEdge(direction: 'row' | 'column'): number {
   return direction === 'column' ? LEFT : TOP;
 }
 
-function readPaddingStart(parent: Node, direction: 'row' | 'column'): number {
-  return parent.style.padding[mainStartEdge(direction)] ?? 0;
-}
-
-function readPaddingEnd(parent: Node, direction: 'row' | 'column'): number {
-  return parent.style.padding[mainEndEdge(direction)] ?? 0;
-}
-
-function readCrossPaddingStart(parent: Node, direction: 'row' | 'column'): number {
-  return parent.style.padding[crossStartEdge(direction)] ?? 0;
-}
-
-function readCrossPaddingEnd(parent: Node, direction: 'row' | 'column'): number {
+function crossEndEdge(direction: 'row' | 'column'): number {
   // Cross axis is perpendicular to the main axis; its end edge sits
   // opposite the cross start edge.
-  return parent.style.padding[direction === 'column' ? RIGHT : BOTTOM] ?? 0;
+  return direction === 'column' ? RIGHT : BOTTOM;
 }
 
 function readMarginMainStart(child: Node, direction: 'row' | 'column'): number {
