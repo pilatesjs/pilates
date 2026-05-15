@@ -884,18 +884,31 @@ export function buildAppendFragment(
 }
 
 /**
- * The detach inputs for a fast-pathed child removal — see
+ * The patch inputs for a fast-pathed child removal — see
  * `buildRemoveFragment`.
  *
  * @internal
  */
 export interface RemoveFragment {
-  /** Every field belonging to the removed subtree. */
+  /**
+   * Every field belonging to the removed subtree, for
+   * `SpinelessRuntime.detach`. Apply this AFTER the `rebinds` — a
+   * surviving sibling rebound off the removed child must drop its
+   * dependency on the child's fields before they can be detached.
+   */
   removed: Array<Field<unknown>>;
   /**
-   * A full `FlexGrammarOutput` for the post-removal tree, derived by
-   * filtering `prev` — the caller adopts it. Its `grammar` is
-   * `prev.grammar`, which `SpinelessRuntime.detach` patches in place.
+   * Existing fields whose rule the removal rewrote, paired with the
+   * new rule — for `SpinelessRuntime.rebindRule`. Empty when removing
+   * a last child from a simple-regime parent (`detach` alone
+   * suffices); non-empty when the parent flex-distributes /
+   * justifies / wraps, or the child is interior — where removing it
+   * shrinks every surviving sibling's dependency set.
+   */
+  rebinds: Array<[Field<unknown>, FieldRule<unknown>]>;
+  /**
+   * A fresh full `FlexGrammarOutput` for the post-removal tree. The
+   * caller adopts it for subsequent operations.
    */
   next: FlexGrammarOutput;
 }
@@ -903,40 +916,47 @@ export interface RemoveFragment {
 /**
  * Fast-path a child REMOVAL for the Spineless runtime — the mirror
  * of `buildAppendFragment`. Call this **before** detaching `child`
- * from `parent`: the validation needs `child` still in place. If
- * removing `child` (the last child of `parent`) is a pure
- * topological-tail subtraction — so `SpinelessRuntime.detach` can
- * drop it without a rebuild — return the detach inputs; otherwise
- * return `null` and the caller must rebuild.
+ * from `parent`: the simple-regime check needs `child` still in
+ * place. Returns the patch inputs, or `null` only when a true
+ * rebuild is required (`child` is not `parent`'s child, or `parent`
+ * uses a reverse `flex-direction`).
  *
- * The simple-regime conditions match `buildAppendFragment`: a
- * non-absolute removal is pure only when `parent` does not
- * flex-distribute, uses default `flex-start` justify, and does not
- * wrap. `parentNeedsFlexDistribution` is checked with `child` still
- * attached, so a parent that flex-distributes *because of* `child`
- * is correctly rejected (removing `child` would re-simplify it,
- * rewriting siblings' rules). An absolute child perturbs no sibling
- * and is always removable.
+ * The removed subtree's fields are always handed to `detach`. When
+ * removing a last child from a parent in the "simple" regime (no
+ * flex distribution, default `flex-start` justify, no wrap — or
+ * `child` is absolute) that is the whole patch and `rebinds` is
+ * empty. Otherwise the removal also shrinks every surviving in-flow
+ * sibling's dependency set, so `rebinds` carries those siblings'
+ * rewritten rules. The caller applies `rebindRule` for each rebind
+ * FIRST (so survivors stop depending on the removed fields), then
+ * `detach`, then `recompute()`.
+ *
+ * This does not mutate the tree — it computes the post-removal
+ * grammar by detaching `child` and re-attaching it around a
+ * `buildFlexGrammar` call. The caller still performs the real
+ * `parent.removeChild(child)`.
  *
  * @internal
  */
 export function buildRemoveFragment(
   prev: FlexGrammarOutput,
+  root: Node,
   parent: Node,
   child: Node,
 ): RemoveFragment | null {
-  // `child` must be the parent's last child — removing an interior
-  // child shifts later siblings, which is not a tail subtraction.
-  const count = parent.getChildCount();
-  if (count === 0 || parent.getChild(count - 1) !== child) return null;
-
-  if (child.style.positionType !== 'absolute') {
-    const dir = parent.style.flexDirection;
-    if (dir !== 'row' && dir !== 'column') return null;
-    if (parent.style.flexWrap !== 'nowrap') return null;
-    if (parent.style.justifyContent !== 'flex-start') return null;
-    if (parentNeedsFlexDistribution(parent)) return null;
+  // `child` must be a child of `parent`.
+  let index = -1;
+  for (let i = 0; i < parent.getChildCount(); i++) {
+    if (parent.getChild(i) === child) {
+      index = i;
+      break;
+    }
   }
+  if (index === -1) return null;
+
+  // Reverse flex-direction is unsupported by the grammar entirely.
+  const dir = parent.style.flexDirection;
+  if (dir !== 'row' && dir !== 'column') return null;
 
   // Collect the removed subtree's nodes (`child` + descendants),
   // then every field in `prev.grammar` that belongs to one of them.
@@ -952,17 +972,41 @@ export function buildRemoveFragment(
     if (removedNodes.has(f.node)) removed.push(f);
   }
 
-  // `next` is `prev` with the removed subtree filtered out — no
-  // rebuild needed, the simple regime leaves every surviving field's
-  // rule unchanged. `next.grammar` is `prev.grammar`, which `detach`
-  // mutates in place to match.
-  const next: FlexGrammarOutput = {
-    grammar: prev.grammar,
-    rootFields: prev.rootFields,
-    allFields: prev.allFields.filter((e) => !removedNodes.has(e.node)),
-    styleInputs: new Map([...prev.styleInputs].filter(([n]) => !removedNodes.has(n))),
-  };
-  return { removed, next };
+  // Removing a last child from a simple-regime parent perturbs no
+  // surviving sibling — `detach` alone suffices. `child` is still
+  // attached, so `parentNeedsFlexDistribution` sees it: a parent
+  // flex-distributing *because of* `child` is correctly non-simple.
+  const isLast = index === parent.getChildCount() - 1;
+  const simple =
+    child.style.positionType === 'absolute' ||
+    (isLast &&
+      parent.style.flexWrap === 'nowrap' &&
+      parent.style.justifyContent === 'flex-start' &&
+      !parentNeedsFlexDistribution(parent));
+
+  // Compute the post-removal grammar by detaching `child` around a
+  // `buildFlexGrammar` call, then restoring the tree exactly.
+  parent.removeChild(child);
+  const next = buildFlexGrammar(root);
+  parent.insertChild(child, index);
+
+  // In the simple regime no surviving sibling changes. Otherwise
+  // every surviving in-flow sibling's layout rules are rewritten —
+  // rebind each of their four layout fields to the post-removal rule.
+  const rebinds: Array<[Field<unknown>, FieldRule<unknown>]> = [];
+  if (!simple) {
+    for (let i = 0; i < parent.getChildCount(); i++) {
+      const sib = parent.getChild(i)!;
+      if (sib === child || sib.style.positionType === 'absolute') continue;
+      for (const name of ['width', 'height', 'left', 'top'] as const) {
+        const f = field<number>(sib, name) as Field<unknown>;
+        const rule = next.grammar.get(f);
+        if (rule !== undefined) rebinds.push([f, rule]);
+      }
+    }
+  }
+
+  return { removed, rebinds, next };
 }
 
 /**
