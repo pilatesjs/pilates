@@ -39,11 +39,14 @@ rules):
    parent in the "simple" regime (no flex distribution, default
    `justify`, no wrap): the new subtree's fields are pure leaves at
    the tail of topo order.
-2. **Append-child grammar fragment.** A grammar-side helper that,
-   given a parent already in the simple regime and a freshly
-   inserted last child, produces just that child's sub-grammar +
-   root fields to hand to `graft` — so callers get
-   `insertChild`-then-relayout without touching `buildFlexGrammar`.
+2. **Append-child fragment (landed).** `buildAppendFragment` is the
+   grammar-side helper that, given the previous `FlexGrammarOutput`,
+   the tree root, the parent, and a freshly appended last child,
+   decides whether the append is a pure simple-regime graft and, if
+   so, returns the `{ additions, newRoots }` to hand to `graft` plus
+   a refreshed full `FlexGrammarOutput`. It returns `null` when a
+   rebuild is required instead — so callers get `insertChild`-then-
+   relayout without manually diffing grammars.
 3. **Regime-aware patching.** Appending into a flex-distributing /
    justified / wrapping parent additionally *rewrites* existing
    siblings' rules (their dep sets grow). Removal frees OM nodes and
@@ -90,3 +93,35 @@ and a realistic path — build a tree, `buildFlexGrammar`, `init`;
 append a child to a simple-regime parent; diff the rebuilt grammar
 (`G2 \ G1`) for the additions; `graft`; assert the runtime's layout
 is byte-identical to a fresh runtime over `G2`.
+
+## Slice 2 — `buildAppendFragment`
+
+`buildAppendFragment(prev, root, parent, child)` returns an
+`AppendFragment | null`:
+
+- **`null`** — the append is not a pure topological-tail graft and a
+  full rebuild is required: `child` is not `parent`'s last child, or
+  (for a non-absolute child) `parent` flex-distributes / uses a
+  non-default `justify` / wraps.
+- **`{ additions, newRoots, next }`** — the append is pure-additive.
+  `additions` / `newRoots` feed `graft`; `next` is a fresh full
+  `FlexGrammarOutput` the caller adopts for subsequent operations.
+
+An absolute child is always pure-additive — it is filtered out of
+every in-flow computation, so it perturbs no sibling regardless of
+the parent's regime.
+
+The current implementation rebuilds the grammar (cheap — Field
+allocation + closures, no layout compute) and diffs it against
+`prev` to isolate the new subtree's fields. The expensive layout
+work stays incremental through `graft`. A fragment-only build that
+walks just the appended subtree (O(subtree) instead of O(tree) for
+the grammar pass) is a later optimisation.
+
+### Tests
+
+`append-fragment.test.ts`: simple-regime appends (row / column /
+nested / absolute-into-flex / a run of successive appends) graft to
+a layout byte-identical to a fresh build; the non-simple cases
+(flex-distributing parent, non-default justify, wrap, child not
+last) each return `null`.
