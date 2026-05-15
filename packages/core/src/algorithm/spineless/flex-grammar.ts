@@ -768,44 +768,56 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
 }
 
 /**
- * The graft inputs for a fast-pathed child append — see
+ * The patch inputs for a fast-pathed child append — see
  * `buildAppendFragment`.
  *
  * @internal
  */
 export interface AppendFragment {
-  /** Rules for the newly-added subtree's fields only. */
+  /** Rules for the newly-added subtree's fields, for `graft`. */
   additions: Grammar;
   /** The new fields to start `SpinelessRuntime.graft`'s DFS from. */
   newRoots: Array<Field<unknown>>;
   /**
+   * Existing fields whose rule the append rewrote, paired with the
+   * new rule — for `SpinelessRuntime.rebindRule`. Empty for a
+   * simple-regime append (`graft` alone suffices); non-empty when
+   * the parent flex-distributes / justifies / wraps, where appending
+   * a child also grows every existing sibling's dependency set.
+   * Apply these AFTER `graft` (the new rules reference the grafted
+   * fields), then call `recompute()`.
+   */
+  rebinds: Array<[Field<unknown>, FieldRule<unknown>]>;
+  /**
    * A fresh full `FlexGrammarOutput` for the post-append tree. The
    * caller should adopt it for subsequent operations — its
    * `allFields` / `styleInputs` cover the new subtree (the runtime's
-   * own grammar is patched in place by `graft`).
+   * own grammar is patched in place by `graft` + `rebindRule`).
    */
   next: FlexGrammarOutput;
 }
 
 /**
  * Fast-path a child APPEND for the Spineless runtime. If appending
- * `child` as the last child of `parent` is a pure topological-tail
- * addition — so `SpinelessRuntime.graft` can absorb it without a
- * rebuild + fresh runtime — return the graft inputs; otherwise
- * return `null` and the caller must rebuild.
+ * `child` as `parent`'s last child can be absorbed without a fresh
+ * runtime, return the patch inputs; return `null` only when a true
+ * rebuild is required — `child` is not the last child, or `parent`
+ * uses a reverse `flex-direction` (unsupported by the grammar).
  *
- * A pure-additive append needs `parent` in the "simple" regime: it
- * must not flex-distribute, must use the default `flex-start`
- * justify, and must not wrap. In any other regime appending a child
- * also moves existing siblings (their rules would have to be
- * rewritten, which `graft` does not do). An ABSOLUTE child is always
- * additive — it is filtered out of every in-flow computation, so it
- * perturbs nothing regardless of the parent's regime.
+ * The new subtree's fields are always a pure topological-tail
+ * addition handled by `graft` (`additions` / `newRoots`). When
+ * `parent` is in the "simple" regime (no flex distribution, default
+ * `flex-start` justify, no wrap — or `child` is absolute) that is
+ * the whole patch and `rebinds` is empty. Otherwise appending also
+ * grows every existing in-flow sibling's dependency set (flex
+ * distribution / justify leftover / wrap packing all read every
+ * sibling), so `rebinds` carries those siblings' rewritten rules for
+ * `rebindRule`.
  *
  * `prev` is the `FlexGrammarOutput` the runtime was built from;
  * `root` is the tree root (already containing `child`). The grammar
  * rebuild here is cheap — Field allocation + closures, no layout
- * compute; the expensive layout work stays incremental via `graft`.
+ * compute; the expensive layout work stays incremental.
  *
  * @internal
  */
@@ -820,23 +832,14 @@ export function buildAppendFragment(
   const count = parent.getChildCount();
   if (count === 0 || parent.getChild(count - 1) !== child) return null;
 
-  // An absolute child never perturbs in-flow siblings; otherwise the
-  // parent must be in the simple regime for the append to be purely
-  // additive.
-  if (child.style.positionType !== 'absolute') {
-    const dir = parent.style.flexDirection;
-    if (dir !== 'row' && dir !== 'column') return null;
-    if (parent.style.flexWrap !== 'nowrap') return null;
-    if (parent.style.justifyContent !== 'flex-start') return null;
-    // Checks `parent`'s children including the just-appended `child`,
-    // so a flex-distributing child correctly disqualifies the graft.
-    if (parentNeedsFlexDistribution(parent)) return null;
-  }
+  // Reverse flex-direction is unsupported by the grammar entirely.
+  const dir = parent.style.flexDirection;
+  if (dir !== 'row' && dir !== 'column') return null;
 
-  // Pure-additive: rebuild the grammar and diff it against `prev` to
-  // isolate the new subtree's fields. Field identity is stable
-  // across builds (`field()` is registry-backed), so a key absent
-  // from `prev.grammar` belongs to a newly-added node.
+  // Rebuild the grammar and diff it against `prev` to isolate the
+  // new subtree's fields. Field identity is stable across builds
+  // (`field()` is registry-backed), so a key absent from
+  // `prev.grammar` belongs to a newly-added node.
   const next = buildFlexGrammar(root);
   const additions: Grammar = new Map();
   for (const [f, rule] of next.grammar) {
@@ -853,7 +856,31 @@ export function buildAppendFragment(
       );
     }
   }
-  return { additions, newRoots, next };
+
+  // In the simple regime appending perturbs no existing sibling.
+  // Otherwise every existing in-flow sibling's layout rules are
+  // rewritten — rebind each of their four layout fields to the rule
+  // from the freshly rebuilt grammar. (An absolute `child` never
+  // perturbs in-flow siblings, so it stays simple regardless.)
+  const simple =
+    child.style.positionType === 'absolute' ||
+    (parent.style.flexWrap === 'nowrap' &&
+      parent.style.justifyContent === 'flex-start' &&
+      !parentNeedsFlexDistribution(parent));
+  const rebinds: Array<[Field<unknown>, FieldRule<unknown>]> = [];
+  if (!simple) {
+    for (let i = 0; i < parent.getChildCount(); i++) {
+      const sib = parent.getChild(i)!;
+      if (sib === child || sib.style.positionType === 'absolute') continue;
+      for (const name of ['width', 'height', 'left', 'top'] as const) {
+        const f = field<number>(sib, name) as Field<unknown>;
+        const rule = next.grammar.get(f);
+        if (rule !== undefined) rebinds.push([f, rule]);
+      }
+    }
+  }
+
+  return { additions, newRoots, rebinds, next };
 }
 
 /**

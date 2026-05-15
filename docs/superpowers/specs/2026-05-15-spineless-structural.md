@@ -54,10 +54,16 @@ rules):
    `buildAppendFragment`: it decides whether removing a last child
    is a pure topological-tail subtraction and returns the `detach`
    inputs, or `null` for a rebuild.
-4. **Regime-aware patching.** Appending into / removing from a
+4. **Regime-aware append (landed).** Appending into a
    flex-distributing / justified / wrapping parent additionally
-   *rewrites* existing siblings' rules (their dep sets change).
-   Direction / wrap / positionType flips re-key whole subtrees.
+   *rewrites* existing siblings' rules (their dependency sets grow
+   to include the new child). `SpinelessRuntime.rebindRule` replaces
+   a surviving field's rule and repairs its reverse-dependency
+   edges; `buildAppendFragment` now returns those rewritten rules as
+   `rebinds` alongside the graft inputs.
+5. **Regime-aware removal + structural flips.** The mirror of slice
+   4 for removal, plus `flex-direction` / `flex-wrap` /
+   `positionType` flips, which re-key whole subtrees.
 
 ## Slice 1 — `SpinelessRuntime.graft`
 
@@ -161,3 +167,60 @@ before-init and dangling-dependent throws). `remove-fragment.test.ts`
 covers simple-regime removals (row / column / nested / absolute /
 an append-then-remove round trip) detaching to a layout
 byte-identical to a fresh build, and the non-simple `null` cases.
+
+## Slice 4 — `rebindRule` + regime-aware append
+
+Appending into a flex-distributing / justified / wrapping parent is
+not a pure addition: every existing in-flow sibling's layout rule is
+*rewritten*, because flex distribution, the justify leftover, and
+wrap packing all read every sibling — so each sibling's rule gains
+the new child's input fields as dependencies.
+
+`SpinelessRuntime.rebindRule(field, newRule)` installs a new rule on
+an existing field: it repairs the reverse-dependency edges (drops
+`field` from deps it no longer reads, adds it to deps it now reads),
+marks the field dirty, and keeps its OM node.
+
+### The OM-order observation
+
+A rebound sibling's OM node predates the just-grafted child's input
+fields, so the sibling now depends on *later*-OM fields — the
+topological invariant the OM gave us is broken. This is fine:
+
+- **Correctness + termination** rest only on the dependency graph
+  being acyclic. The worklist reaches the DAG's unique fixpoint in
+  finitely many steps regardless of OM order.
+- The **immediate** post-append `recompute` is still optimally
+  ordered: only the rebound siblings are dirty, and they read the
+  grafted child's inputs which are *not* dirty (computed during the
+  graft) — so each recomputes once.
+- A *later* mutation that dirties a grafted input together with a
+  rebound sibling in one batch may recompute that sibling a bounded
+  number of extra times. OM order is a performance property, not a
+  correctness one.
+
+True OM re-insertion / relabeling (restoring the O(affected) bound
+for those later mutations) is deferred to a future slice.
+
+### `buildAppendFragment` (extended)
+
+It no longer returns `null` for non-simple parents. For any
+last-child append into a row/column parent it returns
+`{ additions, newRoots, rebinds, next }`: `rebinds` is empty in the
+simple regime, and otherwise carries every existing in-flow
+sibling's four layout fields paired with their rebuilt rules. The
+caller applies `graft`, then `rebindRule` for each rebind, then
+`recompute()`. `null` is returned only when a true rebuild is
+needed — `child` is not the last child, or the parent uses a
+reverse `flex-direction`.
+
+### Tests
+
+`runtime-graft.test.ts` gains `rebindRule` primitive tests (rule
+replacement, the new-dependency edge, the dependency prune via a
+recompute-count probe, the before-init / unknown-field /
+unintegrated-dependency throws). `append-fragment.test.ts` covers
+regime-aware appends — into flex-distributing / space-between /
+centered / wrapping parents — each grafting + rebinding to a layout
+byte-identical to a fresh build, plus a later-mutation case that
+exercises the OM-disorder path.
