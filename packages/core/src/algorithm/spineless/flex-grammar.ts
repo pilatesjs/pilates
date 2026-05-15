@@ -63,6 +63,8 @@ export interface StyleInputs {
   width?: Field<number>;
   height?: Field<number>;
   flexBasis?: Field<number>;
+  flexGrow?: Field<number>;
+  flexShrink?: Field<number>;
   gapRow?: Field<number>;
   gapColumn?: Field<number>;
   /**
@@ -111,14 +113,18 @@ export interface FlexGrammarOutput {
    * `node.style` value; every layout field that reads one declares
    * the matching input as a dependency. To drive a precise
    * incremental relayout after a `setWidth` / `setHeight` /
-   * `setFlexBasis` / `setGap` / `setPadding` / `setMargin`,
-   * `markDirty` the input Field for the mutated `(node, prop)` and
-   * call `recompute()` — propagation then reaches exactly the
-   * affected layout fields, with no `markAllDirty`.
+   * `setFlexBasis` / `setFlexGrow` / `setFlexShrink` / `setGap` /
+   * `setPadding` / `setMargin`, `markDirty` the input Field for the
+   * mutated `(node, prop)` and call `recompute()` — propagation then
+   * reaches exactly the affected layout fields, with no
+   * `markAllDirty`.
    *
-   * flex-grow / flex-shrink are not yet modelled as input fields
-   * (they are read live but undeclared); a mutation to those still
-   * needs `markAllDirty()`. A subsequent slice converts them.
+   * Every numeric style prop the grammar reads is now an input
+   * field. What still needs a fresh `buildFlexGrammar()` is
+   * STRUCTURAL mutation — flex-direction, flex-wrap on/off, the
+   * justify / align category, `positionType`, and toggling a flex
+   * weight or `flexBasis` across the zero / numeric boundary (which
+   * flips whether the parent flex-distributes).
    */
   styleInputs: Map<Node, StyleInputs>;
 }
@@ -159,6 +165,23 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       grammar.set(f as Field<unknown>, {
         deps: [],
         compute: () => n.style[prop] as number,
+      } satisfies FieldRule<number>);
+      styleInputEntry(n)[prop] = f;
+    }
+    return f;
+  }
+
+  // Register (once) the leaf input Field for a flex weight
+  // (`flexGrow` / `flexShrink`). Mutating a weight between two
+  // POSITIVE values (or two zeros) is an in-regime change driven via
+  // this field; crossing the zero boundary flips whether the parent
+  // flex-distributes and so needs a fresh `buildFlexGrammar()`.
+  function flexWeightInput(n: Node, prop: 'flexGrow' | 'flexShrink'): Field<number> {
+    const f = field<number>(n, `style:${prop}`);
+    if (!grammar.has(f as Field<unknown>)) {
+      grammar.set(f as Field<unknown>, {
+        deps: [],
+        compute: () => n.style[prop],
       } satisfies FieldRule<number>);
       styleInputEntry(n)[prop] = f;
     }
@@ -387,10 +410,10 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     if (parent !== null && parent.style.flexWrap === 'wrap') {
       // Capture the in-flow siblings and this child's index among
       // them (both structural — a fresh build is needed if children
-      // are inserted / removed). Each sibling's SIZE inputs (basis /
-      // main / cross) are declared as deps so a size mutation on any
-      // sibling propagates; grow / shrink / margins are still read
-      // live and undeclared (a `markAllDirty` slice away).
+      // are inserted / removed). Every per-sibling value the line
+      // packer reads — basis / main / cross size, grow / shrink
+      // weights, margins — is a declared input-field dep, so a
+      // size / flex / spacing mutation on any sibling propagates.
       const crossKeyName: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
       const mainStart = mainStartEdge(parentDirection!);
       const mainEnd = mainEndEdge(parentDirection!);
@@ -407,6 +430,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
           mainInput: styleSizeInput(sib, mainSizeName),
           crossInput: styleSizeInput(sib, crossKeyName),
+          growInput: flexWeightInput(sib, 'flexGrow'),
+          shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, mainStart),
           marginMainEndInput: marginInput(sib, mainEnd),
           marginCrossStartInput: marginInput(sib, crossStart),
@@ -435,6 +460,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           s.flexBasisInput as Field<unknown>,
           s.mainInput as Field<unknown>,
           s.crossInput as Field<unknown>,
+          s.growInput as Field<unknown>,
+          s.shrinkInput as Field<unknown>,
           s.marginMainStartInput as Field<unknown>,
           s.marginMainEndInput as Field<unknown>,
           s.marginCrossStartInput as Field<unknown>,
@@ -502,12 +529,12 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       } satisfies FieldRule<number>);
     } else {
       // Flex distribution. Capture the in-flow siblings + this
-      // child's index (structural); declare each sibling's flexBasis
-      // + main-size inputs as deps so a size mutation on any sibling
-      // propagates here. grow / shrink / margins stay read-live and
-      // undeclared (their input-field slice is still pending). The
-      // size is derived from the parent's main-axis size minus
-      // padding (the inner main).
+      // child's index (structural); declare every per-sibling value
+      // the distribution reads — flexBasis / main size, grow /
+      // shrink weights, main-axis margins — as input-field deps, so
+      // a size / flex / spacing mutation on any sibling propagates
+      // here. The size is derived from the parent's main-axis size
+      // minus padding (the inner main).
       const flexMainStart = mainStartEdge(parentDirection!);
       const flexMainEnd = mainEndEdge(parentDirection!);
       const flexSibs: SizeInputs[] = [];
@@ -520,6 +547,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           node: sib,
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
           mainInput: styleSizeInput(sib, mainSizeName),
+          growInput: flexWeightInput(sib, 'flexGrow'),
+          shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, flexMainStart),
           marginMainEndInput: marginInput(sib, flexMainEnd),
         });
@@ -536,6 +565,8 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         deps.push(
           s.flexBasisInput as Field<unknown>,
           s.mainInput as Field<unknown>,
+          s.growInput as Field<unknown>,
+          s.shrinkInput as Field<unknown>,
           s.marginMainStartInput as Field<unknown>,
           s.marginMainEndInput as Field<unknown>,
         );
@@ -747,6 +778,8 @@ interface SizeInputs {
   node: Node;
   flexBasisInput: Field<number>;
   mainInput: Field<number>;
+  growInput: Field<number>;
+  shrinkInput: Field<number>;
   marginMainStartInput: Field<number>;
   marginMainEndInput: Field<number>;
 }
@@ -782,8 +815,7 @@ function resolveBasisFromRead(
 
 /**
  * Per-sibling inputs to `distributeMainAxis`, resolved inside a
- * compute callback from the sibling size input fields (basis) plus a
- * live read of the still-undeclared flex / margin props.
+ * compute callback by `read`ing the sibling's declared input fields.
  *
  * @internal
  */
@@ -797,17 +829,17 @@ interface FlexSibling {
 
 /**
  * Build the flex-distribution inputs for a fixed in-flow sibling set.
- * Basis and main-axis margins come from declared input fields via
- * `read`; grow / shrink are still read live from `node.style` (their
- * input-field slice is pending).
+ * Every value — basis, grow / shrink weights, main-axis margins — is
+ * read from a declared input field via `read`, so the calling rule's
+ * dep list fully covers them.
  *
  * @internal
  */
 function liveFlexSiblings(sibs: readonly SizeInputs[], read: ReadFn): FlexSibling[] {
   return sibs.map((s) => ({
     basis: resolveBasisFromRead(read, s.flexBasisInput, s.mainInput),
-    grow: s.node.style.flexGrow,
-    shrink: s.node.style.flexShrink,
+    grow: read(s.growInput),
+    shrink: read(s.shrinkInput),
     marginStart: read(s.marginMainStartInput),
     marginEnd: read(s.marginMainEndInput),
   }));
@@ -830,8 +862,8 @@ function liveWrapSiblings(
     const alignSelf = s.node.style.alignSelf;
     return {
       basis: resolveBasisFromRead(read, s.flexBasisInput, s.mainInput),
-      grow: s.node.style.flexGrow,
-      shrink: s.node.style.flexShrink,
+      grow: read(s.growInput),
+      shrink: read(s.shrinkInput),
       mainMarginStart: read(s.marginMainStartInput),
       mainMarginEnd: read(s.marginMainEndInput),
       crossSize: read(s.crossInput),
