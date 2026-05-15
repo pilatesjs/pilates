@@ -187,17 +187,31 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     const mainSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
 
     // Parent's spacing for this child: padding along both axes, gap
-    // along the main axis, plus this child's own margins. Margins,
-    // padding, and gap default to 0 and so reduce v5 to v1-v4 when no
-    // spacing is set anywhere.
-    const padMainStart = parent === null ? 0 : readPaddingStart(parent, parentDirection!);
-    const padMainEnd = parent === null ? 0 : readPaddingEnd(parent, parentDirection!);
-    const padCrossStart = parent === null ? 0 : readCrossPaddingStart(parent, parentDirection!);
-    const padCrossEnd = parent === null ? 0 : readCrossPaddingEnd(parent, parentDirection!);
-    const gapMain = parent === null ? 0 : readMainGap(parent, parentDirection!);
-    const myMarginMainStart = parent === null ? 0 : readMarginMainStart(node, parentDirection!);
-    const myMarginCrossStart = parent === null ? 0 : readMarginCrossStart(node, parentDirection!);
-    const myMarginCrossEnd = parent === null ? 0 : readMarginCrossEnd(node, parentDirection!);
+    // along the main axis, plus this child's own margins. Each is a
+    // THUNK, not a captured number — every compute callback below
+    // calls it, so a `setPadding` / `setMargin` / `setGap` mutation
+    // followed by `markDirty` (or `markAllDirty`) + `recompute()`
+    // picks up the new value. Padding / margin / gap are pure numeric
+    // offsets: mutating them never reshapes the dependency graph, so
+    // live-reading them is always correct. (Structural mutations —
+    // flex-direction, flex-wrap on/off, justify / align category —
+    // still need a fresh `buildFlexGrammar()`.) All default to 0,
+    // reducing v5 to v1-v4 when no spacing is set anywhere.
+    const padMainStart = (): number =>
+      parent === null ? 0 : readPaddingStart(parent, parentDirection!);
+    const padMainEnd = (): number =>
+      parent === null ? 0 : readPaddingEnd(parent, parentDirection!);
+    const padCrossStart = (): number =>
+      parent === null ? 0 : readCrossPaddingStart(parent, parentDirection!);
+    const padCrossEnd = (): number =>
+      parent === null ? 0 : readCrossPaddingEnd(parent, parentDirection!);
+    const gapMain = (): number => (parent === null ? 0 : readMainGap(parent, parentDirection!));
+    const myMarginMainStart = (): number =>
+      parent === null ? 0 : readMarginMainStart(node, parentDirection!);
+    const myMarginCrossStart = (): number =>
+      parent === null ? 0 : readMarginCrossStart(node, parentDirection!);
+    const myMarginCrossEnd = (): number =>
+      parent === null ? 0 : readMarginCrossEnd(node, parentDirection!);
 
     // Alignment for this child: justify-content lives on the parent,
     // applies along the main axis once per line. align-items lives
@@ -234,34 +248,28 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     // size fields only) at the cost of redoing the packing once per
     // child read.
     if (parent !== null && parent.style.flexWrap === 'wrap') {
-      const wrapSiblings: WrapSibling[] = [];
+      // Capture the in-flow sibling NODES and this child's index
+      // among them (both structural — a fresh build is needed if
+      // children are inserted / removed). The per-sibling style data
+      // — bases, grow / shrink weights, cross sizes, margins — is
+      // rebuilt live inside `evalWrapped` via `liveWrapSiblings`, so
+      // spacing / flex / size mutations on any sibling flow through
+      // `recompute()`.
+      const wrapChildren: Node[] = [];
       let myIndex = -1;
       for (let i = 0; i < parent.getChildCount(); i++) {
         const sib = parent.getChild(i)!;
         if (sib.style.positionType === 'absolute') continue;
-        if (sib === node) myIndex = wrapSiblings.length;
-        const sibBasis = resolveBasis(sib, mainSizeName);
-        const sibCross =
-          parentDirection === 'column' ? (sib.style.width as number) : (sib.style.height as number);
-        const sibAlignSelf = sib.style.alignSelf;
-        wrapSiblings.push({
-          basis: sibBasis,
-          grow: sib.style.flexGrow,
-          shrink: sib.style.flexShrink,
-          mainMarginStart: readMarginMainStart(sib, parentDirection!),
-          mainMarginEnd: readMarginMainEnd(sib, parentDirection!),
-          crossSize: sibCross,
-          crossMarginStart: readMarginCrossStart(sib, parentDirection!),
-          crossMarginEnd: readMarginCrossEnd(sib, parentDirection!),
-          align: sibAlignSelf === 'auto' ? parent.style.alignItems : sibAlignSelf,
-        });
+        if (sib === node) myIndex = wrapChildren.length;
+        wrapChildren.push(sib);
       }
       const parentMainField = field<number>(parent, mainSizeName);
       const parentCrossField = field<number>(
         parent,
         parentDirection === 'column' ? 'width' : 'height',
       );
-      const crossGap = parentDirection === 'column' ? parent.style.gapColumn : parent.style.gapRow;
+      const crossGap = (): number =>
+        parentDirection === 'column' ? parent.style.gapColumn : parent.style.gapRow;
       const wrapDeps: Field<unknown>[] = [
         parentMainField as Field<unknown>,
         parentCrossField as Field<unknown>,
@@ -269,18 +277,18 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       const evalWrapped = (read: (f: Field<unknown>) => unknown) => {
         const containerMain = read(parentMainField as Field<unknown>) as number;
         const containerCross = read(parentCrossField as Field<unknown>) as number;
-        const innerMain = Math.max(0, containerMain - padMainStart - padMainEnd);
-        const innerCross = Math.max(0, containerCross - padCrossStart - padCrossEnd);
+        const innerMain = Math.max(0, containerMain - padMainStart() - padMainEnd());
+        const innerCross = Math.max(0, containerCross - padCrossStart() - padCrossEnd());
         return evaluateWrappedChild(
-          wrapSiblings,
+          liveWrapSiblings(wrapChildren, parent, parentDirection!, mainSizeName),
           myIndex,
           innerMain,
           innerCross,
-          gapMain,
-          crossGap,
+          gapMain(),
+          crossGap(),
           justify,
-          padMainStart,
-          padCrossStart,
+          padMainStart(),
+          padCrossStart(),
         );
       };
       grammar.set(mainSizeField, {
@@ -321,38 +329,29 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         compute: () => resolveBasis(node, mainSizeName),
       } satisfies FieldRule<number>);
     } else {
-      // Flex distribution. Capture every sibling's resolved basis,
-      // grow weight, shrink weight, and main-axis margins inline, look
-      // up our own index, and compute the post-distribution size from
-      // the parent's main-axis size minus padding (the inner main).
-      const siblings: {
-        basis: number;
-        grow: number;
-        shrink: number;
-        marginStart: number;
-        marginEnd: number;
-      }[] = [];
+      // Flex distribution. Capture the in-flow sibling NODES and this
+      // child's index among them (structural); rebuild every
+      // sibling's resolved basis, grow / shrink weight, and main-axis
+      // margins live inside compute via `liveFlexSiblings`, so flex /
+      // spacing / size mutations flow through recompute(). The size
+      // is derived from the parent's main-axis size minus padding
+      // (the inner main).
+      const flexChildren: Node[] = [];
       let myIndex = -1;
       for (let i = 0; i < parent.getChildCount(); i++) {
         const sib = parent.getChild(i)!;
         if (sib.style.positionType === 'absolute') continue;
-        if (sib === node) myIndex = siblings.length;
-        const sibBasis = resolveBasis(sib, mainSizeName);
-        siblings.push({
-          basis: sibBasis,
-          grow: sib.style.flexGrow,
-          shrink: sib.style.flexShrink,
-          marginStart: readMarginMainStart(sib, parentDirection!),
-          marginEnd: readMarginMainEnd(sib, parentDirection!),
-        });
+        if (sib === node) myIndex = flexChildren.length;
+        flexChildren.push(sib);
       }
       const parentMainField = field<number>(parent, mainSizeName);
       grammar.set(mainSizeField, {
         deps: [parentMainField as Field<unknown>],
         compute: (read) => {
           const containerMain = read(parentMainField);
-          const innerMain = Math.max(0, containerMain - padMainStart - padMainEnd);
-          return distributeMainAxis(siblings, innerMain, gapMain)[myIndex]!;
+          const innerMain = Math.max(0, containerMain - padMainStart() - padMainEnd());
+          const siblings = liveFlexSiblings(flexChildren, parentDirection!, mainSizeName);
+          return distributeMainAxis(siblings, innerMain, gapMain())[myIndex]!;
         },
       } satisfies FieldRule<number>);
     }
@@ -371,7 +370,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       if (parent === null || justify === 'flex-start') {
         grammar.set(mainPosField, {
           deps: [],
-          compute: () => padMainStart + myMarginMainStart,
+          compute: () => padMainStart() + myMarginMainStart(),
         } satisfies FieldRule<number>);
       } else {
         // First child but parent uses non-default justify. Leading
@@ -380,28 +379,28 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
         emitJustifiedMainPos(
           grammar,
           parent,
+          node,
           mainPosField,
           mainSizeName,
           justify,
           indexInParent,
-          padMainStart,
-          padMainEnd,
-          gapMain,
-          myMarginMainStart,
           parentDirection!,
         );
       }
     } else if (justify === 'flex-start') {
+      // Default main-axis flow: this child's position is a live
+      // offset (padding + own leading margin + prior gaps + each
+      // prior sibling's margins) plus the sum of prior siblings' main
+      // sizes. Prior NODES are captured; their margins are read live.
       const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
-      let constantOffset = padMainStart + myMarginMainStart + indexInParent * gapMain;
-      for (const p of priorSiblings) {
-        constantOffset += readMarginMainStart(p, parentDirection!);
-        constantOffset += readMarginMainEnd(p, parentDirection!);
-      }
       grammar.set(mainPosField, {
         deps: priorMainSizes as Field<unknown>[],
         compute: (read) => {
-          let sum = constantOffset;
+          let sum = padMainStart() + myMarginMainStart() + indexInParent * gapMain();
+          for (const p of priorSiblings) {
+            sum += readMarginMainStart(p, parentDirection!);
+            sum += readMarginMainEnd(p, parentDirection!);
+          }
           for (const m of priorMainSizes) sum += read(m);
           return sum;
         },
@@ -410,14 +409,11 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       emitJustifiedMainPos(
         grammar,
         parent,
+        node,
         mainPosField,
         mainSizeName,
         justify,
         indexInParent,
-        padMainStart,
-        padMainEnd,
-        gapMain,
-        myMarginMainStart,
         parentDirection!,
       );
     }
@@ -436,9 +432,9 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
           deps: [parentCrossField as Field<unknown>],
           compute: (read) =>
             read(parentCrossField) -
-            padCrossEnd -
+            padCrossEnd() -
             (node.style[crossKey] as number) -
-            myMarginCrossEnd,
+            myMarginCrossEnd(),
         } satisfies FieldRule<number>);
       } else {
         // Root: no parent, no alignment to apply — anchor at 0.
@@ -455,20 +451,22 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
       grammar.set(crossPosField, {
         deps: [parentCrossField as Field<unknown>],
         compute: (read) => {
-          const innerCross = Math.max(0, read(parentCrossField) - padCrossStart - padCrossEnd);
-          const innerLine = innerCross - myMarginCrossStart - myMarginCrossEnd;
+          const padStart = padCrossStart();
+          const innerCross = Math.max(0, read(parentCrossField) - padStart - padCrossEnd());
+          const marginStart = myMarginCrossStart();
+          const innerLine = innerCross - marginStart - myMarginCrossEnd();
           const myCross = node.style[crossKey] as number;
-          return padCrossStart + myMarginCrossStart + Math.max(0, (innerLine - myCross) / 2);
+          return padStart + marginStart + Math.max(0, (innerLine - myCross) / 2);
         },
       } satisfies FieldRule<number>);
     } else {
       // flex-start, stretch (with explicit cross size — no resize),
       // and any other value (the imperative falls through to
-      // flex-start) all share this constant offset.
-      const crossOffset = padCrossStart + myMarginCrossStart;
+      // flex-start) all share this offset, read live so a padding /
+      // margin mutation flows through recompute().
       grammar.set(crossPosField, {
         deps: [],
-        compute: () => crossOffset,
+        compute: () => padCrossStart() + myMarginCrossStart(),
       } satisfies FieldRule<number>);
     }
 
@@ -529,6 +527,74 @@ function resolveBasis(node: Node, mainSizeName: 'width' | 'height'): number {
 }
 
 /**
+ * Per-sibling inputs to `distributeMainAxis`, read live from the
+ * sibling node set inside a compute callback.
+ *
+ * @internal
+ */
+interface FlexSibling {
+  basis: number;
+  grow: number;
+  shrink: number;
+  marginStart: number;
+  marginEnd: number;
+}
+
+/**
+ * Build the live flex-distribution inputs (resolved basis, grow /
+ * shrink weights, main-axis margins) for a fixed in-flow sibling set.
+ * Called inside compute callbacks so flex / spacing / size mutations
+ * on any sibling are picked up by `recompute()` — the sibling NODES
+ * are captured at build time, but their style is re-read here.
+ *
+ * @internal
+ */
+function liveFlexSiblings(
+  inFlowChildren: readonly Node[],
+  direction: 'row' | 'column',
+  mainSizeName: 'width' | 'height',
+): FlexSibling[] {
+  return inFlowChildren.map((sib) => ({
+    basis: resolveBasis(sib, mainSizeName),
+    grow: sib.style.flexGrow,
+    shrink: sib.style.flexShrink,
+    marginStart: readMarginMainStart(sib, direction),
+    marginEnd: readMarginMainEnd(sib, direction),
+  }));
+}
+
+/**
+ * Build the live `WrapSibling` set for a wrapping container's in-flow
+ * children. Like `liveFlexSiblings` but also carries cross-axis size
+ * + margins and the resolved align value, which the wrap line packer
+ * needs. Called inside the wrap compute callbacks.
+ *
+ * @internal
+ */
+function liveWrapSiblings(
+  inFlowChildren: readonly Node[],
+  parent: Node,
+  direction: 'row' | 'column',
+  mainSizeName: 'width' | 'height',
+): WrapSibling[] {
+  return inFlowChildren.map((sib) => {
+    const alignSelf = sib.style.alignSelf;
+    return {
+      basis: resolveBasis(sib, mainSizeName),
+      grow: sib.style.flexGrow,
+      shrink: sib.style.flexShrink,
+      mainMarginStart: readMarginMainStart(sib, direction),
+      mainMarginEnd: readMarginMainEnd(sib, direction),
+      crossSize:
+        direction === 'column' ? (sib.style.width as number) : (sib.style.height as number),
+      crossMarginStart: readMarginCrossStart(sib, direction),
+      crossMarginEnd: readMarginCrossEnd(sib, direction),
+      align: alignSelf === 'auto' ? parent.style.alignItems : alignSelf,
+    };
+  });
+}
+
+/**
  * Emit the main-position rule for a child when the parent's
  * `justify-content` is not the default `flex-start`. The leftover
  * along the main axis is `max(0, innerMain - usedMain)`, where
@@ -541,46 +607,51 @@ function resolveBasis(node: Node, mainSizeName: 'width' | 'height'): number {
  * matches what CSS requires — change any sibling's size and every
  * item's position can move under space-* or center.
  *
+ * Padding / margins / gap are read live inside compute (the in-flow
+ * sibling NODES are captured; their margins are not), so a spacing
+ * mutation flows through recompute() without a fresh build.
+ *
  * @internal
  */
 function emitJustifiedMainPos(
   grammar: Grammar,
   parent: Node,
+  node: Node,
   mainPosField: Field<unknown>,
   mainSizeName: 'width' | 'height',
   justify: Justify,
   indexInParent: number,
-  padMainStart: number,
-  padMainEnd: number,
-  gapMain: number,
-  myMarginMainStart: number,
-  parentDirection: 'row' | 'column',
+  direction: 'row' | 'column',
 ): void {
   // In-flow siblings only — absolute children don't contribute to
   // justify-content's leftover calculation.
-  const childCount = parent.getChildCount();
-  const allSizes: Field<number>[] = [];
-  const sibMargins: { start: number; end: number }[] = [];
-  for (let i = 0; i < childCount; i++) {
+  const inFlow: Node[] = [];
+  for (let i = 0; i < parent.getChildCount(); i++) {
     const sib = parent.getChild(i)!;
     if (sib.style.positionType === 'absolute') continue;
-    allSizes.push(field<number>(sib, mainSizeName));
-    sibMargins.push({
-      start: readMarginMainStart(sib, parentDirection),
-      end: readMarginMainEnd(sib, parentDirection),
-    });
+    inFlow.push(sib);
   }
+  const allSizes: Field<number>[] = inFlow.map((s) => field<number>(s, mainSizeName));
   const n = allSizes.length;
   const parentMainField = field<number>(parent, mainSizeName);
   grammar.set(mainPosField, {
     deps: [parentMainField as Field<unknown>, ...(allSizes as Field<unknown>[])],
     compute: (read) => {
-      const innerMain = Math.max(0, read(parentMainField) - padMainStart - padMainEnd);
+      const padStart = readPaddingStart(parent, direction);
+      const gap = readMainGap(parent, direction);
+      const innerMain = Math.max(
+        0,
+        read(parentMainField) - padStart - readPaddingEnd(parent, direction),
+      );
       let usedMain = 0;
       for (let i = 0; i < n; i++) {
-        usedMain += read(allSizes[i]!) + sibMargins[i]!.start + sibMargins[i]!.end;
+        const sib = inFlow[i]!;
+        usedMain +=
+          read(allSizes[i]!) +
+          readMarginMainStart(sib, direction) +
+          readMarginMainEnd(sib, direction);
       }
-      if (n > 1) usedMain += (n - 1) * gapMain;
+      if (n > 1) usedMain += (n - 1) * gap;
       const leftover = Math.max(0, innerMain - usedMain);
       let leadingOffset = 0;
       let extraGap = 0;
@@ -609,12 +680,16 @@ function emitJustifiedMainPos(
       }
       // Cursor walks the line up to this child, mirroring the
       // imperative positionItemsInLine.
-      let cursor = padMainStart + leadingOffset;
+      let cursor = padStart + leadingOffset;
       for (let i = 0; i < indexInParent; i++) {
-        cursor += sibMargins[i]!.start + read(allSizes[i]!) + sibMargins[i]!.end;
-        cursor += gapMain + extraGap;
+        const sib = inFlow[i]!;
+        cursor +=
+          readMarginMainStart(sib, direction) +
+          read(allSizes[i]!) +
+          readMarginMainEnd(sib, direction);
+        cursor += gap + extraGap;
       }
-      cursor += myMarginMainStart;
+      cursor += readMarginMainStart(node, direction);
       return cursor;
     },
   } satisfies FieldRule<number>);
@@ -792,15 +867,17 @@ function emitAbsoluteRules(
   top: Field<number>,
 ): void {
   const pos = child.style.position;
-  const margin = child.style.margin;
   const posTop = pos[TOP];
   const posRight = pos[RIGHT];
   const posBottom = pos[BOTTOM];
   const posLeft = pos[LEFT];
-  const marginTop = margin[TOP] ?? 0;
-  const marginRight = margin[RIGHT] ?? 0;
-  const marginBottom = margin[BOTTOM] ?? 0;
-  const marginLeft = margin[LEFT] ?? 0;
+  // Margins are read live (thunks) so a `setMargin` on the absolute
+  // child flows through markDirty + recompute. The `position` edges
+  // stay captured: their presence selects the branch (structural).
+  const marginTop = (): number => child.style.margin[TOP] ?? 0;
+  const marginRight = (): number => child.style.margin[RIGHT] ?? 0;
+  const marginBottom = (): number => child.style.margin[BOTTOM] ?? 0;
+  const marginLeft = (): number => child.style.margin[LEFT] ?? 0;
   const styleW = child.style.width;
   const styleH = child.style.height;
   const parentWField = field<number>(parent, 'width');
@@ -820,7 +897,7 @@ function emitAbsoluteRules(
     grammar.set(width as Field<unknown>, {
       deps: [parentWField as Field<unknown>],
       compute: (read) =>
-        Math.max(0, read(parentWField) - posLeft - posRight - marginLeft - marginRight),
+        Math.max(0, read(parentWField) - posLeft - posRight - marginLeft() - marginRight()),
     } satisfies FieldRule<number>);
   } else {
     grammar.set(width as Field<unknown>, {
@@ -839,7 +916,7 @@ function emitAbsoluteRules(
     grammar.set(height as Field<unknown>, {
       deps: [parentHField as Field<unknown>],
       compute: (read) =>
-        Math.max(0, read(parentHField) - posTop - posBottom - marginTop - marginBottom),
+        Math.max(0, read(parentHField) - posTop - posBottom - marginTop() - marginBottom()),
     } satisfies FieldRule<number>);
   } else {
     grammar.set(height as Field<unknown>, {
@@ -850,39 +927,37 @@ function emitAbsoluteRules(
 
   // Left
   if (posLeft !== undefined) {
-    const constantLeft = posLeft + marginLeft;
     grammar.set(left as Field<unknown>, {
       deps: [],
-      compute: () => constantLeft,
+      compute: () => posLeft + marginLeft(),
     } satisfies FieldRule<number>);
   } else if (posRight !== undefined) {
     grammar.set(left as Field<unknown>, {
       deps: [parentWField as Field<unknown>, width as Field<unknown>],
-      compute: (read) => read(parentWField) - read(width) - posRight - marginRight,
+      compute: (read) => read(parentWField) - read(width) - posRight - marginRight(),
     } satisfies FieldRule<number>);
   } else {
     grammar.set(left as Field<unknown>, {
       deps: [],
-      compute: () => marginLeft,
+      compute: () => marginLeft(),
     } satisfies FieldRule<number>);
   }
 
   // Top
   if (posTop !== undefined) {
-    const constantTop = posTop + marginTop;
     grammar.set(top as Field<unknown>, {
       deps: [],
-      compute: () => constantTop,
+      compute: () => posTop + marginTop(),
     } satisfies FieldRule<number>);
   } else if (posBottom !== undefined) {
     grammar.set(top as Field<unknown>, {
       deps: [parentHField as Field<unknown>, height as Field<unknown>],
-      compute: (read) => read(parentHField) - read(height) - posBottom - marginBottom,
+      compute: (read) => read(parentHField) - read(height) - posBottom - marginBottom(),
     } satisfies FieldRule<number>);
   } else {
     grammar.set(top as Field<unknown>, {
       deps: [],
-      compute: () => marginTop,
+      compute: () => marginTop(),
     } satisfies FieldRule<number>);
   }
 }

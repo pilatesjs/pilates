@@ -71,13 +71,13 @@ These are deliberate hold-outs for the next slice, not bugs:
 
 ## Test coverage
 
-Full `packages/core` suite: 475 tests pass (up from 460).
-`spineless/` overall coverage: 95.47% lines, 93.66% branches.
-`runtime.ts`: 100% across all metrics.
+`spineless/` overall coverage: 95.06% lines, 92.15% branches.
+`runtime.ts`: 100% across all metrics. `runtime-mutation.test.ts`
+grew to 16 end-to-end style-mutation tests.
 
 ## What's next
 
-1. **Style-mutation wiring — first cut landed.** A follow-up commit on this PR series refactors the **size** compute callbacks in `flex-grammar.ts` to live-read `node.style.{width|height|flexBasis}` at evaluate time, and adds `SpinelessRuntime.markAllDirty()` as a coarse escape hatch alongside the existing `markDirty(field)`. After this, the full end-to-end loop works for size mutations: build runtime → mutate `setWidth` / `setHeight` / `setFlexBasis` → `markDirty(field)` (or `markAllDirty()`) → `recompute()` → layout matches a fresh build. Padding, margin, gap, flex-grow, flex-shrink, flex-wrap, and align-content are still inline-captured at build time; the next slice extends the live-read to those props.
+1. **Style-mutation live-read — landed.** Every compute callback in `flex-grammar.ts` now live-reads `node.style` at evaluate time. The first slice did the **size** props (`width` / `height` / `flexBasis`); the follow-up extended it to **padding / margin / gap** and the **flex-distribution / wrap** sibling data — captured numeric values became thunks, and the per-sibling arrays feeding `distributeMainAxis` / the wrap line packer are rebuilt live inside compute. The end-to-end loop now works for any numeric style value within a fixed structural regime: build runtime → mutate (`setPadding` / `setMargin` / `setGap` / `setFlexGrow` / `setFlexShrink` / `setWidth` / …) → `markDirty(field)` (or `markAllDirty()`) → `recompute()` → layout matches a fresh build. **Structural** mutations — flex-direction, flex-wrap on/off, the justify / align category, `positionType`, or toggling a flex weight across the zero boundary (which flips whether the parent flex-distributes) — still reshape the dependency graph and need a fresh `buildFlexGrammar()`.
 2. **Behind a feature flag.** A `PILATES_SPINELESS_LAYOUT=1` env flag lets the runtime opt into shipping to early users while the imperative path stays the default.
 3. **Bench — landed.** The `hotrelayouttext` scenario (`bench/scenarios/hot-relayout-text.ts`) builds a 1k-node fixed-size table once, then mutates a single leaf cell's width per pass. It adds a fourth engine column, `@pilates/core (spineless)`, alongside the imperative and Yoga paths. First numbers (Node v22.21, win32/x64): Spineless **6.0µs** vs imperative `calculateLayout()` **9.2µs** vs Yoga WASM **76.1µs** — the incremental runtime is ~1.5× faster than the already-fast imperative path and ~13× faster than Yoga. The win scales with how small the dirty fragment is: here only the mutated cell and its in-row downstream `left` positions recompute.
-4. **Cover the rest of style-mutation.** Refactor `padding` / `margin` / `gap` / flex distribution / wrap captures to also live-read, then either add fine-grained `markStyleDirty(node, propName)` or expose a `Node` setter hook that the runtime can subscribe to.
+4. **Fine-grained dirtying.** Callers still pick which `Field` to `markDirty` (or fall back to `markAllDirty()`). The next slice adds either a `markStyleDirty(node, propName)` that resolves a style mutation to the affected fields, or a `Node` setter hook the runtime subscribes to — so a `setPadding` automatically schedules exactly the fields it invalidates.

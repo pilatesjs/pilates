@@ -470,11 +470,11 @@ describe('buildFlexGrammar — flex-grow (slice v3)', () => {
       root.insertChild(a, 0);
       const b = Node.create();
       // No setWidth — style.width stays at 'auto'. Building the grammar
-      // for `a` must fail because its sibling-basis read returns a
-      // non-number, which the grow distribution can't consume.
+      // must fail: every in-flow node needs an explicit numeric basis,
+      // caught by the precondition when `b` itself is visited.
       b.setHeight(30);
       root.insertChild(b, 1);
-      expect(() => buildFlexGrammar(root)).toThrow(/flex sibling requires explicit numeric width/);
+      expect(() => buildFlexGrammar(root)).toThrow(/requires explicit numeric width/);
     });
   });
 
@@ -656,10 +656,11 @@ describe('buildFlexGrammar — flex-shrink + flex-basis (slice v4)', () => {
       a.setFlexShrink(1);
       root.insertChild(a, 0);
       const b = Node.create();
-      // No setWidth and no setFlexBasis — both are 'auto'.
+      // No setWidth and no setFlexBasis — both are 'auto'. Caught by
+      // the in-flow precondition when `b` is visited.
       b.setHeight(30);
       root.insertChild(b, 1);
-      expect(() => buildFlexGrammar(root)).toThrow(/flex sibling requires explicit numeric/);
+      expect(() => buildFlexGrammar(root)).toThrow(/requires explicit numeric width/);
     });
   });
 

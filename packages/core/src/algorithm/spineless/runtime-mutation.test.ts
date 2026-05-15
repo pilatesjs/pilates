@@ -1,18 +1,22 @@
 /**
  * End-to-end style-mutation tests for SpinelessRuntime.
  *
- * The flex grammar's size compute callbacks now live-read
- * `node.style.{width|height|flexBasis}` at evaluate time (see the
- * "live-read" notes inside flex-grammar.ts), so mutating those props
- * + calling `markDirty` or `markAllDirty` + `recompute()` produces
- * the same layout as building a fresh runtime against the post-
- * mutation state.
+ * The flex grammar's compute callbacks live-read `node.style` at
+ * evaluate time (see the "live-read" / thunk notes inside
+ * flex-grammar.ts), so mutating a style prop + calling `markDirty`
+ * or `markAllDirty` + `recompute()` produces the same layout as
+ * building a fresh runtime against the post-mutation state.
  *
- * This slice covers width / height / flexBasis mutations only.
- * Padding, margin, gap, flex-grow, flex-shrink, flex-wrap, and
- * align-content are still inline-captured at build time; mutating
- * them needs a fresh `buildFlexGrammar()` + `SpinelessRuntime`. The
- * next slice extends the live-read to those props.
+ * Coverage is now every NUMERIC style value within a fixed
+ * structural regime: width / height / flexBasis (the first slice),
+ * plus padding / margin / gap / flex-grow / flex-shrink and the
+ * per-sibling values feeding the wrap line packer (this slice).
+ *
+ * What still needs a fresh `buildFlexGrammar()` is STRUCTURAL
+ * mutation — anything that reshapes the dependency graph:
+ * flex-direction, flex-wrap on/off, the justify-content / align
+ * category, positionType, and toggling a flex weight across the
+ * zero boundary (which flips whether the parent flex-distributes).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -280,6 +284,246 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
     b.setWidth(20);
     rt.markAllDirty();
     rt.recompute();
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+});
+
+describe('SpinelessRuntime — incremental layout under spacing / flex mutations', () => {
+  it('mutating parent padding re-flows a row and matches a fresh build', () => {
+    const root = Node.create();
+    root.setWidth(120);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    root.setPadding(Edge.Left, 9);
+    root.setPadding(Edge.Top, 5);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating a child margin shifts it and its successors', () => {
+    const root = Node.create();
+    root.setWidth(120);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    const children: Node[] = [];
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    children[1]!.setMargin(Edge.Left, 7);
+    children[1]!.setMargin(Edge.Right, 3);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating parent gap re-spaces a row and matches a fresh build', () => {
+    const root = Node.create();
+    root.setWidth(120);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    root.setGap('column', 11);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating padding under a column direction matches a fresh build', () => {
+    const root = Node.create();
+    root.setWidth(40);
+    root.setHeight(120);
+    root.setFlexDirection('column');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    root.setPadding(Edge.Top, 8);
+    root.setPadding(Edge.Left, 6);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating flex-grow re-distributes the main axis and matches a fresh build', () => {
+    const root = Node.create();
+    root.setWidth(120);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    const children: Node[] = [];
+    for (let i = 0; i < 2; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      c.setFlexGrow(1);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    // Still in the flex-distribution regime (a positive grow weight
+    // exists before and after) — only the weighting shifts.
+    children[0]!.setFlexGrow(3);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating flex-shrink re-distributes an overflowing row', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    const children: Node[] = [];
+    for (let i = 0; i < 2; i++) {
+      const c = Node.create();
+      c.setWidth(80);
+      c.setHeight(20);
+      c.setFlexShrink(1);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    children[0]!.setFlexShrink(3);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating a child width re-packs a wrapping container', () => {
+    const root = Node.create();
+    root.setWidth(70);
+    root.setHeight(80);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    const children: Node[] = [];
+    for (let i = 0; i < 4; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    // Widening the first child changes which items fit per line —
+    // the wrap path re-packs from live sibling bases.
+    children[0]!.setWidth(60);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating padding under non-default justify-content matches a fresh build', () => {
+    const root = Node.create();
+    root.setWidth(150);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    root.setJustifyContent('space-between');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    root.setPadding(Edge.Left, 12);
+    root.setPadding(Edge.Right, 8);
+    rt.markAllDirty();
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('mutating an absolute child margin matches a fresh build', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(60);
+    root.setFlexDirection('row');
+    const abs = Node.create();
+    abs.setPositionType('absolute');
+    abs.setWidth(20);
+    abs.setHeight(15);
+    abs.setPosition(Edge.Top, 4);
+    abs.setPosition(Edge.Left, 8);
+    root.insertChild(abs, 0);
+    const { grammar, allFields } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    abs.setMargin(Edge.Left, 6);
+    abs.setMargin(Edge.Top, 3);
+    rt.markAllDirty();
+    rt.recompute();
+
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
   });
 });
