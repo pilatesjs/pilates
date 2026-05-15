@@ -200,58 +200,157 @@ describe('buildAppendFragment — simple-regime appends graft cleanly', () => {
   });
 });
 
+describe('buildAppendFragment — regime-aware appends graft + rebind cleanly', () => {
+  // Apply a non-simple-regime append: graft the new subtree, rebind
+  // the existing siblings whose rules the append rewrote, recompute.
+  function applyAppend(
+    rt: SpinelessRuntime,
+    frag: NonNullable<ReturnType<typeof buildAppendFragment>>,
+  ): void {
+    rt.graft(frag.additions, frag.newRoots);
+    for (const [f, rule] of frag.rebinds) rt.rebindRule(f, rule);
+    rt.recompute();
+  }
+
+  it('appends into a flex-distributing row', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 2; i++) {
+      const c = fixedCell(20, 20);
+      c.setFlexGrow(1);
+      root.insertChild(c, i);
+    }
+    const { rt, prev } = makeRuntime(root);
+
+    const c3 = fixedCell(20, 20);
+    c3.setFlexGrow(1);
+    root.insertChild(c3, 2);
+    const frag = buildAppendFragment(prev, root, root, c3);
+    expect(frag).not.toBeNull();
+    expect(frag!.rebinds.length).toBeGreaterThan(0);
+    applyAppend(rt, frag!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('appends a non-flex child into a flex-distributing row', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    const a = fixedCell(20, 20);
+    a.setFlexGrow(1);
+    root.insertChild(a, 0);
+    root.insertChild(fixedCell(30, 20), 1);
+    const { rt, prev } = makeRuntime(root);
+
+    const c3 = fixedCell(25, 20);
+    root.insertChild(c3, 2);
+    const frag = buildAppendFragment(prev, root, root, c3);
+    expect(frag).not.toBeNull();
+    applyAppend(rt, frag!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('appends into a space-between justified row', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    root.setJustifyContent('space-between');
+    for (let i = 0; i < 2; i++) root.insertChild(fixedCell(20, 20), i);
+    const { rt, prev } = makeRuntime(root);
+
+    const c3 = fixedCell(25, 20);
+    root.insertChild(c3, 2);
+    const frag = buildAppendFragment(prev, root, root, c3);
+    expect(frag).not.toBeNull();
+    applyAppend(rt, frag!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('appends into a centered justified row', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    for (let i = 0; i < 2; i++) root.insertChild(fixedCell(20, 20), i);
+    const { rt, prev } = makeRuntime(root);
+
+    const c3 = fixedCell(25, 20);
+    root.insertChild(c3, 2);
+    const frag = buildAppendFragment(prev, root, root, c3);
+    expect(frag).not.toBeNull();
+    applyAppend(rt, frag!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('appends into a wrapping container', () => {
+    const root = Node.create();
+    root.setWidth(70);
+    root.setHeight(120);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    for (let i = 0; i < 3; i++) root.insertChild(fixedCell(30, 20), i);
+    const { rt, prev } = makeRuntime(root);
+
+    const c4 = fixedCell(30, 20);
+    root.insertChild(c4, 3);
+    const frag = buildAppendFragment(prev, root, root, c4);
+    expect(frag).not.toBeNull();
+    applyAppend(rt, frag!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('stays correct under a later style mutation of the appended child', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 2; i++) {
+      const c = fixedCell(20, 20);
+      c.setFlexGrow(1);
+      root.insertChild(c, i);
+    }
+    const { rt, prev } = makeRuntime(root);
+
+    const c3 = fixedCell(20, 20);
+    c3.setFlexGrow(1);
+    root.insertChild(c3, 2);
+    const frag = buildAppendFragment(prev, root, root, c3)!;
+    applyAppend(rt, frag);
+
+    // The rebound siblings now depend on c3's (later-OM) inputs.
+    // Mutating c3's width and a sibling's width in one batch
+    // exercises the OM-disorder path; the result must still match a
+    // fresh build.
+    c3.setWidth(40);
+    root.getChild(0)!.setWidth(35);
+    rt.markDirty(frag.next.styleInputs.get(c3)!.width!);
+    rt.markDirty(frag.next.styleInputs.get(root.getChild(0)!)!.width!);
+    rt.recompute();
+
+    expect(readLayout(rt, frag.next.allFields)).toEqual(freshLayout(root));
+  });
+});
+
 describe('buildAppendFragment — returns null when a rebuild is required', () => {
-  function setup(configure: (root: Node) => Node): {
-    prev: ReturnType<typeof buildFlexGrammar>;
-    root: Node;
-    appended: Node;
-  } {
+  it('null when the child is not the last child', () => {
     const root = Node.create();
     root.setWidth(150);
     root.setHeight(30);
     root.setFlexDirection('row');
     root.insertChild(fixedCell(20, 20), 0);
     const prev = buildFlexGrammar(root);
-    const appended = configure(root);
-    return { prev, root, appended };
-  }
-
-  it('null when the parent flex-distributes', () => {
-    const { prev, root, appended } = setup((r) => {
-      const c = fixedCell(20, 20);
-      c.setFlexGrow(1);
-      r.insertChild(c, 1);
-      return c;
-    });
-    expect(buildAppendFragment(prev, root, root, appended)).toBeNull();
-  });
-
-  it('null when the parent uses non-default justify-content', () => {
-    const { prev, root, appended } = setup((r) => {
-      r.setJustifyContent('space-between');
-      const c = fixedCell(20, 20);
-      r.insertChild(c, 1);
-      return c;
-    });
-    expect(buildAppendFragment(prev, root, root, appended)).toBeNull();
-  });
-
-  it('null when the parent wraps', () => {
-    const { prev, root, appended } = setup((r) => {
-      r.setFlexWrap('wrap');
-      const c = fixedCell(20, 20);
-      r.insertChild(c, 1);
-      return c;
-    });
-    expect(buildAppendFragment(prev, root, root, appended)).toBeNull();
-  });
-
-  it('null when the child is not the last child', () => {
-    const { prev, root, appended } = setup((r) => {
-      const c = fixedCell(20, 20);
-      r.insertChild(c, 0); // inserted before the existing child
-      return c;
-    });
-    expect(buildAppendFragment(prev, root, root, appended)).toBeNull();
+    const c = fixedCell(20, 20);
+    root.insertChild(c, 0); // inserted before the existing child
+    expect(buildAppendFragment(prev, root, root, c)).toBeNull();
   });
 });

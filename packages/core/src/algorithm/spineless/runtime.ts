@@ -26,12 +26,20 @@
  * the fields whose inputs changed. Each dirty field is enqueued
  * (`pq.push(field, omNode)`). `recompute()` loops: pop the
  * OM-minimum field, re-run its rule. If the new value differs from
- * the cached one, persist it and push every dependent (which by
- * construction has a later OM timestamp than this one). Process
- * stops when the queue is empty. Termination is guaranteed because
- * dependents always have strictly greater OM nodes (allocation
- * order during init is topological), so the queue can't pump
- * indefinitely.
+ * the cached one, persist it and push every dependent. Process
+ * stops when the queue is empty.
+ *
+ * **Termination** rests on the dependency graph being acyclic: each
+ * field's value is a function of finitely many others, so the
+ * worklist reaches the DAG's unique fixpoint in finitely many
+ * steps. When the OM order is a true topological order — as it is
+ * after `init` and pure-additive `graft` — every field recomputes
+ * exactly once (a dependent always pops after its deps), giving the
+ * O(affected) Spineless bound. After a `rebindRule` an existing
+ * field may gain a dependency on a later-OM field; recompute stays
+ * correct and terminating, but such a field may recompute a bounded
+ * number of extra times. OM order is thus a performance property,
+ * not a correctness one.
  *
  * **Value preservation under no-op recompute:** if a field's rule
  * produces the same value as before, its dependents are NOT
@@ -51,6 +59,14 @@
  * reverse-dependency edges into surviving fields. Valid when the
  * removed set is closed under "is read by" (nothing outside reads
  * in), which holds for removing a last child in the simple regime.
+ *
+ * **Rebind** (`rebindRule(field, newRule)`): replace an existing
+ * field's rule — used when a structural change rewrites a surviving
+ * field (e.g. appending into a flex-distributing parent grows every
+ * sibling's flex-distribution dependency set). The reverse-
+ * dependency edges are updated to the new dep set and the field is
+ * marked dirty. New deps may have a later OM than the field — see
+ * the termination note above.
  *
  * ## What this runtime does NOT cover
  *
@@ -208,6 +224,64 @@ export class SpinelessRuntime {
         this.lastOm = omNode;
       }
     }
+  }
+
+  /**
+   * Replace the rule of an already-integrated field (phase 5c) — for
+   * a structural change that rewrites a *surviving* field rather than
+   * adding or removing one. Appending a child into a flex-distributing
+   * parent, for instance, grows every existing sibling's
+   * flex-distribution dependency set.
+   *
+   * The reverse-dependency edges are repaired to match the new dep
+   * set (the field is dropped from the lists of deps it no longer
+   * reads and added to the lists of deps it now reads), the new rule
+   * is installed, and the field is marked dirty so the next
+   * `recompute()` re-runs it. Every new dependency must already be
+   * integrated. The field keeps its OM node; if a new dependency has
+   * a later OM, recompute stays correct (see the termination note on
+   * the class) at the cost of a bounded number of extra recomputes.
+   */
+  rebindRule(field: Field<unknown>, newRule: FieldRule<unknown>): void {
+    if (!this.initDone) {
+      throw new Error('[spineless-runtime] rebindRule called before init()');
+    }
+    if (!this.omNodes.has(field)) {
+      throw new Error(
+        `[spineless-runtime] rebindRule: field "${field.name}" is not in this runtime`,
+      );
+    }
+    const oldRule = this.grammar.get(field);
+    const oldDeps = new Set<Field<unknown>>(oldRule?.deps ?? []);
+    const newDeps = new Set<Field<unknown>>(newRule.deps);
+
+    // Deps no longer read: drop `field` from their dependents list.
+    for (const d of oldDeps) {
+      if (newDeps.has(d)) continue;
+      const revs = this.dependents.get(d);
+      if (revs !== undefined) {
+        const i = revs.indexOf(field);
+        if (i !== -1) revs.splice(i, 1);
+      }
+    }
+    // Newly read deps: register the reverse edge.
+    for (const d of newDeps) {
+      if (oldDeps.has(d)) continue;
+      if (!this.omNodes.has(d)) {
+        throw new Error(
+          `[spineless-runtime] rebindRule: new dependency "${d.name}" of "${field.name}" is not integrated`,
+        );
+      }
+      let revs = this.dependents.get(d);
+      if (revs === undefined) {
+        revs = [];
+        this.dependents.set(d, revs);
+      }
+      revs.push(field);
+    }
+
+    this.grammar.set(field, newRule);
+    this.markDirty(field);
   }
 
   /**

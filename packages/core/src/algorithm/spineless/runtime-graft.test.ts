@@ -391,3 +391,122 @@ describe('SpinelessRuntime.detach — primitive', () => {
     expect(() => rt.detach([b])).toThrow(/outside the removed set/);
   });
 });
+
+describe('SpinelessRuntime.rebindRule — primitive', () => {
+  it('replaces a field rule and recompute applies it', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const b = field<number>(n, 'b');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 10 });
+    grammar.set(b, { deps: [a], compute: (read) => read(a) + 1 });
+    const rt = new SpinelessRuntime(grammar, [b]);
+    rt.init();
+    expect(rt.evaluate(b)).toBe(11);
+
+    rt.rebindRule(b, { deps: [a], compute: (read) => read(a) * 5 });
+    rt.recompute();
+    expect(rt.evaluate(b)).toBe(50);
+  });
+
+  it('records a newly-added dependency so later changes propagate', () => {
+    const n = Node.create();
+    const aVal = 1;
+    let cVal = 100;
+    const a = field<number>(n, 'a');
+    const c = field<number>(n, 'c');
+    const b = field<number>(n, 'b');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => aVal });
+    grammar.set(c, { deps: [], compute: () => cVal });
+    grammar.set(b, { deps: [a], compute: (read) => read(a) });
+    const rt = new SpinelessRuntime(grammar, [b, c]);
+    rt.init();
+    expect(rt.evaluate(b)).toBe(1);
+
+    // Rebind `b` to also read `c`.
+    rt.rebindRule(b, { deps: [a, c], compute: (read) => read(a) + read(c) });
+    rt.recompute();
+    expect(rt.evaluate(b)).toBe(101);
+
+    // A later change to the newly-added dep `c` must reach `b`.
+    cVal = 200;
+    rt.markDirty(c);
+    rt.recompute();
+    expect(rt.evaluate(b)).toBe(201);
+  });
+
+  it('throws when rebinding before init', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 1 });
+    const rt = new SpinelessRuntime(grammar, [a]);
+    expect(() => rt.rebindRule(a, { deps: [], compute: () => 2 })).toThrow(/before init/);
+  });
+
+  it('throws when rebinding a field not in the runtime', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 1 });
+    const rt = new SpinelessRuntime(grammar, [a]);
+    rt.init();
+    const stranger = field<number>(n, 'stranger');
+    expect(() => rt.rebindRule(stranger, { deps: [], compute: () => 0 })).toThrow(
+      /not in this runtime/,
+    );
+  });
+
+  it('throws when a new dependency is not integrated', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 1 });
+    const rt = new SpinelessRuntime(grammar, [a]);
+    rt.init();
+    const ghost = field<number>(n, 'ghost');
+    expect(() => rt.rebindRule(a, { deps: [ghost], compute: (read) => read(ghost) })).toThrow(
+      /not integrated/,
+    );
+  });
+
+  it('prunes a dependency the new rule no longer reads', () => {
+    const n = Node.create();
+    let aVal = 1;
+    const a = field<number>(n, 'a');
+    const b = field<number>(n, 'b');
+    let bComputes = 0;
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => aVal });
+    grammar.set(b, {
+      deps: [a],
+      compute: (read) => {
+        bComputes++;
+        return read(a) + 1;
+      },
+    });
+    const rt = new SpinelessRuntime(grammar, [b]);
+    rt.init();
+
+    // Rebind `b` to a constant — it no longer reads `a`.
+    rt.rebindRule(b, {
+      deps: [],
+      compute: () => {
+        bComputes++;
+        return 99;
+      },
+    });
+    rt.recompute();
+    expect(rt.evaluate(b)).toBe(99);
+    const computesBefore = bComputes;
+
+    // `a` changing must no longer schedule `b` — the a → b
+    // reverse-dependency edge was pruned by the rebind.
+    aVal = 500;
+    rt.markDirty(a);
+    rt.recompute();
+    expect(bComputes).toBe(computesBefore);
+    expect(rt.evaluate(b)).toBe(99);
+  });
+});
