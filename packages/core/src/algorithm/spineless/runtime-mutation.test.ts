@@ -7,16 +7,27 @@
  * or `markAllDirty` + `recompute()` produces the same layout as
  * building a fresh runtime against the post-mutation state.
  *
- * Coverage is now every NUMERIC style value within a fixed
- * structural regime: width / height / flexBasis (the first slice),
- * plus padding / margin / gap / flex-grow / flex-shrink and the
- * per-sibling values feeding the wrap line packer (this slice).
+ * Coverage is every NUMERIC style value within a fixed structural
+ * regime: width / height / flexBasis, padding / margin / gap /
+ * flex-grow / flex-shrink, and the per-sibling values feeding the
+ * wrap line packer.
  *
- * What still needs a fresh `buildFlexGrammar()` is STRUCTURAL
- * mutation — anything that reshapes the dependency graph:
- * flex-direction, flex-wrap on/off, the justify-content / align
- * category, positionType, and toggling a flex weight across the
- * zero boundary (which flips whether the parent flex-distributes).
+ * The SIZE props (`width` / `height` / `flexBasis`) go one step
+ * further: they are modelled as leaf input Fields exposed via
+ * `buildFlexGrammar(...).styleInputs`. Every layout field that reads
+ * a size declares the matching input as a dependency, so a size
+ * mutation can be driven precisely — `markDirty` the ONE input field
+ * and `recompute()`, no `markAllDirty`. Padding / margin / gap /
+ * flex-grow / flex-shrink are still read live but undeclared; a
+ * mutation to those needs `markAllDirty()` until their own
+ * input-field slices land.
+ *
+ * What needs a fresh `buildFlexGrammar()` is STRUCTURAL mutation —
+ * anything that reshapes the dependency graph: flex-direction,
+ * flex-wrap on/off, the justify-content / align category,
+ * positionType, and toggling a flex weight (or flexBasis) across the
+ * zero / numeric boundary (which flips whether the parent
+ * flex-distributes).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -99,9 +110,10 @@ function freshLayout(root: Node): Box[] {
 describe('SpinelessRuntime — incremental layout under size mutations', () => {
   it('mutating a row child width re-flows the row and matches a fresh build', () => {
     // Three fixed-width children in a row. Mutate the middle child's
-    // width; markDirty on its width field; recompute. The middle
-    // child's width updates, and the third child's left shifts to
-    // butt-join (it depends on prior widths).
+    // width; markDirty the ONE style input field for it; recompute.
+    // The middle child's width updates, and the third child's left
+    // shifts to butt-join (it depends on prior widths) — all via
+    // declared-dep propagation, no markAllDirty.
     const root = Node.create();
     root.setWidth(100);
     root.setHeight(30);
@@ -115,7 +127,7 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
       children.push(c);
     }
 
-    const { grammar, allFields } = buildFlexGrammar(root);
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
     const rootFields: Field<unknown>[] = [];
     for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
     const rt = new SpinelessRuntime(grammar, rootFields);
@@ -123,8 +135,7 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
 
     // Mutate the middle child's width.
     children[1]!.setWidth(35);
-    const widthField = allFields.find((f) => f.node === children[1])!.width;
-    rt.markDirty(widthField);
+    rt.markDirty(styleInputs.get(children[1]!)!.width!);
     rt.recompute();
 
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
@@ -141,15 +152,14 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
       c.setHeight(15);
       root.insertChild(c, i);
     }
-    const { grammar, allFields } = buildFlexGrammar(root);
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
     const rootFields: Field<unknown>[] = [];
     for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
     const rt = new SpinelessRuntime(grammar, rootFields);
     rt.init();
 
     root.setHeight(140);
-    const rootHeightField = allFields[0]!.height;
-    rt.markDirty(rootHeightField);
+    rt.markDirty(styleInputs.get(root)!.height!);
     rt.recompute();
 
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
@@ -168,15 +178,14 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
     abs.setPosition(Edge.Left, 8);
     root.insertChild(abs, 0);
 
-    const { grammar, allFields } = buildFlexGrammar(root);
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
     const rootFields: Field<unknown>[] = [];
     for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
     const rt = new SpinelessRuntime(grammar, rootFields);
     rt.init();
 
     abs.setWidth(50);
-    const absWidthField = allFields.find((f) => f.node === abs)!.width;
-    rt.markDirty(absWidthField);
+    rt.markDirty(styleInputs.get(abs)!.width!);
     rt.recompute();
 
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
@@ -184,9 +193,9 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
 
   it('mutating align-end aligned child height shifts its cross-axis position', () => {
     // align-items=flex-end means the child's cross-pos is derived
-    // from parent.height - childHeight - margin. The cross-pos
-    // compute live-reads node.style.height, so a height mutation
-    // should ripple through markDirty + recompute.
+    // from parent.height - childHeight - margin. crossSize and
+    // crossPos both declare the child's `style:height` input as a
+    // dep, so marking that ONE input dirty ripples to both.
     const root = Node.create();
     root.setWidth(100);
     root.setHeight(60);
@@ -197,17 +206,14 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
     c.setHeight(20);
     root.insertChild(c, 0);
 
-    const { grammar, allFields } = buildFlexGrammar(root);
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
     const rootFields: Field<unknown>[] = [];
     for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
     const rt = new SpinelessRuntime(grammar, rootFields);
     rt.init();
 
     c.setHeight(40);
-    const childHeightField = allFields.find((f) => f.node === c)!.height;
-    const childTopField = allFields.find((f) => f.node === c)!.top;
-    rt.markDirty(childHeightField);
-    rt.markDirty(childTopField);
+    rt.markDirty(styleInputs.get(c)!.height!);
     rt.recompute();
 
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
@@ -284,6 +290,100 @@ describe('SpinelessRuntime — incremental layout under size mutations', () => {
     b.setWidth(20);
     rt.markAllDirty();
     rt.recompute();
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+});
+
+describe('SpinelessRuntime — precise size-input propagation', () => {
+  // These exercise the style-input-field design: a size mutation is
+  // driven by marking the ONE input Field dirty (never markAllDirty).
+  // If a declared dep were missing, the result would not match a
+  // fresh build.
+
+  it('a flex-distributed sibling width mutation propagates via declared deps', () => {
+    const root = Node.create();
+    root.setWidth(150);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    const children: Node[] = [];
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      c.setFlexGrow(1);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    // The first child's basis changes — every flex-distributed
+    // sibling's main size must re-derive (their mainSize fields
+    // declare each sibling's size inputs as deps).
+    children[0]!.setWidth(60);
+    rt.markDirty(styleInputs.get(children[0]!)!.width!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('a wrapping-container child width mutation re-packs via declared deps', () => {
+    const root = Node.create();
+    root.setWidth(70);
+    root.setHeight(80);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    const children: Node[] = [];
+    for (let i = 0; i < 4; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    children[0]!.setWidth(60);
+    rt.markDirty(styleInputs.get(children[0]!)!.width!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('a flexBasis mutation propagates via the flexBasis input field', () => {
+    const root = Node.create();
+    root.setWidth(150);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    const children: Node[] = [];
+    for (let i = 0; i < 2; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      c.setFlexBasis(40);
+      c.setFlexGrow(1);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    // flexBasis stays numeric (50, not 'auto') — an in-regime value
+    // change, so no rebuild is needed.
+    children[0]!.setFlexBasis(50);
+    rt.markDirty(styleInputs.get(children[0]!)!.flexBasis!);
+    rt.recompute();
+
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
   });
 });
