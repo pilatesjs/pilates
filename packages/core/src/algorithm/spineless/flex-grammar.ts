@@ -768,6 +768,95 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
 }
 
 /**
+ * The graft inputs for a fast-pathed child append — see
+ * `buildAppendFragment`.
+ *
+ * @internal
+ */
+export interface AppendFragment {
+  /** Rules for the newly-added subtree's fields only. */
+  additions: Grammar;
+  /** The new fields to start `SpinelessRuntime.graft`'s DFS from. */
+  newRoots: Array<Field<unknown>>;
+  /**
+   * A fresh full `FlexGrammarOutput` for the post-append tree. The
+   * caller should adopt it for subsequent operations — its
+   * `allFields` / `styleInputs` cover the new subtree (the runtime's
+   * own grammar is patched in place by `graft`).
+   */
+  next: FlexGrammarOutput;
+}
+
+/**
+ * Fast-path a child APPEND for the Spineless runtime. If appending
+ * `child` as the last child of `parent` is a pure topological-tail
+ * addition — so `SpinelessRuntime.graft` can absorb it without a
+ * rebuild + fresh runtime — return the graft inputs; otherwise
+ * return `null` and the caller must rebuild.
+ *
+ * A pure-additive append needs `parent` in the "simple" regime: it
+ * must not flex-distribute, must use the default `flex-start`
+ * justify, and must not wrap. In any other regime appending a child
+ * also moves existing siblings (their rules would have to be
+ * rewritten, which `graft` does not do). An ABSOLUTE child is always
+ * additive — it is filtered out of every in-flow computation, so it
+ * perturbs nothing regardless of the parent's regime.
+ *
+ * `prev` is the `FlexGrammarOutput` the runtime was built from;
+ * `root` is the tree root (already containing `child`). The grammar
+ * rebuild here is cheap — Field allocation + closures, no layout
+ * compute; the expensive layout work stays incremental via `graft`.
+ *
+ * @internal
+ */
+export function buildAppendFragment(
+  prev: FlexGrammarOutput,
+  root: Node,
+  parent: Node,
+  child: Node,
+): AppendFragment | null {
+  // `child` must be the parent's last child — a mid-list insert
+  // shifts later siblings, which is not a topological-tail graft.
+  const count = parent.getChildCount();
+  if (count === 0 || parent.getChild(count - 1) !== child) return null;
+
+  // An absolute child never perturbs in-flow siblings; otherwise the
+  // parent must be in the simple regime for the append to be purely
+  // additive.
+  if (child.style.positionType !== 'absolute') {
+    const dir = parent.style.flexDirection;
+    if (dir !== 'row' && dir !== 'column') return null;
+    if (parent.style.flexWrap !== 'nowrap') return null;
+    if (parent.style.justifyContent !== 'flex-start') return null;
+    // Checks `parent`'s children including the just-appended `child`,
+    // so a flex-distributing child correctly disqualifies the graft.
+    if (parentNeedsFlexDistribution(parent)) return null;
+  }
+
+  // Pure-additive: rebuild the grammar and diff it against `prev` to
+  // isolate the new subtree's fields. Field identity is stable
+  // across builds (`field()` is registry-backed), so a key absent
+  // from `prev.grammar` belongs to a newly-added node.
+  const next = buildFlexGrammar(root);
+  const additions: Grammar = new Map();
+  for (const [f, rule] of next.grammar) {
+    if (!prev.grammar.has(f)) additions.set(f, rule);
+  }
+  const newRoots: Array<Field<unknown>> = [];
+  for (const e of next.allFields) {
+    if (!prev.grammar.has(e.width as Field<unknown>)) {
+      newRoots.push(
+        e.width as Field<unknown>,
+        e.height as Field<unknown>,
+        e.left as Field<unknown>,
+        e.top as Field<unknown>,
+      );
+    }
+  }
+  return { additions, newRoots, next };
+}
+
+/**
  * A sibling's SIZE input fields, captured at build time. `mainInput`
  * is `style:width` or `style:height` (whichever is the main axis);
  * `flexBasisInput` is `style:flexBasis`.
