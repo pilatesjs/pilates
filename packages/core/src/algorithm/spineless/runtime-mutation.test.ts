@@ -12,15 +12,15 @@
  * flex-grow / flex-shrink, and the per-sibling values feeding the
  * wrap line packer.
  *
- * The SIZE props (`width` / `height` / `flexBasis`) go one step
- * further: they are modelled as leaf input Fields exposed via
- * `buildFlexGrammar(...).styleInputs`. Every layout field that reads
- * a size declares the matching input as a dependency, so a size
- * mutation can be driven precisely — `markDirty` the ONE input field
- * and `recompute()`, no `markAllDirty`. Padding / margin / gap /
- * flex-grow / flex-shrink are still read live but undeclared; a
- * mutation to those needs `markAllDirty()` until their own
- * input-field slices land.
+ * The SIZE props (`width` / `height` / `flexBasis`) and `gap`
+ * (`gapRow` / `gapColumn`) go one step further: they are modelled as
+ * leaf input Fields exposed via `buildFlexGrammar(...).styleInputs`.
+ * Every layout field that reads one declares the matching input as a
+ * dependency, so a mutation can be driven precisely — `markDirty`
+ * the ONE input field and `recompute()`, no `markAllDirty`. Padding
+ * / margin / flex-grow / flex-shrink are still read live but
+ * undeclared; a mutation to those needs `markAllDirty()` until their
+ * own input-field slices land.
  *
  * What needs a fresh `buildFlexGrammar()` is STRUCTURAL mutation —
  * anything that reshapes the dependency graph: flex-direction,
@@ -382,6 +382,87 @@ describe('SpinelessRuntime — precise size-input propagation', () => {
     // change, so no rebuild is needed.
     children[0]!.setFlexBasis(50);
     rt.markDirty(styleInputs.get(children[0]!)!.flexBasis!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+});
+
+describe('SpinelessRuntime — precise gap-input propagation', () => {
+  // gap is modelled as a leaf input Field; mutating it is driven by
+  // marking that ONE field dirty — never markAllDirty.
+
+  it('a gap mutation re-spaces a flex-start row via declared deps', () => {
+    const root = Node.create();
+    root.setWidth(150);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    // A row stacks items along the column axis → `gapColumn`.
+    root.setGap('column', 14);
+    rt.markDirty(styleInputs.get(root)!.gapColumn!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('a gap mutation re-packs a wrapping container via declared deps', () => {
+    const root = Node.create();
+    root.setWidth(70);
+    root.setHeight(120);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    for (let i = 0; i < 4; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    // Cross-axis (line) gap — `gapRow` separates wrapped lines.
+    root.setGap('row', 9);
+    rt.markDirty(styleInputs.get(root)!.gapRow!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('a gap mutation under non-default justify-content propagates precisely', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    root.setJustifyContent('space-between');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    root.setGap('column', 10);
+    rt.markDirty(styleInputs.get(root)!.gapColumn!);
     rt.recompute();
 
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
