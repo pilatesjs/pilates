@@ -37,15 +37,22 @@
  * produces the same value as before, its dependents are NOT
  * scheduled. This is the key "skip work" property of Spineless.
  *
- * ## What this slice does NOT cover
+ * **Graft** (`graft(additions, newRoots)`): incremental structural
+ * growth (phase 5c). New fields whose topological position is at the
+ * tail — they may read existing fields, but no existing field reads
+ * them and no existing rule changes — are spliced in without a
+ * rebuild: each gets an OM node appended after the current tail, its
+ * reverse-dependency edges recorded, and its value computed once.
+ * This is exactly the shape of appending a child to a parent in the
+ * "simple" regime.
  *
- * - Style-change → markDirty automation. Callers currently invoke
- *   `markDirty` themselves. Hooking style mutations into the
- *   runtime (and figuring out which fields a given style mutation
- *   invalidates) is the next slice.
- * - Grammar mutation. The grammar is fixed at init time; adding /
- *   removing nodes between layouts means a fresh runtime (so
- *   does mutating which fields a rule depends on).
+ * ## What this runtime does NOT cover
+ *
+ * - Regime-changing structural mutation. `graft` only adds pure
+ *   topological-tail fields; appending into a flex-distributing /
+ *   justified / wrapping parent also rewrites existing siblings'
+ *   rules, and removal / direction flips re-key subtrees — later
+ *   phase-5c slices.
  * - Differential mode against the imperative algorithm. The
  *   correctness oracle for the runtime is the `TopoInterpreter`
  *   running over the same grammar — once both agree, the grammar's
@@ -74,6 +81,9 @@ export class SpinelessRuntime {
   /** field -> fields that read this field (reverse of `rule.deps`) */
   private readonly dependents: Map<Field<unknown>, Field<unknown>[]> = new Map();
 
+  /** The OM node at the topological tail — where `graft` appends. */
+  private lastOm: OMNode | null = null;
+
   private initDone = false;
 
   constructor(
@@ -93,12 +103,57 @@ export class SpinelessRuntime {
    * be called once before any `evaluate` / `markDirty` / `recompute`.
    */
   init(): void {
-    const visited = new Set<Field<unknown>>();
+    this.integrate(this.rootFields);
+    this.initDone = true;
+  }
+
+  /**
+   * Integrate new fields into an already-`init`ed runtime without a
+   * rebuild (phase 5c). `additions` holds the rules for the new
+   * fields only — it throws if any field is already present, since
+   * redefining an existing field is a rule *change*, not a graft.
+   * `newRoots` are the new fields to start the topological DFS from
+   * (their existing-field dependencies are reached as boundaries).
+   *
+   * Correct **iff** the new fields are pure topological-tail
+   * additions: no existing field reads a new field, and no existing
+   * rule needed to change. The caller guarantees this — it holds by
+   * construction when appending a last child to a parent in the
+   * simple regime (no flex distribution, default `justify`, no
+   * wrap). The new fields are computed with correct inputs during
+   * the graft, so no `markDirty` / `recompute` is needed afterward.
+   */
+  graft(additions: Grammar, newRoots: ReadonlyArray<Field<unknown>>): void {
+    if (!this.initDone) {
+      throw new Error('[spineless-runtime] graft called before init()');
+    }
+    for (const [f, rule] of additions) {
+      if (this.omNodes.has(f)) {
+        throw new Error(
+          `[spineless-runtime] graft: field "${f.name}" already exists — graft integrates NEW fields only`,
+        );
+      }
+      this.grammar.set(f, rule);
+    }
+    this.integrate(newRoots);
+  }
+
+  /**
+   * Topological DFS shared by `init` and `graft`. For every
+   * not-yet-integrated field reachable from `roots`: recurse into
+   * deps, record reverse-dependency edges, allocate an OM node after
+   * the current tail, run the rule, and cache the value. Fields that
+   * already have an OM node are boundaries — visited, edge recorded,
+   * not re-walked.
+   */
+  private integrate(roots: ReadonlyArray<Field<unknown>>): void {
     const visiting = new Set<Field<unknown>>();
-    let prevOm: OMNode | null = null;
 
     const visit = (f: Field<unknown>): void => {
-      if (visited.has(f)) return;
+      // A field has an OM node exactly once it is integrated, so
+      // `omNodes` doubles as the "already done" marker — which makes
+      // existing fields natural boundaries during a graft.
+      if (this.omNodes.has(f)) return;
       if (visiting.has(f)) {
         throw new Error(
           `[spineless-runtime] cycle detected: field "${f.name}" depends on itself transitively`,
@@ -123,21 +178,19 @@ export class SpinelessRuntime {
         revs.push(f);
       }
 
-      // Allocate the OM node in topo order. The OM is empty before
-      // the first call, then chains insertAfter for every subsequent.
-      const omNode = prevOm === null ? this.om.init() : this.om.insertAfter(prevOm);
-      prevOm = omNode;
+      // Allocate the OM node at the topological tail. The OM is empty
+      // before the very first field, then chains insertAfter.
+      const omNode = this.lastOm === null ? this.om.init() : this.om.insertAfter(this.lastOm);
+      this.lastOm = omNode;
       this.omNodes.set(f, omNode);
 
       // Compute and cache.
       this.values.set(f, this.runCompute(f, rule));
 
       visiting.delete(f);
-      visited.add(f);
     };
 
-    for (const root of this.rootFields) visit(root);
-    this.initDone = true;
+    for (const root of roots) visit(root);
   }
 
   /**
