@@ -46,6 +46,12 @@
  * This is exactly the shape of appending a child to a parent in the
  * "simple" regime.
  *
+ * **Detach** (`detach(fields)`): the inverse of `graft` — drops a
+ * removed subtree's fields, freeing their OM nodes and pruning the
+ * reverse-dependency edges into surviving fields. Valid when the
+ * removed set is closed under "is read by" (nothing outside reads
+ * in), which holds for removing a last child in the simple regime.
+ *
  * ## What this runtime does NOT cover
  *
  * - Regime-changing structural mutation. `graft` only adds pure
@@ -136,6 +142,72 @@ export class SpinelessRuntime {
       this.grammar.set(f, rule);
     }
     this.integrate(newRoots);
+  }
+
+  /**
+   * Remove fields from an already-`init`ed runtime without a rebuild
+   * (phase 5c) — the inverse of `graft`. `fields` is the exact set
+   * to drop (a removed subtree's fields). For each: its OM node is
+   * freed, its cached value and reverse-dependency list dropped, its
+   * rule deleted from the grammar, and it is pruned from the
+   * reverse-dependency list of every field it read.
+   *
+   * Throws if any removed field still has a dependent *outside* the
+   * removed set — detaching it would dangle that edge. The caller
+   * guarantees a clean cut: it holds by construction when removing a
+   * last child from a parent in the simple regime (nothing outside
+   * that subtree reads into it). No `recompute` is needed afterward —
+   * removing a topological-tail subtree changes no surviving field.
+   */
+  detach(fields: Iterable<Field<unknown>>): void {
+    if (!this.initDone) {
+      throw new Error('[spineless-runtime] detach called before init()');
+    }
+    const removing = new Set(fields);
+
+    // Precondition: the removed set must be closed under "is read by"
+    // — no surviving field may depend on a removed one.
+    for (const f of removing) {
+      const revs = this.dependents.get(f);
+      if (revs === undefined) continue;
+      for (const d of revs) {
+        if (!removing.has(d)) {
+          throw new Error(
+            `[spineless-runtime] detach: field "${f.name}" still has dependent "${d.name}" outside the removed set`,
+          );
+        }
+      }
+    }
+
+    for (const f of removing) {
+      // Prune `f` from the reverse-dependency list of each field it
+      // read (a surviving dep must forget this removed dependent).
+      const rule = this.grammar.get(f);
+      if (rule !== undefined) {
+        for (const dep of rule.deps) {
+          const revs = this.dependents.get(dep);
+          if (revs !== undefined) {
+            const i = revs.indexOf(f);
+            if (i !== -1) revs.splice(i, 1);
+          }
+        }
+      }
+      const omNode = this.omNodes.get(f);
+      if (omNode !== undefined) this.om.delete(omNode);
+      this.omNodes.delete(f);
+      this.values.delete(f);
+      this.dependents.delete(f);
+      this.grammar.delete(f);
+    }
+
+    // The OM tail may have been among the removed fields; recompute
+    // it so a later `graft` still appends after every surviving node.
+    this.lastOm = null;
+    for (const omNode of this.omNodes.values()) {
+      if (this.lastOm === null || this.om.compare(omNode, this.lastOm) > 0) {
+        this.lastOm = omNode;
+      }
+    }
   }
 
   /**
