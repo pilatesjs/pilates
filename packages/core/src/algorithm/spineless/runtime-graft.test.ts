@@ -294,3 +294,100 @@ describe('SpinelessRuntime.graft — appending a child', () => {
     expect(readLayout(rt, buildFlexGrammar(root).allFields)).toEqual(freshLayout(root));
   });
 });
+
+describe('SpinelessRuntime.detach — primitive', () => {
+  it('removes a grafted field', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const b = field<number>(n, 'b');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 10 });
+    grammar.set(b, { deps: [a], compute: (read) => read(a) + 1 });
+    const rt = new SpinelessRuntime(grammar, [b]);
+    rt.init();
+
+    const c = field<number>(n, 'c');
+    const additions: Grammar = new Map();
+    additions.set(c, { deps: [b], compute: (read) => read(b) * 2 });
+    rt.graft(additions, [c]);
+    expect(rt.evaluate(c)).toBe(22);
+
+    rt.detach([c]);
+    // `c` is gone — evaluating it now throws.
+    expect(() => rt.evaluate(c)).toThrow(/not computed/);
+  });
+
+  it('prunes the reverse-dep edge so a later recompute ignores the removed field', () => {
+    const n = Node.create();
+    let aVal = 10;
+    const a = field<number>(n, 'a');
+    const b = field<number>(n, 'b');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => aVal });
+    grammar.set(b, { deps: [a], compute: (read) => read(a) + 1 });
+    const rt = new SpinelessRuntime(grammar, [b]);
+    rt.init();
+
+    const c = field<number>(n, 'c');
+    const additions: Grammar = new Map();
+    additions.set(c, { deps: [b], compute: (read) => read(b) * 2 });
+    rt.graft(additions, [c]);
+    rt.detach([c]);
+
+    // `b` still has `a` as a dep; recomputing through it must not
+    // try to schedule the detached `c`.
+    aVal = 20;
+    rt.markDirty(a);
+    expect(() => rt.recompute()).not.toThrow();
+    expect(rt.evaluate(b)).toBe(21);
+  });
+
+  it('supports graft after detach (the OM tail is recomputed)', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 1 });
+    const rt = new SpinelessRuntime(grammar, [a]);
+    rt.init();
+
+    const b = field<number>(n, 'b');
+    const c = field<number>(n, 'c');
+    const g1: Grammar = new Map();
+    g1.set(b, { deps: [a], compute: (read) => read(a) + 10 });
+    g1.set(c, { deps: [b], compute: (read) => read(b) + 100 });
+    rt.graft(g1, [c]);
+    rt.detach([c]);
+
+    // `d` reads `b`; its OM node must still land after `b`'s.
+    const d = field<number>(n, 'd');
+    const g2: Grammar = new Map();
+    g2.set(d, { deps: [b], compute: (read) => read(b) * 3 });
+    rt.graft(g2, [d]);
+    expect(rt.evaluate(d)).toBe(33);
+  });
+
+  it('throws when grafting before init', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 1 });
+    const rt = new SpinelessRuntime(grammar, [a]);
+    expect(() => rt.detach([])).toThrow(/before init/);
+  });
+
+  it('throws when a removed field still has an outside dependent', () => {
+    const n = Node.create();
+    const a = field<number>(n, 'a');
+    const b = field<number>(n, 'b');
+    const c = field<number>(n, 'c');
+    const grammar: Grammar = new Map();
+    grammar.set(a, { deps: [], compute: () => 1 });
+    grammar.set(b, { deps: [a], compute: (read) => read(a) + 1 });
+    grammar.set(c, { deps: [b], compute: (read) => read(b) + 1 });
+    const rt = new SpinelessRuntime(grammar, [c]);
+    rt.init();
+
+    // `c` (outside the set) still reads `b`.
+    expect(() => rt.detach([b])).toThrow(/outside the removed set/);
+  });
+});

@@ -47,11 +47,17 @@ rules):
    a refreshed full `FlexGrammarOutput`. It returns `null` when a
    rebuild is required instead — so callers get `insertChild`-then-
    relayout without manually diffing grammars.
-3. **Regime-aware patching.** Appending into a flex-distributing /
-   justified / wrapping parent additionally *rewrites* existing
-   siblings' rules (their dep sets grow). Removal frees OM nodes and
-   prunes reverse-deps. Direction / wrap / positionType flips
-   re-key whole subtrees.
+3. **Simple-regime removal (landed).** `SpinelessRuntime.detach`
+   drops a removed subtree's fields — freeing OM nodes, pruning the
+   reverse-dependency edges, deleting cached values — the inverse of
+   `graft`. `buildRemoveFragment` is the validating mirror of
+   `buildAppendFragment`: it decides whether removing a last child
+   is a pure topological-tail subtraction and returns the `detach`
+   inputs, or `null` for a rebuild.
+4. **Regime-aware patching.** Appending into / removing from a
+   flex-distributing / justified / wrapping parent additionally
+   *rewrites* existing siblings' rules (their dep sets change).
+   Direction / wrap / positionType flips re-key whole subtrees.
 
 ## Slice 1 — `SpinelessRuntime.graft`
 
@@ -125,3 +131,33 @@ nested / absolute-into-flex / a run of successive appends) graft to
 a layout byte-identical to a fresh build; the non-simple cases
 (flex-distributing parent, non-default justify, wrap, child not
 last) each return `null`.
+
+## Slice 3 — `detach` + `buildRemoveFragment`
+
+The mirror of slice 1 + 2 for child removal.
+
+`SpinelessRuntime.detach(fields)` drops the exact set of a removed
+subtree's fields: for each it frees the OM node (`om.delete`), drops
+the cached value and reverse-dependency list, deletes the rule, and
+prunes the field from the reverse-dependency list of everything it
+read. It throws if any removed field still has a dependent *outside*
+the set (a dangling cut). The OM tail (`lastOm`) is recomputed
+afterward so a later `graft` still appends after every survivor.
+
+`buildRemoveFragment(prev, parent, child)` returns
+`RemoveFragment | null`. Call it **before** detaching `child` from
+`parent` — the simple-regime validation (identical to
+`buildAppendFragment`, and checking `parentNeedsFlexDistribution`
+with `child` still attached) needs `child` in place. On success it
+returns `removed` (the subtree's fields, for `detach`) and `next`
+(a `FlexGrammarOutput` derived by filtering `prev` — no rebuild, the
+simple regime leaves every survivor's rule unchanged).
+
+### Tests
+
+`runtime-graft.test.ts` gains `detach` primitive tests (remove a
+grafted field, the reverse-dep prune, graft-after-detach, the
+before-init and dangling-dependent throws). `remove-fragment.test.ts`
+covers simple-regime removals (row / column / nested / absolute /
+an append-then-remove round trip) detaching to a layout
+byte-identical to a fresh build, and the non-simple `null` cases.
