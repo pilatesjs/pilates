@@ -71,9 +71,10 @@ These are deliberate hold-outs for the next slice, not bugs:
 
 ## Test coverage
 
-`spineless/` overall coverage: 96.08% lines, 96.48% branches.
-`runtime.ts`: 100% across all metrics. `runtime-mutation.test.ts`
-grew to 32 end-to-end style-mutation tests.
+`spineless/` overall coverage: 96.15% lines, 96.58% branches.
+`runtime.ts` and `style-dirty.ts`: 100% across all metrics.
+`runtime-mutation.test.ts` has 32 end-to-end style-mutation tests;
+`style-dirty.test.ts` adds 8.
 
 ## What's next
 
@@ -81,4 +82,8 @@ grew to 32 end-to-end style-mutation tests.
 2. **Behind a feature flag.** A `PILATES_SPINELESS_LAYOUT=1` env flag lets the runtime opt into shipping to early users while the imperative path stays the default.
 3. **Bench — landed.** The `hotrelayouttext` scenario (`bench/scenarios/hot-relayout-text.ts`) builds a 1k-node fixed-size table once, then mutates a single leaf cell's width per pass. It adds a fourth engine column, `@pilates/core (spineless)`, alongside the imperative and Yoga paths. First numbers (Node v22.21, win32/x64): Spineless **6.0µs** vs imperative `calculateLayout()` **9.2µs** vs Yoga WASM **76.1µs** — the incremental runtime is ~1.5× faster than the already-fast imperative path and ~13× faster than Yoga. The win scales with how small the dirty fragment is: here only the mutated cell and its in-row downstream `left` positions recompute.
 4. **Fine-grained dirtying via style input Fields — landed.** The live-read thunks were a stepping stone: their reads aren't declared deps, so the runtime's auto-propagation was incomplete and callers fell back to `markAllDirty()`. The fix was to model **every numeric style prop the grammar reads** as a leaf input `Field`, so declared deps become complete and `markDirty(inputField)` propagates exactly. All of it is now converted — size (`width` / `height` / `flexBasis`), `flexGrow` / `flexShrink`, `gap` (`gapRow` / `gapColumn`), `padding` (per-edge), and `margin` (per-edge): they're emitted as `style:*` input fields, every layout field that reads one declares the matching input as a dep, and `buildFlexGrammar` returns a `styleInputs: Map<Node, StyleInputs>`. Any value mutation is now driven precisely — `markDirty` the input field(s), `recompute()`, no `markAllDirty`. What still needs a fresh `buildFlexGrammar()` is **structural** mutation only: flex-direction, flex-wrap on/off, the justify / align category, `positionType`, and toggling a flex weight / `flexBasis` across the zero / numeric boundary (which flips whether the parent flex-distributes).
-5. **`markStyleDirty` convenience.** With every style prop now an input field, the last ergonomic gap is that callers look up the field via `styleInputs` themselves. A `markStyleDirty(node, prop[, edge])` helper — on the runtime or as a thin wrapper over `styleInputs` — would resolve a `(node, prop)` mutation straight to its input field(s) and `markDirty` them.
+5. **`markStyleDirty` convenience — landed.** `style-dirty.ts` adds `createStyleDirtier(runtime, styleInputs)`, which binds a runtime + its `styleInputs` map into a single `markStyleDirty(node, prop[, edge])` callback mirroring the `Node` setters (`'width'` / `'flexGrow'` / `'gapColumn'` / … and the per-edge `'padding'` / `'margin'`). It resolves the `(node, prop)` to its input Field and `markDirty`s it — throwing for a node outside the grammar or an edge prop with no edge, and no-op'ing when the grammar emits no Field for the prop (e.g. `padding` on a childless leaf, which can't affect layout). The runtime itself stays grammar-agnostic; this is a thin, separately-tested wrapper.
+
+## Where this leaves phase 5b
+
+Style mutation is end-to-end precise: build the grammar once, mutate any numeric style prop, `markStyleDirty` it, `recompute()`. The remaining frontier is **structural** incrementality — letting the graph itself change (node insert / remove, direction / wrap / positionType flips) without a full rebuild — and widening the grammar's feature coverage beyond the v8 subset (align-content variants, reverse directions, min/max clamping).
