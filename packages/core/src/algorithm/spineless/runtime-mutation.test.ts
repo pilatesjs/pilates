@@ -13,14 +13,14 @@
  * wrap line packer.
  *
  * The SIZE props (`width` / `height` / `flexBasis`), `gap` (`gapRow`
- * / `gapColumn`), and `padding` (per-edge) go one step further: they
- * are modelled as leaf input Fields exposed via
+ * / `gapColumn`), `padding` (per-edge), and `margin` (per-edge) are
+ * modelled as leaf input Fields exposed via
  * `buildFlexGrammar(...).styleInputs`. Every layout field that reads
  * one declares the matching input as a dependency, so a mutation can
  * be driven precisely — `markDirty` the input field(s) and
- * `recompute()`, no `markAllDirty`. Margin / flex-grow / flex-shrink
- * are still read live but undeclared; a mutation to those needs
- * `markAllDirty()` until their own input-field slices land.
+ * `recompute()`, no `markAllDirty`. flex-grow / flex-shrink are
+ * still read live but undeclared; a mutation to those needs
+ * `markAllDirty()` until their own input-field slice lands.
  *
  * What needs a fresh `buildFlexGrammar()` is STRUCTURAL mutation —
  * anything that reshapes the dependency graph: flex-direction,
@@ -548,6 +548,124 @@ describe('SpinelessRuntime — precise padding-input propagation', () => {
     root.setPadding(Edge.Right, 9);
     rt.markDirty(styleInputs.get(root)!.padding![Edge.Left]!);
     rt.markDirty(styleInputs.get(root)!.padding![Edge.Right]!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+});
+
+describe('SpinelessRuntime — precise margin-input propagation', () => {
+  // margin is modelled as per-edge leaf input Fields; mutating an
+  // edge is driven by marking that single field dirty.
+
+  it('a child margin mutation shifts it and its successors via declared deps', () => {
+    const root = Node.create();
+    root.setWidth(150);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    const children: Node[] = [];
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    children[1]!.setMargin(Edge.Left, 8);
+    children[1]!.setMargin(Edge.Right, 5);
+    rt.markDirty(styleInputs.get(children[1]!)!.margin![Edge.Left]!);
+    rt.markDirty(styleInputs.get(children[1]!)!.margin![Edge.Right]!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('a child margin mutation re-packs a wrapping container via declared deps', () => {
+    const root = Node.create();
+    root.setWidth(80);
+    root.setHeight(120);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    const children: Node[] = [];
+    for (let i = 0; i < 4; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    children[0]!.setMargin(Edge.Left, 6);
+    children[0]!.setMargin(Edge.Top, 4);
+    rt.markDirty(styleInputs.get(children[0]!)!.margin![Edge.Left]!);
+    rt.markDirty(styleInputs.get(children[0]!)!.margin![Edge.Top]!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('a child margin mutation under non-default justify-content propagates precisely', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    root.setJustifyContent('space-between');
+    const children: Node[] = [];
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, i);
+      children.push(c);
+    }
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    children[1]!.setMargin(Edge.Left, 7);
+    children[1]!.setMargin(Edge.Right, 11);
+    rt.markDirty(styleInputs.get(children[1]!)!.margin![Edge.Left]!);
+    rt.markDirty(styleInputs.get(children[1]!)!.margin![Edge.Right]!);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('an absolute child margin mutation propagates via the margin input fields', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(60);
+    root.setFlexDirection('row');
+    const abs = Node.create();
+    abs.setPositionType('absolute');
+    abs.setWidth(20);
+    abs.setHeight(15);
+    abs.setPosition(Edge.Top, 4);
+    abs.setPosition(Edge.Left, 8);
+    root.insertChild(abs, 0);
+    const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
+    const rootFields: Field<unknown>[] = [];
+    for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
+    const rt = new SpinelessRuntime(grammar, rootFields);
+    rt.init();
+
+    abs.setMargin(Edge.Left, 9);
+    abs.setMargin(Edge.Top, 6);
+    rt.markDirty(styleInputs.get(abs)!.margin![Edge.Left]!);
+    rt.markDirty(styleInputs.get(abs)!.margin![Edge.Top]!);
     rt.recompute();
 
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
