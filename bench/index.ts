@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { Bench } from 'tinybench';
 import * as big from './scenarios/big.js';
 import * as hotRelayoutBoundary from './scenarios/hot-relayout-boundary.js';
+import * as hotRelayoutText from './scenarios/hot-relayout-text.js';
 import * as hotRelayout from './scenarios/hot-relayout.js';
 import * as huge from './scenarios/huge.js';
 import * as realistic from './scenarios/realistic.js';
@@ -27,6 +28,9 @@ interface Scenario {
   pilatesCoreLayout: () => void;
   pilatesFullRender: () => void;
   yogaLayout: () => void;
+  // Optional fourth engine: the Spineless incremental runtime (phase 5b).
+  // Only the scenarios that exercise its sweet spot wire this in.
+  pilatesSpinelessLayout?: () => void;
 }
 
 const SCENARIOS: Scenario[] = [
@@ -45,6 +49,12 @@ const SCENARIOS: Scenario[] = [
     notes: '1k-node persistent tree with explicit-sized row boundaries, mutate one leaf',
     ...hotRelayoutBoundary,
   },
+  {
+    name: 'hotrelayouttext',
+    notes:
+      '1k-node fixed-size table, mutate one leaf width per pass (Spineless incremental engine)',
+    ...hotRelayoutText,
+  },
 ];
 
 async function runScenario(s: Scenario): Promise<{
@@ -57,6 +67,9 @@ async function runScenario(s: Scenario): Promise<{
     .add('@pilates/core (layout)', s.pilatesCoreLayout)
     .add('@pilates/render (full)', s.pilatesFullRender)
     .add('yoga-layout (WASM)', s.yogaLayout);
+  if (s.pilatesSpinelessLayout !== undefined) {
+    bench.add('@pilates/core (spineless)', s.pilatesSpinelessLayout);
+  }
 
   await bench.run();
 
@@ -164,12 +177,23 @@ async function main(): Promise<void> {
   out.push("  row but don't propagate to root, so Pilates' root layout");
   out.push('  cache hits and only the row subtree re-runs flex.');
   out.push('  **Pilates is ~9× faster than Yoga** on this scenario.');
+  out.push('- `hotrelayouttext` — 1k-node fixed-size table; mutating one');
+  out.push("  leaf's width per pass. Adds a fourth engine,");
+  out.push('  `@pilates/core (spineless)`, the phase-5b incremental');
+  out.push('  runtime: the flex grammar is built once, the leaf width');
+  out.push('  is marked dirty, and `recompute()` ripples through only');
+  out.push("  the downstream cells' positions in the same row. The");
+  out.push('  imperative + Yoga columns measure the same mutation under');
+  out.push('  a full `calculateLayout()` for comparison.');
   out.push('');
   out.push('The boundary path is opt-in by tree shape, not API: any');
   out.push('explicit-sized container with default flex grow/shrink');
   out.push('qualifies, which matches the idiomatic TUI pattern of');
   out.push('`<Box width={N} height={M}>` containers around dynamic');
   out.push('content. See `docs/superpowers/specs/2026-05-09-relayout-boundaries-design.md`.');
+  out.push('The Spineless runtime targets the same workload via a');
+  out.push('different mechanism — see');
+  out.push('`docs/superpowers/specs/2026-05-12-spineless-foundation.md`.');
   out.push('');
   out.push('## When Yoga still wins');
   out.push('');

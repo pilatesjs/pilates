@@ -5,5 +5,9 @@
   "big": { "@pilates/core (layout)": { "maxMeanMs": 8.0 } },
   "huge": { "@pilates/core (layout)": { "maxMeanMs": 20.0 } },
   "hotrelayout": { "@pilates/core (layout)": { "maxMeanMs": 1.5 } },
-  "hotrelayoutboundary": { "@pilates/core (layout)": { "maxMeanMs": 0.1 } }
+  "hotrelayoutboundary": { "@pilates/core (layout)": { "maxMeanMs": 0.1 } },
+  "hotrelayouttext": {
+    "@pilates/core (layout)": { "maxMeanMs": 0.1 },
+    "@pilates/core (spineless)": { "maxMeanMs": 0.1 }
+  }
 }
