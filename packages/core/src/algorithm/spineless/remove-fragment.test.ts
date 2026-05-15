@@ -1,8 +1,8 @@
 /**
- * Tests for `buildRemoveFragment` — phase-5c slice 3a. Validates
- * that removing a child is a pure simple-regime detach and produces
- * the `SpinelessRuntime.detach` inputs; returns `null` when a
- * rebuild is required instead.
+ * Tests for `buildRemoveFragment` — phase-5c slices 3 + 5. Validates
+ * that removing a child produces the `SpinelessRuntime.detach` (and,
+ * for non-simple regimes, `rebindRule`) inputs; returns `null` only
+ * when a true rebuild is required.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -96,7 +96,19 @@ function fixedCell(w: number, h: number): Node {
   return c;
 }
 
-describe('buildRemoveFragment — simple-regime removals detach cleanly', () => {
+// Apply a remove fragment: rebind the survivors whose rules changed
+// FIRST (so they stop depending on the removed fields), then detach
+// the removed subtree, then recompute.
+function applyRemove(
+  rt: SpinelessRuntime,
+  frag: NonNullable<ReturnType<typeof buildRemoveFragment>>,
+): void {
+  for (const [f, rule] of frag.rebinds) rt.rebindRule(f, rule);
+  rt.detach(frag.removed);
+  rt.recompute();
+}
+
+describe('buildRemoveFragment — simple-regime removals', () => {
   it('removes the last child of a simple row', () => {
     const root = Node.create();
     root.setWidth(150);
@@ -106,9 +118,10 @@ describe('buildRemoveFragment — simple-regime removals detach cleanly', () => 
     cells.forEach((c, i) => root.insertChild(c, i));
     const { rt, prev } = makeRuntime(root);
 
-    const frag = buildRemoveFragment(prev, root, cells[2]!);
+    const frag = buildRemoveFragment(prev, root, root, cells[2]!);
     expect(frag).not.toBeNull();
-    rt.detach(frag!.removed);
+    expect(frag!.rebinds).toHaveLength(0);
+    applyRemove(rt, frag!);
     root.removeChild(cells[2]!);
 
     expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
@@ -123,9 +136,9 @@ describe('buildRemoveFragment — simple-regime removals detach cleanly', () => 
     cells.forEach((c, i) => root.insertChild(c, i));
     const { rt, prev } = makeRuntime(root);
 
-    const frag = buildRemoveFragment(prev, root, cells[2]!);
+    const frag = buildRemoveFragment(prev, root, root, cells[2]!);
     expect(frag).not.toBeNull();
-    rt.detach(frag!.removed);
+    applyRemove(rt, frag!);
     root.removeChild(cells[2]!);
 
     expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
@@ -145,9 +158,9 @@ describe('buildRemoveFragment — simple-regime removals detach cleanly', () => 
     cells.forEach((c, i) => row.insertChild(c, i));
     const { rt, prev } = makeRuntime(root);
 
-    const frag = buildRemoveFragment(prev, row, cells[2]!);
+    const frag = buildRemoveFragment(prev, root, row, cells[2]!);
     expect(frag).not.toBeNull();
-    rt.detach(frag!.removed);
+    applyRemove(rt, frag!);
     row.removeChild(cells[2]!);
 
     expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
@@ -167,9 +180,10 @@ describe('buildRemoveFragment — simple-regime removals detach cleanly', () => 
     root.insertChild(abs, 1);
     const { rt, prev } = makeRuntime(root);
 
-    const frag = buildRemoveFragment(prev, root, abs);
+    const frag = buildRemoveFragment(prev, root, root, abs);
     expect(frag).not.toBeNull();
-    rt.detach(frag!.removed);
+    expect(frag!.rebinds).toHaveLength(0);
+    applyRemove(rt, frag!);
     root.removeChild(abs);
 
     expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
@@ -185,15 +199,13 @@ describe('buildRemoveFragment — simple-regime removals detach cleanly', () => 
     const { rt, prev } = makeRuntime(root);
     const before = readLayout(rt, prev.allFields);
 
-    // Append, graft.
     const c3 = fixedCell(30, 20);
     root.insertChild(c3, 2);
     const appended = buildAppendFragment(prev, root, root, c3)!;
     rt.graft(appended.additions, appended.newRoots);
 
-    // Remove it again, detach.
-    const removed = buildRemoveFragment(appended.next, root, c3)!;
-    rt.detach(removed.removed);
+    const removed = buildRemoveFragment(appended.next, root, root, c3)!;
+    applyRemove(rt, removed);
     root.removeChild(c3);
 
     expect(readLayout(rt, removed.next.allFields)).toEqual(before);
@@ -201,65 +213,127 @@ describe('buildRemoveFragment — simple-regime removals detach cleanly', () => 
   });
 });
 
-describe('buildRemoveFragment — returns null when a rebuild is required', () => {
-  function setup(configure: (root: Node) => { parent: Node; child: Node }): {
-    prev: ReturnType<typeof buildFlexGrammar>;
-    parent: Node;
-    child: Node;
-  } {
+describe('buildRemoveFragment — regime-aware removals rebind survivors', () => {
+  it('removes the last child of a flex-distributing row', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    const cells: Node[] = [];
+    for (let i = 0; i < 3; i++) {
+      const c = fixedCell(20, 20);
+      c.setFlexGrow(1);
+      root.insertChild(c, i);
+      cells.push(c);
+    }
+    const { rt, prev } = makeRuntime(root);
+
+    const frag = buildRemoveFragment(prev, root, root, cells[2]!);
+    expect(frag).not.toBeNull();
+    expect(frag!.rebinds.length).toBeGreaterThan(0);
+    applyRemove(rt, frag!);
+    root.removeChild(cells[2]!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('removes a child from a space-between justified row', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    root.setJustifyContent('space-between');
+    const cells = [fixedCell(20, 20), fixedCell(20, 20), fixedCell(25, 20)];
+    cells.forEach((c, i) => root.insertChild(c, i));
+    const { rt, prev } = makeRuntime(root);
+
+    const frag = buildRemoveFragment(prev, root, root, cells[2]!);
+    expect(frag).not.toBeNull();
+    applyRemove(rt, frag!);
+    root.removeChild(cells[2]!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('removes a child from a wrapping container', () => {
+    const root = Node.create();
+    root.setWidth(70);
+    root.setHeight(120);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    const cells: Node[] = [];
+    for (let i = 0; i < 4; i++) {
+      const c = fixedCell(30, 20);
+      root.insertChild(c, i);
+      cells.push(c);
+    }
+    const { rt, prev } = makeRuntime(root);
+
+    const frag = buildRemoveFragment(prev, root, root, cells[3]!);
+    expect(frag).not.toBeNull();
+    applyRemove(rt, frag!);
+    root.removeChild(cells[3]!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('removes an interior child of a simple row (later siblings shift)', () => {
     const root = Node.create();
     root.setWidth(150);
     root.setHeight(30);
     root.setFlexDirection('row');
-    const { parent, child } = configure(root);
+    const cells = [fixedCell(20, 20), fixedCell(25, 20), fixedCell(30, 20)];
+    cells.forEach((c, i) => root.insertChild(c, i));
+    const { rt, prev } = makeRuntime(root);
+
+    // Removing the middle cell shifts the third — a rebind case even
+    // though the parent's regime is "simple".
+    const frag = buildRemoveFragment(prev, root, root, cells[1]!);
+    expect(frag).not.toBeNull();
+    expect(frag!.rebinds.length).toBeGreaterThan(0);
+    applyRemove(rt, frag!);
+    root.removeChild(cells[1]!);
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('stays correct under a later style mutation after a flex removal', () => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    const cells: Node[] = [];
+    for (let i = 0; i < 3; i++) {
+      const c = fixedCell(20, 20);
+      c.setFlexGrow(1);
+      root.insertChild(c, i);
+      cells.push(c);
+    }
+    const { rt, prev } = makeRuntime(root);
+
+    const frag = buildRemoveFragment(prev, root, root, cells[2]!)!;
+    applyRemove(rt, frag);
+    root.removeChild(cells[2]!);
+
+    // Mutate a surviving sibling — the rebound rules must still
+    // recompute to a fresh-build-identical layout.
+    cells[0]!.setWidth(45);
+    rt.markDirty(frag.next.styleInputs.get(cells[0]!)!.width!);
+    rt.recompute();
+
+    expect(readLayout(rt, frag.next.allFields)).toEqual(freshLayout(root));
+  });
+});
+
+describe('buildRemoveFragment — returns null when a rebuild is required', () => {
+  it('null when the node is not a child of the parent', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    root.insertChild(fixedCell(20, 20), 0);
     const prev = buildFlexGrammar(root);
-    return { prev, parent, child };
-  }
-
-  it('null when the parent flex-distributes', () => {
-    const { prev, parent, child } = setup((r) => {
-      const a = fixedCell(20, 20);
-      const b = fixedCell(20, 20);
-      b.setFlexGrow(1);
-      r.insertChild(a, 0);
-      r.insertChild(b, 1);
-      return { parent: r, child: b };
-    });
-    expect(buildRemoveFragment(prev, parent, child)).toBeNull();
-  });
-
-  it('null when the parent uses non-default justify-content', () => {
-    const { prev, parent, child } = setup((r) => {
-      r.setJustifyContent('space-between');
-      const a = fixedCell(20, 20);
-      const b = fixedCell(20, 20);
-      r.insertChild(a, 0);
-      r.insertChild(b, 1);
-      return { parent: r, child: b };
-    });
-    expect(buildRemoveFragment(prev, parent, child)).toBeNull();
-  });
-
-  it('null when the parent wraps', () => {
-    const { prev, parent, child } = setup((r) => {
-      r.setFlexWrap('wrap');
-      const a = fixedCell(20, 20);
-      const b = fixedCell(20, 20);
-      r.insertChild(a, 0);
-      r.insertChild(b, 1);
-      return { parent: r, child: b };
-    });
-    expect(buildRemoveFragment(prev, parent, child)).toBeNull();
-  });
-
-  it('null when the child is not the last child', () => {
-    const { prev, parent, child } = setup((r) => {
-      const a = fixedCell(20, 20);
-      const b = fixedCell(20, 20);
-      r.insertChild(a, 0);
-      r.insertChild(b, 1);
-      return { parent: r, child: a }; // interior child
-    });
-    expect(buildRemoveFragment(prev, parent, child)).toBeNull();
+    const stranger = fixedCell(20, 20);
+    expect(buildRemoveFragment(prev, root, root, stranger)).toBeNull();
   });
 });

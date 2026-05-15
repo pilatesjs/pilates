@@ -61,9 +61,14 @@ rules):
    a surviving field's rule and repairs its reverse-dependency
    edges; `buildAppendFragment` now returns those rewritten rules as
    `rebinds` alongside the graft inputs.
-5. **Regime-aware removal + structural flips.** The mirror of slice
-   4 for removal, plus `flex-direction` / `flex-wrap` /
-   `positionType` flips, which re-key whole subtrees.
+5. **Regime-aware removal (landed).** The mirror of slice 4 for
+   removal. `buildRemoveFragment` now returns `rebinds` too — for a
+   non-simple parent (or an interior child) removing a child shrinks
+   every surviving sibling's dependency set. The caller `rebindRule`s
+   the survivors first (so they stop depending on the removed
+   fields), then `detach`es the removed subtree, then `recompute()`s.
+6. **Structural flips.** `flex-direction` / `flex-wrap` /
+   `positionType` flips re-key whole subtrees — the remaining frontier.
 
 ## Slice 1 — `SpinelessRuntime.graft`
 
@@ -224,3 +229,38 @@ regime-aware appends — into flex-distributing / space-between /
 centered / wrapping parents — each grafting + rebinding to a layout
 byte-identical to a fresh build, plus a later-mutation case that
 exercises the OM-disorder path.
+
+## Slice 5 — regime-aware removal
+
+The mirror of slice 4. Removing a child from a flex-distributing /
+justified / wrapping parent — or removing an interior child from any
+parent — shrinks every surviving in-flow sibling's dependency set
+(they no longer read the removed child).
+
+`buildRemoveFragment(prev, root, parent, child)` (now also taking
+`root`) returns `{ removed, rebinds, next }`:
+
+- `removed` — the removed subtree's fields, for `detach`.
+- `rebinds` — empty when removing a last child from a simple-regime
+  parent; otherwise every surviving in-flow sibling's four layout
+  fields paired with their post-removal rules.
+- `next` — a fresh full `FlexGrammarOutput` for the post-removal
+  tree.
+
+It does not mutate the tree: the post-removal grammar is computed by
+detaching `child` around a `buildFlexGrammar` call and re-attaching
+it. The caller applies the patch **`rebindRule` first, then
+`detach`** — a survivor must drop its dependency on the removed
+child's fields before those fields can be detached (`detach` rejects
+a removed field that still has an outside dependent) — then
+`recompute()`. `null` is returned only for a true rebuild (`child`
+is not `parent`'s child, or a reverse `flex-direction`).
+
+### Tests
+
+`remove-fragment.test.ts`: simple-regime removals (row / column /
+nested / absolute / an append-then-remove round trip) with empty
+`rebinds`; regime-aware removals (flex-distributing / space-between
+/ wrapping parents, and an interior-child removal) that rebind +
+detach to a layout byte-identical to a fresh build, plus a
+later-mutation case; and the `null` rebuild case.
