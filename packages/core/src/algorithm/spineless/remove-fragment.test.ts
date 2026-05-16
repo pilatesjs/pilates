@@ -108,6 +108,15 @@ function applyRemove(
   rt.recompute();
 }
 
+function applyAppend(
+  rt: SpinelessRuntime,
+  frag: NonNullable<ReturnType<typeof buildAppendFragment>>,
+): void {
+  rt.graft(frag.additions, frag.newRoots);
+  for (const [f, rule] of frag.rebinds) rt.rebindRule(f, rule);
+  rt.recompute();
+}
+
 describe('buildRemoveFragment — simple-regime removals', () => {
   it('removes the last child of a simple row', () => {
     const root = Node.create();
@@ -210,6 +219,41 @@ describe('buildRemoveFragment — simple-regime removals', () => {
 
     expect(readLayout(rt, removed.next.allFields)).toEqual(before);
     expect(readLayout(rt, removed.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('append, remove, then append again — no stale orphaned field', () => {
+    // Appending a last child gives the previous last child a
+    // follower, so its main-end margin becomes a read input field.
+    // Removing the appended child must detach that orphaned field
+    // too, or the next append's graft collides on it.
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    root.insertChild(fixedCell(20, 20), 0);
+    root.insertChild(fixedCell(25, 20), 1);
+    let { rt, prev } = makeRuntime(root);
+
+    const c3 = fixedCell(30, 20);
+    root.insertChild(c3, 2);
+    let appended = buildAppendFragment(prev, root, root, c3)!;
+    applyAppend(rt, appended);
+    prev = appended.next;
+
+    const removed = buildRemoveFragment(prev, root, root, c3)!;
+    applyRemove(rt, removed);
+    root.removeChild(c3);
+    prev = removed.next;
+
+    // This second graft would throw on a stale `style:margin:*`
+    // field if removal had missed the orphan.
+    const c4 = fixedCell(28, 20);
+    root.insertChild(c4, 2);
+    appended = buildAppendFragment(prev, root, root, c4)!;
+    applyAppend(rt, appended);
+    prev = appended.next;
+
+    expect(readLayout(rt, prev.allFields)).toEqual(freshLayout(root));
   });
 });
 

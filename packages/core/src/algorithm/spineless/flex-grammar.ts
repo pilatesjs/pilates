@@ -958,20 +958,6 @@ export function buildRemoveFragment(
   const dir = parent.style.flexDirection;
   if (dir !== 'row' && dir !== 'column') return null;
 
-  // Collect the removed subtree's nodes (`child` + descendants),
-  // then every field in `prev.grammar` that belongs to one of them.
-  const removedNodes = new Set<Node>();
-  const stack: Node[] = [child];
-  while (stack.length > 0) {
-    const n = stack.pop()!;
-    removedNodes.add(n);
-    for (let i = 0; i < n.getChildCount(); i++) stack.push(n.getChild(i)!);
-  }
-  const removed: Array<Field<unknown>> = [];
-  for (const f of prev.grammar.keys()) {
-    if (removedNodes.has(f.node)) removed.push(f);
-  }
-
   // Removing a last child from a simple-regime parent perturbs no
   // surviving sibling — `detach` alone suffices. `child` is still
   // attached, so `parentNeedsFlexDistribution` sees it: a parent
@@ -989,6 +975,18 @@ export function buildRemoveFragment(
   parent.removeChild(child);
   const next = buildFlexGrammar(root);
   parent.insertChild(child, index);
+
+  // The removed set is the grammar diff `prev \ next` — every field
+  // that existed before the removal and does not after. This is the
+  // removed subtree's fields PLUS any input field orphaned by it:
+  // dropping a last child, for instance, leaves the previous last
+  // child with no follower, so its main-end margin is no longer read
+  // and its `style:margin:*` input field disappears. A subtree walk
+  // would miss those orphans and leave them dangling in the runtime.
+  const removed: Array<Field<unknown>> = [];
+  for (const f of prev.grammar.keys()) {
+    if (!next.grammar.has(f)) removed.push(f);
+  }
 
   // In the simple regime no surviving sibling changes. Otherwise
   // every surviving in-flow sibling's layout rules are rewritten —
