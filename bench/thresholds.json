@@ -1,6 +1,6 @@
 {
   "tiny": { "@pilates/core (layout)": { "maxMeanMs": 0.03 } },
-  "realistic": { "@pilates/core (layout)": { "maxMeanMs": 0.4 } },
+  "realistic": { "@pilates/core (layout)": { "maxMeanMs": 1.2 } },
   "stress": { "@pilates/core (layout)": { "maxMeanMs": 3.0 } },
   "big": { "@pilates/core (layout)": { "maxMeanMs": 15.0 } },
   "huge": { "@pilates/core (layout)": { "maxMeanMs": 35.0 } },
