@@ -15,6 +15,7 @@ import * as big from './scenarios/big.js';
 import * as hotRelayoutBoundary from './scenarios/hot-relayout-boundary.js';
 import * as hotRelayoutText from './scenarios/hot-relayout-text.js';
 import * as hotRelayout from './scenarios/hot-relayout.js';
+import * as hotStructural from './scenarios/hot-structural.js';
 import * as huge from './scenarios/huge.js';
 import * as realistic from './scenarios/realistic.js';
 import * as stress from './scenarios/stress.js';
@@ -31,6 +32,10 @@ interface Scenario {
   // Optional fourth engine: the Spineless incremental runtime (phase 5b).
   // Only the scenarios that exercise its sweet spot wire this in.
   pilatesSpinelessLayout?: () => void;
+  // Optional fifth engine: the Spineless runtime rebuilt from scratch
+  // each iteration (phase 5c baseline) — the naive path the
+  // incremental graft / detach is measured against.
+  pilatesSpinelessRebuild?: () => void;
 }
 
 const SCENARIOS: Scenario[] = [
@@ -55,6 +60,11 @@ const SCENARIOS: Scenario[] = [
       '1k-node fixed-size table, mutate one leaf width per pass (Spineless incremental engine)',
     ...hotRelayoutText,
   },
+  {
+    name: 'hotstructural',
+    notes: '~1k-node table, append + remove a whole row per pass (Spineless graft / detach)',
+    ...hotStructural,
+  },
 ];
 
 async function runScenario(s: Scenario): Promise<{
@@ -69,6 +79,9 @@ async function runScenario(s: Scenario): Promise<{
     .add('yoga-layout (WASM)', s.yogaLayout);
   if (s.pilatesSpinelessLayout !== undefined) {
     bench.add('@pilates/core (spineless)', s.pilatesSpinelessLayout);
+  }
+  if (s.pilatesSpinelessRebuild !== undefined) {
+    bench.add('@pilates/core (spineless rebuild)', s.pilatesSpinelessRebuild);
   }
 
   await bench.run();
@@ -194,6 +207,39 @@ async function main(): Promise<void> {
   out.push('The Spineless runtime targets the same workload via a');
   out.push('different mechanism — see');
   out.push('`docs/superpowers/specs/2026-05-12-spineless-foundation.md`.');
+  out.push('');
+  out.push('## Structural mutation — growing and shrinking trees');
+  out.push('');
+  out.push('`hotstructural` covers the workload where the tree *shape*');
+  out.push('changes each frame — a row appended to a list, a panel shown');
+  out.push('or hidden. A ~1k-node table appends then removes a whole row');
+  out.push('per pass. Four engines:');
+  out.push('');
+  out.push('- `@pilates/core (layout)` — mutate the tree, full');
+  out.push('  `calculateLayout()`.');
+  out.push('- `@pilates/core (spineless)` — the phase-5c incremental');
+  out.push('  structural path: `buildAppendFragment` / `buildRemoveFragment`');
+  out.push('  produce the patch, `graft` / `detach` splice the dependency');
+  out.push('  graph, `recompute()` settles it — no fresh runtime, no');
+  out.push('  `init()`.');
+  out.push('- `@pilates/core (spineless rebuild)` — the naive Spineless');
+  out.push('  path: a full `buildFlexGrammar()` + new runtime + `init()`');
+  out.push('  every pass. The baseline the incremental ops are measured');
+  out.push('  against.');
+  out.push('- `yoga-layout (WASM)` — mutate, full `calculateLayout()`.');
+  out.push('');
+  out.push('What the numbers show: the incremental `graft` / `detach`');
+  out.push('path is **~3× faster than a full Spineless rebuild** — it');
+  out.push('skips the O(tree) `init()` layout compute. But both Spineless');
+  out.push('paths still trail the imperative `calculateLayout()` here,');
+  out.push('because `buildAppendFragment` / `buildRemoveFragment` rebuild');
+  out.push('the *whole* grammar O(tree) every call to diff out the patch.');
+  out.push('That grammar rebuild — not the layout compute — is now the');
+  out.push('bottleneck: a fragment-only build that walks just the');
+  out.push('affected subtree (O(subtree)) is the optimisation that would');
+  out.push('let structural incrementality actually pay off.');
+  out.push('');
+  out.push('See `docs/superpowers/specs/2026-05-15-spineless-structural.md`.');
   out.push('');
   out.push('## When Yoga still wins');
   out.push('');

@@ -264,3 +264,36 @@ nested / absolute / an append-then-remove round trip) with empty
 / wrapping parents, and an interior-child removal) that rebind +
 detach to a layout byte-identical to a fresh build, plus a
 later-mutation case; and the `null` rebuild case.
+
+## Benchmark — `hotstructural`
+
+`bench/scenarios/hot-structural.ts` exercises the phase-5c
+structural path: a ~1k-node table (100 rows × 10 cells) appends then
+removes a whole row each pass. Four engines — imperative
+`calculateLayout`, Spineless incremental (`graft` / `detach`),
+Spineless naive rebuild (`buildFlexGrammar` + new runtime + `init`
+per pass), and Yoga.
+
+First numbers (Node 22, win32/x64), mean per structural op:
+
+| Engine | Mean |
+|---|---:|
+| `@pilates/core (layout)` imperative | ~0.24 ms |
+| `yoga-layout (WASM)` | ~0.09 ms |
+| `@pilates/core (spineless)` incremental | ~7.5 ms |
+| `@pilates/core (spineless rebuild)` | ~21 ms |
+
+Two findings:
+
+1. **The incremental ops work** — `graft` / `detach` are ~2.8×
+   faster than a full Spineless rebuild, by skipping the O(tree)
+   `init()` layout compute.
+2. **But the grammar rebuild now dominates.** Both Spineless paths
+   trail the imperative `calculateLayout` by ~30×, because
+   `buildAppendFragment` / `buildRemoveFragment` each rebuild the
+   *whole* grammar O(tree) (closures + the flat column's O(rows²)
+   positional rules) just to diff out the patch. The deferred
+   **O(subtree) fragment build** (slice 2's note) is no longer an
+   optional optimisation — it is the bottleneck that has to fall
+   before structural incrementality is competitive. It is the
+   validated next priority for the phase.
