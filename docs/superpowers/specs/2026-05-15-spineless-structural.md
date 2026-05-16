@@ -297,3 +297,32 @@ Two findings:
    optional optimisation — it is the bottleneck that has to fall
    before structural incrementality is competitive. It is the
    validated next priority for the phase.
+
+## Slice 6 — O(subtree) fragment build
+
+`makeEmitter(ctx)` extracts `buildFlexGrammar`'s per-node `visit` +
+input-field helpers, bound to an `EmitContext` carrying the mutable
+accumulators and an optional `boundary`. A field already in
+`boundary` is referenced as a dependency but its rule is not
+re-emitted.
+
+`buildAppendFragment`, in the simple regime, now builds the patch in
+**O(subtree)**: `makeEmitter` with `boundary = prev.grammar` emits
+just the appended subtree, so the fragment's `grammar` holds only
+genuinely-new fields — no whole-tree rebuild, no diff. `next.grammar`
+is `prev.grammar` (the runtime's own Map, patched in place by
+`graft`); `next.allFields` / `next.styleInputs` are extended
+incrementally, with the previous last child's `StyleInputs`
+deep-merged (it gains a main-end margin input on acquiring a
+follower).
+
+A consistency fix this required: every fragment's `next.grammar`
+must be `prev.grammar` so the caller's `prev` never diverges from the
+runtime across an append/remove chain — `buildRemoveFragment` was
+returning the fresh build's Map and is corrected.
+
+`hotstructural` after this slice: the Spineless incremental path
+drops from ~7.5 ms to ~3.7 ms per op (~5× faster than the naive
+rebuild). The remaining cost is `buildRemoveFragment`, which still
+rebuilds the grammar O(tree) to diff out the removed fields — the
+matching O(subtree) removal is the next slice.

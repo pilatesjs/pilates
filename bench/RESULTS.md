@@ -25,9 +25,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 6.6µs | 150.5k ops/s | 0 |
-| @pilates/render (full) | 79.5µs | 12.6k ops/s | 0 |
-| yoga-layout (WASM) | 21.3µs | 46.9k ops/s | 0 |
+| @pilates/core (layout) | 6.4µs | 155.7k ops/s | 0 |
+| @pilates/render (full) | 76.4µs | 13.1k ops/s | 0 |
+| yoga-layout (WASM) | 19.9µs | 50.3k ops/s | 0 |
 
 ## realistic
 
@@ -35,9 +35,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 189.0µs | 5.3k ops/s | 0 |
-| @pilates/render (full) | 487.4µs | 2.1k ops/s | 0 |
-| yoga-layout (WASM) | 360.8µs | 2.8k ops/s | 0 |
+| @pilates/core (layout) | 168.6µs | 5.9k ops/s | 0 |
+| @pilates/render (full) | 432.2µs | 2.3k ops/s | 0 |
+| yoga-layout (WASM) | 346.7µs | 2.9k ops/s | 0 |
 
 ## stress
 
@@ -45,9 +45,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 955.9µs | 1.0k ops/s | 0 |
-| @pilates/render (full) | 2.68ms | 373 ops/s | 0 |
-| yoga-layout (WASM) | 2.11ms | 474 ops/s | 0 |
+| @pilates/core (layout) | 868.2µs | 1.2k ops/s | 0 |
+| @pilates/render (full) | 2.55ms | 392 ops/s | 0 |
+| yoga-layout (WASM) | 1.98ms | 505 ops/s | 0 |
 
 ## big
 
@@ -55,9 +55,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 4.90ms | 204 ops/s | 0 |
-| @pilates/render (full) | 15.2ms | 66 ops/s | 0 |
-| yoga-layout (WASM) | 9.62ms | 104 ops/s | 0 |
+| @pilates/core (layout) | 4.53ms | 221 ops/s | 0 |
+| @pilates/render (full) | 14.4ms | 70 ops/s | 0 |
+| yoga-layout (WASM) | 9.45ms | 106 ops/s | 0 |
 
 ## huge
 
@@ -65,8 +65,8 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 13.3ms | 75 ops/s | 0 |
-| @pilates/render (full) | 31.4ms | 32 ops/s | 0 |
+| @pilates/core (layout) | 12.7ms | 79 ops/s | 0 |
+| @pilates/render (full) | 29.9ms | 33 ops/s | 0 |
 | yoga-layout (WASM) | 19.1ms | 52 ops/s | 0 |
 
 ## hotrelayout
@@ -75,9 +75,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 217.2µs | 4.6k ops/s | 0 |
-| @pilates/render (full) | 221.1µs | 4.5k ops/s | 0 |
-| yoga-layout (WASM) | 87.5µs | 11.4k ops/s | 0 |
+| @pilates/core (layout) | 201.3µs | 5.0k ops/s | 0 |
+| @pilates/render (full) | 199.6µs | 5.0k ops/s | 0 |
+| yoga-layout (WASM) | 87.1µs | 11.5k ops/s | 0 |
 
 ## hotrelayoutboundary
 
@@ -85,9 +85,9 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 9.5µs | 105.0k ops/s | 0 |
-| @pilates/render (full) | 9.5µs | 105.4k ops/s | 0 |
-| yoga-layout (WASM) | 80.4µs | 12.4k ops/s | 0 |
+| @pilates/core (layout) | 9.9µs | 101.4k ops/s | 0 |
+| @pilates/render (full) | 10.2µs | 98.4k ops/s | 0 |
+| yoga-layout (WASM) | 82.8µs | 12.1k ops/s | 0 |
 
 ## hotrelayouttext
 
@@ -95,10 +95,10 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 8.8µs | 113.9k ops/s | 0 |
-| @pilates/render (full) | 9.0µs | 111.7k ops/s | 0 |
-| yoga-layout (WASM) | 75.8µs | 13.2k ops/s | 0 |
-| @pilates/core (spineless) | 0.20µs | 5.03M ops/s | 0 |
+| @pilates/core (layout) | 9.5µs | 105.2k ops/s | 0 |
+| @pilates/render (full) | 9.7µs | 103.4k ops/s | 0 |
+| yoga-layout (WASM) | 77.2µs | 12.9k ops/s | 0 |
+| @pilates/core (spineless) | 0.20µs | 5.10M ops/s | 0 |
 
 ## hotstructural
 
@@ -106,11 +106,11 @@ positions are the interesting signal.
 
 | Engine | Mean latency | Throughput | Samples |
 |---|---:|---:|---:|
-| @pilates/core (layout) | 237.6µs | 4.2k ops/s | 0 |
-| @pilates/render (full) | 230.4µs | 4.3k ops/s | 0 |
-| yoga-layout (WASM) | 94.8µs | 10.5k ops/s | 0 |
-| @pilates/core (spineless) | 7.53ms | 133 ops/s | 0 |
-| @pilates/core (spineless rebuild) | 21.4ms | 47 ops/s | 0 |
+| @pilates/core (layout) | 221.5µs | 4.5k ops/s | 0 |
+| @pilates/render (full) | 223.1µs | 4.5k ops/s | 0 |
+| yoga-layout (WASM) | 96.7µs | 10.3k ops/s | 0 |
+| @pilates/core (spineless) | 3.58ms | 280 ops/s | 0 |
+| @pilates/core (spineless rebuild) | 20.2ms | 49 ops/s | 0 |
 
 ## What's measured
 
@@ -193,15 +193,14 @@ per pass. Four engines:
 - `yoga-layout (WASM)` — mutate, full `calculateLayout()`.
 
 What the numbers show: the incremental `graft` / `detach`
-path is **~3× faster than a full Spineless rebuild** — it
-skips the O(tree) `init()` layout compute. But both Spineless
-paths still trail the imperative `calculateLayout()` here,
-because `buildAppendFragment` / `buildRemoveFragment` rebuild
-the *whole* grammar O(tree) every call to diff out the patch.
-That grammar rebuild — not the layout compute — is now the
-bottleneck: a fragment-only build that walks just the
-affected subtree (O(subtree)) is the optimisation that would
-let structural incrementality actually pay off.
+path is **~5× faster than a full Spineless rebuild** — it
+skips the O(tree) `init()` layout compute. `buildAppendFragment`
+now emits just the appended subtree (O(subtree)) against the
+runtime grammar as a boundary — no whole-tree rebuild. The
+remaining gap to the imperative `calculateLayout()` is
+`buildRemoveFragment`, which still rebuilds the grammar
+O(tree) to diff out the removed fields; the matching
+O(subtree) removal is the next optimisation.
 
 See `docs/superpowers/specs/2026-05-15-spineless-structural.md`.
 

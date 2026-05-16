@@ -835,6 +835,44 @@ export interface AppendFragment {
   next: FlexGrammarOutput;
 }
 
+/** Merge two `StyleInputs` — `b`'s present fields win over `a`'s. */
+function mergeStyleInputs(a: StyleInputs, b: StyleInputs): StyleInputs {
+  const m: StyleInputs = { ...a };
+  if (b.width !== undefined) m.width = b.width;
+  if (b.height !== undefined) m.height = b.height;
+  if (b.flexBasis !== undefined) m.flexBasis = b.flexBasis;
+  if (b.gapRow !== undefined) m.gapRow = b.gapRow;
+  if (b.gapColumn !== undefined) m.gapColumn = b.gapColumn;
+  for (const k of ['padding', 'margin'] as const) {
+    const bArr = b[k];
+    if (bArr === undefined) continue;
+    const arr = m[k] !== undefined ? [...(m[k] as Array<Field<number> | undefined>)] : [];
+    for (let i = 0; i < bArr.length; i++) {
+      if (bArr[i] !== undefined) arr[i] = bArr[i];
+    }
+    m[k] = arr;
+  }
+  return m;
+}
+
+/**
+ * Merge the per-node `styleInputs` of a fragment (`extra`) into a
+ * copy of `base`. A node present in both — the previous last child,
+ * which gains a main-end margin input when it acquires a follower —
+ * has its `StyleInputs` deep-merged rather than overwritten.
+ */
+function mergeStyleInputsMap(
+  base: Map<Node, StyleInputs>,
+  extra: Map<Node, StyleInputs>,
+): Map<Node, StyleInputs> {
+  const merged = new Map(base);
+  for (const [node, entry] of extra) {
+    const existing = merged.get(node);
+    merged.set(node, existing === undefined ? entry : mergeStyleInputs(existing, entry));
+  }
+  return merged;
+}
+
 /**
  * Fast-path a child APPEND for the Spineless runtime. If appending
  * `child` as `parent`'s last child can be absorbed without a fresh
@@ -846,16 +884,17 @@ export interface AppendFragment {
  * addition handled by `graft` (`additions` / `newRoots`). When
  * `parent` is in the "simple" regime (no flex distribution, default
  * `flex-start` justify, no wrap — or `child` is absolute) that is
- * the whole patch and `rebinds` is empty. Otherwise appending also
- * grows every existing in-flow sibling's dependency set (flex
- * distribution / justify leftover / wrap packing all read every
- * sibling), so `rebinds` carries those siblings' rewritten rules for
- * `rebindRule`.
+ * the whole patch and `rebinds` is empty, and the fragment is built
+ * in **O(subtree)** — `makeEmitter` emits just the appended subtree
+ * against the runtime's grammar as a boundary, no whole-tree
+ * rebuild. Otherwise appending also grows every existing in-flow
+ * sibling's dependency set (flex distribution / justify leftover /
+ * wrap packing all read every sibling), so the grammar is rebuilt
+ * O(tree) and `rebinds` carries those siblings' rewritten rules.
  *
- * `prev` is the `FlexGrammarOutput` the runtime was built from;
- * `root` is the tree root (already containing `child`). The grammar
- * rebuild here is cheap — Field allocation + closures, no layout
- * compute; the expensive layout work stays incremental.
+ * `next.grammar` is always `prev.grammar` — the runtime's own Map,
+ * which `graft` / `rebindRule` patch in place; `next.allFields` /
+ * `next.styleInputs` are refreshed lookup tables the caller adopts.
  *
  * @internal
  */
@@ -874,17 +913,61 @@ export function buildAppendFragment(
   const dir = parent.style.flexDirection;
   if (dir !== 'row' && dir !== 'column') return null;
 
-  // Rebuild the grammar and diff it against `prev` to isolate the
-  // new subtree's fields. Field identity is stable across builds
-  // (`field()` is registry-backed), so a key absent from
-  // `prev.grammar` belongs to a newly-added node.
-  const next = buildFlexGrammar(root);
+  // An absolute child never perturbs in-flow siblings; otherwise the
+  // parent's regime decides whether existing siblings are rewritten.
+  const simple =
+    child.style.positionType === 'absolute' ||
+    (parent.style.flexWrap === 'nowrap' &&
+      parent.style.justifyContent === 'flex-start' &&
+      !parentNeedsFlexDistribution(parent));
+
+  if (simple) {
+    // O(subtree): emit just the appended subtree against the
+    // runtime's grammar as a boundary, so the fragment's `grammar`
+    // holds only genuinely-new fields. The expensive whole-tree walk
+    // is skipped entirely.
+    const ctx: EmitContext = {
+      grammar: new Map(),
+      allFields: [],
+      styleInputs: new Map(),
+      boundary: prev.grammar,
+    };
+    const priors: Node[] = [];
+    for (let i = 0; i < count - 1; i++) {
+      const sib = parent.getChild(i)!;
+      if (sib.style.positionType !== 'absolute') priors.push(sib);
+    }
+    makeEmitter(ctx)(child, parent, priors.length, priors);
+
+    const newRoots: Array<Field<unknown>> = [];
+    for (const e of ctx.allFields) {
+      newRoots.push(
+        e.width as Field<unknown>,
+        e.height as Field<unknown>,
+        e.left as Field<unknown>,
+        e.top as Field<unknown>,
+      );
+    }
+    const next: FlexGrammarOutput = {
+      grammar: prev.grammar,
+      rootFields: prev.rootFields,
+      allFields: [...prev.allFields, ...ctx.allFields],
+      styleInputs: mergeStyleInputsMap(prev.styleInputs, ctx.styleInputs),
+    };
+    return { additions: ctx.grammar, newRoots, rebinds: [], next };
+  }
+
+  // Non-simple: appending rewrites every surviving sibling's rules.
+  // Rebuild the grammar O(tree) and diff it against `prev` for the
+  // new fields; Field identity is stable across builds, so a key
+  // absent from `prev.grammar` belongs to a newly-added node.
+  const fresh = buildFlexGrammar(root);
   const additions: Grammar = new Map();
-  for (const [f, rule] of next.grammar) {
+  for (const [f, rule] of fresh.grammar) {
     if (!prev.grammar.has(f)) additions.set(f, rule);
   }
   const newRoots: Array<Field<unknown>> = [];
-  for (const e of next.allFields) {
+  for (const e of fresh.allFields) {
     if (!prev.grammar.has(e.width as Field<unknown>)) {
       newRoots.push(
         e.width as Field<unknown>,
@@ -894,30 +977,22 @@ export function buildAppendFragment(
       );
     }
   }
-
-  // In the simple regime appending perturbs no existing sibling.
-  // Otherwise every existing in-flow sibling's layout rules are
-  // rewritten — rebind each of their four layout fields to the rule
-  // from the freshly rebuilt grammar. (An absolute `child` never
-  // perturbs in-flow siblings, so it stays simple regardless.)
-  const simple =
-    child.style.positionType === 'absolute' ||
-    (parent.style.flexWrap === 'nowrap' &&
-      parent.style.justifyContent === 'flex-start' &&
-      !parentNeedsFlexDistribution(parent));
   const rebinds: Array<[Field<unknown>, FieldRule<unknown>]> = [];
-  if (!simple) {
-    for (let i = 0; i < parent.getChildCount(); i++) {
-      const sib = parent.getChild(i)!;
-      if (sib === child || sib.style.positionType === 'absolute') continue;
-      for (const name of ['width', 'height', 'left', 'top'] as const) {
-        const f = field<number>(sib, name) as Field<unknown>;
-        const rule = next.grammar.get(f);
-        if (rule !== undefined) rebinds.push([f, rule]);
-      }
+  for (let i = 0; i < parent.getChildCount(); i++) {
+    const sib = parent.getChild(i)!;
+    if (sib === child || sib.style.positionType === 'absolute') continue;
+    for (const name of ['width', 'height', 'left', 'top'] as const) {
+      const f = field<number>(sib, name) as Field<unknown>;
+      const rule = fresh.grammar.get(f);
+      if (rule !== undefined) rebinds.push([f, rule]);
     }
   }
-
+  const next: FlexGrammarOutput = {
+    grammar: prev.grammar,
+    rootFields: prev.rootFields,
+    allFields: fresh.allFields,
+    styleInputs: fresh.styleInputs,
+  };
   return { additions, newRoots, rebinds, next };
 }
 
@@ -1011,10 +1086,10 @@ export function buildRemoveFragment(
   // Compute the post-removal grammar by detaching `child` around a
   // `buildFlexGrammar` call, then restoring the tree exactly.
   parent.removeChild(child);
-  const next = buildFlexGrammar(root);
+  const fresh = buildFlexGrammar(root);
   parent.insertChild(child, index);
 
-  // The removed set is the grammar diff `prev \ next` — every field
+  // The removed set is the grammar diff `prev \ fresh` — every field
   // that existed before the removal and does not after. This is the
   // removed subtree's fields PLUS any input field orphaned by it:
   // dropping a last child, for instance, leaves the previous last
@@ -1023,7 +1098,7 @@ export function buildRemoveFragment(
   // would miss those orphans and leave them dangling in the runtime.
   const removed: Array<Field<unknown>> = [];
   for (const f of prev.grammar.keys()) {
-    if (!next.grammar.has(f)) removed.push(f);
+    if (!fresh.grammar.has(f)) removed.push(f);
   }
 
   // In the simple regime no surviving sibling changes. Otherwise
@@ -1036,12 +1111,22 @@ export function buildRemoveFragment(
       if (sib === child || sib.style.positionType === 'absolute') continue;
       for (const name of ['width', 'height', 'left', 'top'] as const) {
         const f = field<number>(sib, name) as Field<unknown>;
-        const rule = next.grammar.get(f);
+        const rule = fresh.grammar.get(f);
         if (rule !== undefined) rebinds.push([f, rule]);
       }
     }
   }
 
+  // `next.grammar` is `prev.grammar` — the runtime's own Map, which
+  // `detach` / `rebindRule` patch in place. Returning the fresh
+  // build's Map instead would let the caller's `prev` diverge from
+  // the runtime across an append/remove chain.
+  const next: FlexGrammarOutput = {
+    grammar: prev.grammar,
+    rootFields: prev.rootFields,
+    allFields: fresh.allFields,
+    styleInputs: fresh.styleInputs,
+  };
   return { removed, rebinds, next };
 }
 
