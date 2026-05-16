@@ -130,20 +130,36 @@ export interface FlexGrammarOutput {
 }
 
 /**
- * Walk the tree rooted at `root` and emit a `Grammar` that computes
- * each node's `{width, height, left, top}` per the rules above.
- *
- * Requires every node to have `style.width` and `style.height` set to
- * numeric values (the cross-axis side is always used directly; the
- * main-axis side serves as the basis when no `flexBasis` is provided).
- * Throws if either is `'auto'` or `undefined`.
+ * Mutable accumulators + an optional boundary, threaded through the
+ * grammar emitter. A field already present in `boundary` is treated
+ * as pre-existing — the emitter references it as a dependency but
+ * does not re-emit its rule into the accumulators. `buildFlexGrammar`
+ * passes `boundary: null` (a whole-tree build); a subtree fragment
+ * build passes the runtime's existing grammar, so only genuinely-new
+ * fields land in `grammar` / `allFields` / `styleInputs`.
  *
  * @internal
  */
-export function buildFlexGrammar(root: Node): FlexGrammarOutput {
-  const grammar: Grammar = new Map();
-  const allFields: FlexGrammarOutput['allFields'] = [];
-  const styleInputs: Map<Node, StyleInputs> = new Map();
+interface EmitContext {
+  grammar: Grammar;
+  allFields: FlexGrammarOutput['allFields'];
+  styleInputs: Map<Node, StyleInputs>;
+  boundary: Grammar | null;
+}
+
+/**
+ * Build the topological per-node emitter — the `visit` recursion and
+ * the input-field helpers it closes over — bound to one
+ * `EmitContext`. `buildFlexGrammar` and the subtree fragment builders
+ * share this, so a fragment emits rules byte-identical to a full
+ * build.
+ *
+ * @internal
+ */
+function makeEmitter(
+  ctx: EmitContext,
+): (node: Node, parent: Node | null, indexInParent: number, priorSiblings: Node[]) => void {
+  const { grammar, allFields, styleInputs, boundary } = ctx;
 
   function styleInputEntry(n: Node): StyleInputs {
     let entry = styleInputs.get(n);
@@ -161,6 +177,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
   // propagates precisely through `recompute()`.
   function styleSizeInput(n: Node, prop: 'width' | 'height' | 'flexBasis'): Field<number> {
     const f = field<number>(n, `style:${prop}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
     if (!grammar.has(f as Field<unknown>)) {
       grammar.set(f as Field<unknown>, {
         deps: [],
@@ -178,6 +195,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
   // flex-distributes and so needs a fresh `buildFlexGrammar()`.
   function flexWeightInput(n: Node, prop: 'flexGrow' | 'flexShrink'): Field<number> {
     const f = field<number>(n, `style:${prop}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
     if (!grammar.has(f as Field<unknown>)) {
       grammar.set(f as Field<unknown>, {
         deps: [],
@@ -194,6 +212,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
   function gapInput(n: Node, axis: 'row' | 'column'): Field<number> {
     const prop = axis === 'row' ? 'gapRow' : 'gapColumn';
     const f = field<number>(n, `style:${prop}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
     if (!grammar.has(f as Field<unknown>)) {
       grammar.set(f as Field<unknown>, {
         deps: [],
@@ -209,6 +228,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
   // to 0 when that edge is unset.
   function paddingInput(n: Node, edge: number): Field<number> {
     const f = field<number>(n, `style:padding:${edge}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
     if (!grammar.has(f as Field<unknown>)) {
       grammar.set(f as Field<unknown>, {
         deps: [],
@@ -226,6 +246,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
   // when that edge is unset.
   function marginInput(n: Node, edge: number): Field<number> {
     const f = field<number>(n, `style:margin:${edge}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
     if (!grammar.has(f as Field<unknown>)) {
       grammar.set(f as Field<unknown>, {
         deps: [],
@@ -752,16 +773,33 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     }
   }
 
-  visit(root, null, 0, []);
+  return visit;
+}
 
-  const rootW = field<number>(root, 'width');
-  const rootH = field<number>(root, 'height');
-  const rootL = field<number>(root, 'left');
-  const rootT = field<number>(root, 'top');
+/**
+ * Walk the tree rooted at `root` and emit a `Grammar` that computes
+ * each node's `{width, height, left, top}`. See the module header
+ * for the field rules. A whole-tree build — `boundary` is `null`.
+ *
+ * Requires every in-flow node to have numeric `style.width` /
+ * `style.height`; throws otherwise.
+ *
+ * @internal
+ */
+export function buildFlexGrammar(root: Node): FlexGrammarOutput {
+  const grammar: Grammar = new Map();
+  const allFields: FlexGrammarOutput['allFields'] = [];
+  const styleInputs: Map<Node, StyleInputs> = new Map();
+  makeEmitter({ grammar, allFields, styleInputs, boundary: null })(root, null, 0, []);
 
   return {
     grammar,
-    rootFields: { width: rootW, height: rootH, left: rootL, top: rootT },
+    rootFields: {
+      width: field<number>(root, 'width'),
+      height: field<number>(root, 'height'),
+      left: field<number>(root, 'left'),
+      top: field<number>(root, 'top'),
+    },
     allFields,
     styleInputs,
   };
