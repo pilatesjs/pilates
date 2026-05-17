@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v14) covers:
+ * Current slice (v15) covers:
  *
  *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -45,8 +45,12 @@
  *     `'auto'` cross-axis size is 0 under a non-stretch align, but
  *     `stretch` (the default) resizes it to fill the line's inner
  *     cross, mirroring the imperative `crossAlignItemsInLine`
- *     stretch branch. (Measure-func leaves and `aspectRatio` are
- *     subsequent slices.)
+ *     stretch branch.
+ *   - `aspectRatio` (v15) — an `'auto'` axis whose perpendicular
+ *     axis is an explicit number derives `width = height × ratio` /
+ *     `height = width ÷ ratio`, mirroring `effectivePreferredSize`.
+ *     A derived axis is definite (not content-sized) — so it is not
+ *     stretched. (Measure-func leaves are a subsequent slice.)
  *
  * The grammar covers the whole imperative flexbox feature set for
  * explicitly-sized trees; phase 6 (v13+) extends it to `'auto'`
@@ -239,16 +243,35 @@ function makeEmitter(
   }
 
   // Resolve the input Field a node's main / cross size rule reads for
-  // its preferred size on `axis`. Three regimes (the auto/numeric
-  // split is structural — a mutation across it needs a fresh build):
+  // its preferred size on `axis`. Regimes (the auto/numeric split is
+  // structural — a mutation across it needs a fresh build):
   //   - numeric `style[axis]` → the live `styleSizeInput`;
+  //   - `'auto'` + `aspectRatio` + the perpendicular axis numeric →
+  //     an `aspect:*` Field deriving the size from the other axis
+  //     (v15), mirroring `effectivePreferredSize`;
   //   - `'auto'` on the root → the `available:*` input;
   //   - `'auto'` elsewhere → a constant `0` (v13 — matches the
   //     imperative `resolveHypotheticalMainSize` / `naturalCrossSize`
-  //     fallback for a non-measured `'auto'` node; v14 / v15 refine
-  //     this to aspectRatio / measure-func resolution).
+  //     fallback for a non-measured `'auto'` node; v16 refines this
+  //     to measure-func resolution).
   function preferredSizeInput(n: Node, axis: 'width' | 'height', isRoot: boolean): Field<number> {
     if (typeof n.style[axis] === 'number') return styleSizeInput(n, axis);
+    if (aspectDerivable(n, axis)) {
+      const other: 'width' | 'height' = axis === 'width' ? 'height' : 'width';
+      const ratio = n.style.aspectRatio as number;
+      const otherInput = styleSizeInput(n, other);
+      const f = field<number>(n, `aspect:${axis}`);
+      if (boundary?.has(f as Field<unknown>)) return f;
+      if (!grammar.has(f as Field<unknown>)) {
+        grammar.set(f as Field<unknown>, {
+          deps: [otherInput as Field<unknown>],
+          // width = height × ratio; height = width ÷ ratio.
+          compute: (read) =>
+            axis === 'width' ? read(otherInput) * ratio : read(otherInput) / ratio,
+        } satisfies FieldRule<number>);
+      }
+      return f;
+    }
     if (isRoot) return availableInput(n, axis);
     const f = field<number>(n, `preferred:${axis}`);
     if (boundary?.has(f as Field<unknown>)) return f;
@@ -494,21 +517,24 @@ function makeEmitter(
           ? parent.style.alignItems
           : node.style.alignSelf;
 
-    // Cross-axis size. For a numeric cross style, the `'auto'` root
-    // (sized from `available`), or an `'auto'` cross under a
-    // non-stretch align, the size is the resolved input clamped to
-    // the node's own [min, max] (v12). `align-items: stretch` (the
-    // default) instead resizes an `'auto'` cross size to fill the
-    // line's inner cross (v14) — mirroring the imperative
-    // `crossAlignItemsInLine` stretch branch. For a non-wrap parent
-    // the line cross IS the parent's inner cross; a wrapping parent
-    // overrides `crossSizeField` below with the per-line value.
+    // Cross-axis size. For a numeric cross style, an `aspectRatio`-
+    // derived cross, the `'auto'` root (sized from `available`), or a
+    // content-`'auto'` cross under a non-stretch align, the size is
+    // the resolved input clamped to the node's own [min, max]
+    // (v12/v15). `align-items: stretch` (the default) instead
+    // resizes a CONTENT-`'auto'` cross size to fill the line's inner
+    // cross (v14) — mirroring the imperative `crossAlignItemsInLine`
+    // stretch branch. An aspectRatio-derived cross is definite, so it
+    // is not stretched. For a non-wrap parent the line cross IS the
+    // parent's inner cross; a wrapping parent overrides
+    // `crossSizeField` below with the per-line value.
     const crossKey: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
-    const crossIsAuto = typeof node.style[crossKey] !== 'number';
+    const crossIsContentAuto =
+      typeof node.style[crossKey] !== 'number' && !aspectDerivable(node, crossKey);
     const crossSizeInput = preferredSizeInput(node, crossKey, parent === null);
     const minCrossInput = minMaxInput(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
     const maxCrossInput = minMaxInput(node, crossKey === 'width' ? 'maxWidth' : 'maxHeight');
-    if (crossIsAuto && parent !== null && align === 'stretch') {
+    if (crossIsContentAuto && parent !== null && align === 'stretch') {
       const parentCrossF = field<number>(parent, crossKey);
       grammar.set(crossSizeField, {
         deps: [
@@ -583,7 +609,8 @@ function makeEmitter(
           maxInput: minMaxInput(sib, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight'),
           minCrossInput: minMaxInput(sib, crossKeyName === 'width' ? 'minWidth' : 'minHeight'),
           maxCrossInput: minMaxInput(sib, crossKeyName === 'width' ? 'maxWidth' : 'maxHeight'),
-          crossIsAuto: typeof sib.style[crossKeyName] !== 'number',
+          crossIsContentAuto:
+            typeof sib.style[crossKeyName] !== 'number' && !aspectDerivable(sib, crossKeyName),
         });
       }
       const parentMainField = field<number>(parent, mainSizeName);
@@ -1411,8 +1438,11 @@ interface WrapSibInputs extends SizeInputs {
   marginCrossEndInput: Field<number>;
   minCrossInput: Field<number>;
   maxCrossInput: Field<number>;
-  /** `style[cross]` is `'auto'` — eligible for the stretch resize (v14). */
-  crossIsAuto: boolean;
+  /**
+   * The cross axis is content-`'auto'` (`'auto'` with no
+   * `aspectRatio` derivation) — eligible for the stretch resize.
+   */
+  crossIsContentAuto: boolean;
 }
 
 /**
@@ -1442,6 +1472,24 @@ function resolveBasisFromRead(
  */
 function clampMinMax(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+/**
+ * True iff `axis` resolves from `aspectRatio` (v15): the axis is
+ * `'auto'`, an `aspectRatio` is set, and the perpendicular axis is
+ * an explicit number — exactly the case where the imperative
+ * `effectivePreferredSize` derives a concrete size for an otherwise
+ * `'auto'` axis. When this holds the axis is NOT content-sized: it
+ * has a definite preferred size, so (e.g.) `align-items: stretch`
+ * does not resize it.
+ *
+ * @internal
+ */
+function aspectDerivable(node: Node, axis: 'width' | 'height'): boolean {
+  if (typeof node.style[axis] === 'number') return false;
+  if (node.style.aspectRatio === undefined) return false;
+  const other: 'width' | 'height' = axis === 'width' ? 'height' : 'width';
+  return typeof node.style[other] === 'number';
 }
 
 /**
@@ -1515,7 +1563,7 @@ function liveWrapSiblings(
       crossSize: clampMinMax(crossNatural, read(s.minCrossInput), read(s.maxCrossInput)),
       crossMarginStart: read(s.marginCrossStartInput),
       crossMarginEnd: read(s.marginCrossEndInput),
-      crossIsAuto: s.crossIsAuto,
+      crossIsContentAuto: s.crossIsContentAuto,
       crossMin: read(s.minCrossInput),
       crossMax: read(s.maxCrossInput),
       align: alignSelf === 'auto' ? parent.style.alignItems : alignSelf,
@@ -2068,8 +2116,11 @@ interface WrapSibling {
   crossSize: number;
   crossMarginStart: number;
   crossMarginEnd: number;
-  /** `style[cross]` is `'auto'` — eligible for the stretch resize (v14). */
-  crossIsAuto: boolean;
+  /**
+   * The cross axis is content-`'auto'` (`'auto'` with no
+   * `aspectRatio` derivation) — eligible for the stretch resize.
+   */
+  crossIsContentAuto: boolean;
   /** Cross-axis clamp bounds; `crossMax` carries `Infinity` when unset. */
   crossMin: number;
   crossMax: number;
@@ -2326,7 +2377,7 @@ function evaluateWrappedChild(
   // 0 for a non-stretched `'auto'`). Mirrors the imperative
   // `crossAlignItemsInLine` stretch branch.
   let crossSize = me.crossSize;
-  if (me.crossIsAuto && me.align === 'stretch') {
+  if (me.crossIsContentAuto && me.align === 'stretch') {
     const lineInner = myLineCrossSize - me.crossMarginStart - me.crossMarginEnd;
     crossSize = clampMinMax(Math.max(0, lineInner), me.crossMin, me.crossMax);
   }

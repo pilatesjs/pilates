@@ -2531,6 +2531,189 @@ describe("buildFlexGrammar — 'auto' cross axis + align-items stretch (slice v1
   });
 });
 
+describe('buildFlexGrammar — aspectRatio derivation (slice v15)', () => {
+  const matches = (make: () => Node, available?: { width?: number; height?: number }): void => {
+    expect(evaluateGrammar(make(), available)).toEqual(evaluateImperative(make(), available));
+  };
+
+  it("'auto' width derives from height × aspectRatio", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(200);
+      root.setAlignItems('flex-start'); // keep the auto width from stretching
+      const c = Node.create();
+      c.setHeight(40); // width 'auto', ratio 2 → width 80
+      c.setAspectRatio(2);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("'auto' height derives from width ÷ aspectRatio", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(200);
+      const c = Node.create();
+      c.setWidth(90); // height 'auto', ratio 3 → height 30
+      c.setAspectRatio(3);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('a fractional aspectRatio derives correctly', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(200);
+      const c = Node.create();
+      c.setWidth(50); // height 'auto', ratio 0.5 → height 100
+      c.setAspectRatio(0.5);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('both axes auto + aspectRatio → ratio cannot derive, both content-sized', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(120);
+      root.setAlignItems('flex-start');
+      const c = Node.create(); // both 'auto'
+      c.setAspectRatio(2);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('both axes explicit + aspectRatio → ratio ignored', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(120);
+      const c = Node.create();
+      c.setWidth(40);
+      c.setHeight(70); // explicit; ratio 2 would say 80 — ignored
+      c.setAspectRatio(2);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('an aspectRatio-derived main size feeds flex layout', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(60);
+      root.setFlexDirection('row');
+      root.setJustifyContent('flex-end');
+      const c = Node.create();
+      c.setHeight(40); // width 'auto' (main), ratio 2 → main 80
+      c.setAspectRatio(2);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('an aspectRatio-derived main size is the flex-grow basis', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(60);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setHeight(30); // width 'auto', ratio 2 → basis 60
+        c.setAspectRatio(2);
+        c.setFlexGrow(1);
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('an aspectRatio-derived cross size is definite — not stretched', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(80);
+      root.setFlexDirection('row'); // cross = height; alignItems stretch (default)
+      const c = Node.create();
+      c.setWidth(50); // height 'auto', ratio 2 → height 25 (NOT stretched to 80)
+      c.setAspectRatio(2);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("an 'auto' root derives its size from aspectRatio over available", () => {
+    matches(
+      () => {
+        const root = Node.create();
+        root.setHeight(60); // width 'auto', ratio 3 → width 180 (not available's 999)
+        root.setAspectRatio(3);
+        const c = Node.create();
+        c.setWidth(10);
+        c.setHeight(10);
+        root.insertChild(c, 0);
+        return root;
+      },
+      { width: 999, height: 999 },
+    );
+  });
+
+  it('an aspectRatio-derived size is clamped to min / max', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(200);
+      const c = Node.create();
+      c.setWidth(100); // height 'auto', ratio 1 → 100, capped by maxHeight 40
+      c.setAspectRatio(1);
+      c.setMaxHeight(40);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('aspectRatio derivation composes with flex-wrap', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 4; i++) {
+        const c = Node.create();
+        c.setHeight(30); // width 'auto', ratio 2 → 60 → two per line
+        c.setAspectRatio(2);
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('nested aspectRatio-derived containers match the imperative', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(160);
+      root.setHeight(160);
+      const mid = Node.create();
+      mid.setHeight(80); // width 'auto', ratio 1.5 → 120
+      mid.setAspectRatio(1.5);
+      const leaf = Node.create();
+      leaf.setHeight(20); // width 'auto', ratio 2 → 40
+      leaf.setAspectRatio(2);
+      mid.insertChild(leaf, 0);
+      root.insertChild(mid, 0);
+      return root;
+    });
+  });
+});
+
 describe('buildFlexGrammar — absolute positioning (slice v8)', () => {
   describe('basic absolute layout', () => {
     it('absolute child with explicit size + top/left edges anchors to parent outer corner', () => {
