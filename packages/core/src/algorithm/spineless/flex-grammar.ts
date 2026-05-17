@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v9) covers:
+ * Current slice (v10) covers:
  *
  *   - flex-direction: `row` and `column`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -20,14 +20,14 @@
  *     axis leftover is distributed among / around the lines per
  *     `flex-start` / `flex-end` / `center` / `space-between` /
  *     `space-around` / `stretch`
- *   - `row-reverse`, `column-reverse`, `wrap-reverse` rejected at
- *     build time
+ *   - flex-wrap: `wrap-reverse` (v10) — the line stack is mirrored
+ *     on the cross axis
+ *   - `row-reverse`, `column-reverse` rejected at build time
  *
- * Subsequent PRs expand the feature set (wrap-reverse, reverse
- * directions, min/max clamping with the multi-iteration freeze
- * loop) one chunk at a time, each gated by a differential test that
- * asserts the grammar produces byte-identical output to the
- * imperative algorithm.
+ * Subsequent PRs expand the feature set (reverse directions, min/max
+ * clamping with the multi-iteration freeze loop) one chunk at a
+ * time, each gated by a differential test that asserts the grammar
+ * produces byte-identical output to the imperative algorithm.
  *
  * Fields emitted per node:
  *
@@ -283,13 +283,6 @@ function makeEmitter(
         `[flex-grammar] flex-direction '${direction}' is not yet supported; only 'row' and 'column' are implemented in this slice`,
       );
     }
-    const wrap = node.style.flexWrap;
-    if (wrap === 'wrap-reverse') {
-      throw new Error(
-        `[flex-grammar] flex-wrap 'wrap-reverse' is not yet supported; only 'nowrap' and 'wrap' are implemented in this slice`,
-      );
-    }
-
     // Absolute children short-circuit the in-flow flex pipeline:
     // they're positioned independently against the parent's OUTER
     // box (no padding subtraction) using their own `style.position`
@@ -427,7 +420,7 @@ function makeEmitter(
     // are all captured inline. The dep graph stays compact (parent
     // size fields only) at the cost of redoing the packing once per
     // child read.
-    if (parent !== null && parent.style.flexWrap === 'wrap') {
+    if (parent !== null && parent.style.flexWrap !== 'nowrap') {
       // Capture the in-flow siblings and this child's index among
       // them (both structural — a fresh build is needed if children
       // are inserted / removed). Every per-sibling value the line
@@ -504,6 +497,7 @@ function makeEmitter(
           read(crossGapInput),
           justify,
           parent.style.alignContent,
+          parent.style.flexWrap === 'wrap-reverse',
           padMainStart,
           padCrossStart,
         );
@@ -1661,6 +1655,7 @@ function evaluateWrappedChild(
   crossGap: number,
   justify: Justify,
   alignContent: Align,
+  reverse: boolean,
   padMainStart: number,
   padCrossStart: number,
 ): { mainSize: number; mainPos: number; crossPos: number } {
@@ -1780,6 +1775,16 @@ function evaluateWrappedChild(
       if (lineSizeBoost > 0) lineCrossSizes[li] = lineCrossSizes[li]! + lineSizeBoost;
       lineCrossStarts[li] = cursor;
       cursor += lineCrossSizes[li]! + crossGap + extraGap;
+    }
+  }
+
+  // `flex-wrap: wrap-reverse` mirrors the line stack on the cross
+  // axis — each line is measured from the cross END. Mirrors the
+  // imperative `reverseLineStack`. (A no-op for a single line, whose
+  // cross size already fills `innerCross`.)
+  if (reverse) {
+    for (let li = 0; li < numLines; li++) {
+      lineCrossStarts[li] = innerCross - lineCrossStarts[li]! - lineCrossSizes[li]!;
     }
   }
 
