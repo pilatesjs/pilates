@@ -57,8 +57,9 @@ function buildFixedColumnTree(rootWidth: number, rootHeight: number, childHeight
  */
 function evaluateGrammar(
   root: Node,
+  available?: { width?: number; height?: number },
 ): Array<{ left: number; top: number; width: number; height: number }> {
-  const { grammar, allFields } = buildFlexGrammar(root);
+  const { grammar, allFields } = buildFlexGrammar(root, available);
   const interp = new TopoInterpreter(grammar);
   const floatByNode = new Map<Node, { left: number; top: number; width: number; height: number }>();
   for (const f of allFields) {
@@ -105,8 +106,9 @@ function evaluateGrammar(
  */
 function evaluateImperative(
   root: Node,
+  available?: { width?: number; height?: number },
 ): Array<{ left: number; top: number; width: number; height: number }> {
-  root.calculateLayout();
+  root.calculateLayout(available?.width, available?.height);
   const out: Array<{ left: number; top: number; width: number; height: number }> = [];
   function visit(n: Node): void {
     out.push({
@@ -185,21 +187,6 @@ describe('buildFlexGrammar — fixed-width row (slice v1)', () => {
         }
       }
       expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
-    });
-  });
-
-  describe('precondition errors', () => {
-    it('throws when a node has non-numeric width', () => {
-      const root = Node.create();
-      root.setHeight(50);
-      // No setWidth → style.width is undefined/auto
-      expect(() => buildFlexGrammar(root)).toThrow(/requires explicit numeric width/);
-    });
-
-    it('throws when a node has non-numeric height', () => {
-      const root = Node.create();
-      root.setWidth(100);
-      expect(() => buildFlexGrammar(root)).toThrow(/requires explicit numeric height/);
     });
   });
 });
@@ -439,27 +426,6 @@ describe('buildFlexGrammar — flex-grow (slice v3)', () => {
     });
   });
 
-  describe('precondition errors', () => {
-    it('throws when a flex-grow sibling lacks an explicit numeric basis', () => {
-      const root = Node.create();
-      root.setWidth(100);
-      root.setHeight(30);
-      root.setFlexDirection('row');
-      const a = Node.create();
-      a.setWidth(20);
-      a.setHeight(30);
-      a.setFlexGrow(1);
-      root.insertChild(a, 0);
-      const b = Node.create();
-      // No setWidth — style.width stays at 'auto'. Building the grammar
-      // must fail: every in-flow node needs an explicit numeric basis,
-      // caught by the precondition when `b` itself is visited.
-      b.setHeight(30);
-      root.insertChild(b, 1);
-      expect(() => buildFlexGrammar(root)).toThrow(/requires explicit numeric width/);
-    });
-  });
-
   describe('regression: pure fixed-size trees still work', () => {
     it('v2 column tree without any grow still matches imperative', () => {
       const root = buildFixedColumnTree(100, 50, [10, 20, 30]);
@@ -623,26 +589,6 @@ describe('buildFlexGrammar — flex-shrink + flex-basis (slice v4)', () => {
       b.setFlexShrink(1);
       root.insertChild(b, 1);
       expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
-    });
-  });
-
-  describe('precondition errors', () => {
-    it('throws when a shrink sibling lacks an explicit numeric basis', () => {
-      const root = Node.create();
-      root.setWidth(50);
-      root.setHeight(30);
-      root.setFlexDirection('row');
-      const a = Node.create();
-      a.setWidth(40);
-      a.setHeight(30);
-      a.setFlexShrink(1);
-      root.insertChild(a, 0);
-      const b = Node.create();
-      // No setWidth and no setFlexBasis — both are 'auto'. Caught by
-      // the in-flow precondition when `b` is visited.
-      b.setHeight(30);
-      root.insertChild(b, 1);
-      expect(() => buildFlexGrammar(root)).toThrow(/requires explicit numeric width/);
     });
   });
 
@@ -2212,6 +2158,166 @@ describe('buildFlexGrammar — min/max in the freeze loop (slice v12b)', () => {
 
   it('regression: flex trees with no min/max are unaffected', () => {
     matches(() => flexRow(300, [{ grow: 1 }, { grow: 2 }, { grow: 1 }]));
+  });
+});
+
+describe("buildFlexGrammar — 'auto' main-axis sizing (slice v13)", () => {
+  // v13 covers `'auto'` on the MAIN axis (→ 0, mirroring
+  // `resolveHypotheticalMainSize`) and the `'auto'` root (→ caller
+  // `available`). `'auto'` on the CROSS axis interacts with
+  // `align-items: stretch` and lands in a later slice — these tests
+  // keep the cross axis explicit.
+  const matches = (make: () => Node, available?: { width?: number; height?: number }): void => {
+    expect(evaluateGrammar(make(), available)).toEqual(evaluateImperative(make(), available));
+  };
+
+  it("a leaf with 'auto' main (height in a column parent) resolves to 0", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      const c = Node.create();
+      c.setWidth(30); // height 'auto' → main axis of a column parent
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("a leaf with 'auto' main (width in a row parent) resolves to 0", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      root.setFlexDirection('row');
+      const c = Node.create();
+      c.setHeight(30); // width 'auto' → main axis of a row parent
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("an 'auto' root sizes both axes from the caller's available", () => {
+    matches(
+      () => {
+        const root = Node.create(); // both axes 'auto'
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(20);
+        root.insertChild(c, 0);
+        return root;
+      },
+      { width: 90, height: 60 },
+    );
+  });
+
+  it("an 'auto' root with no available resolves to 0", () => {
+    matches(() => {
+      const root = Node.create();
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("an 'auto' root with one explicit axis sizes the other from available", () => {
+    matches(
+      () => {
+        const root = Node.create();
+        root.setWidth(100); // height 'auto'
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(20);
+        root.insertChild(c, 0);
+        return root;
+      },
+      { width: 999, height: 50 },
+    );
+  });
+
+  it("'auto' main basis composes with flex-grow (grows from 0)", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setHeight(20); // width 'auto' → basis 0
+        c.setFlexGrow(i + 1);
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it("'auto' main size composes with min-width clamping", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      const c = Node.create();
+      c.setHeight(20); // width 'auto' → 0, then clamped up
+      c.setMinWidth(35);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("'auto' main size composes with justify-content", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(240);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      root.setJustifyContent('space-between');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setHeight(20);
+        c.setWidth(40); // explicit; only the test below varies it
+        root.insertChild(c, i);
+      }
+      // middle child auto main → 0, shifts the space-between gaps
+      root.getChild(1)!.setWidth('auto' as never);
+      return root;
+    });
+  });
+
+  it("an 'auto' absolute child with no derivable size resolves to 0", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(120);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setPosition(Edge.Left, 10);
+      abs.setPosition(Edge.Top, 8);
+      // no width / height, only one edge per axis → 0×0
+      root.insertChild(abs, 0);
+      return root;
+    });
+  });
+
+  it('nested containers with auto main sizes match the imperative', () => {
+    matches(
+      () => {
+        const root = Node.create(); // auto, from available
+        root.setFlexDirection('column');
+        for (let i = 0; i < 2; i++) {
+          const mid = Node.create(); // height 'auto' (main) → 0
+          mid.setWidth(50); // explicit cross — no stretch interaction
+          const leaf = Node.create();
+          leaf.setWidth(15);
+          leaf.setHeight(15);
+          mid.insertChild(leaf, 0);
+          root.insertChild(mid, i);
+        }
+        return root;
+      },
+      { width: 70, height: 70 },
+    );
   });
 });
 
