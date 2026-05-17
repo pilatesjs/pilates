@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v12b) covers:
+ * Current slice (v13) covers:
  *
  *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -36,10 +36,17 @@
  *     is frozen at its bound and its share redistributed, iterating
  *     to a fixpoint, exactly as the imperative `distributeGrow` /
  *     `distributeShrink`.
+ *   - `'auto'` width / height (v13) — a non-measured `'auto'` axis
+ *     resolves to 0 (mirroring `resolveHypotheticalMainSize` /
+ *     `naturalCrossSize`); the root's `'auto'` axis resolves from
+ *     the caller-supplied `available` size, modelled as a root
+ *     input Field so a terminal resize is incremental. (Measure-func
+ *     leaves and `aspectRatio` are subsequent slices.)
  *
- * With v12 the grammar covers the whole imperative flexbox feature
- * set: the Spineless engine is a drop-in for `calculateLayout` on
- * any tree of explicitly-sized nodes.
+ * The grammar covers the whole imperative flexbox feature set for
+ * explicitly-sized trees; phase 6 (v13+) extends it to `'auto'`
+ * sizing, so the Spineless engine becomes a drop-in for
+ * `calculateLayout` on real content-sized trees.
  *
  * Fields emitted per node:
  *
@@ -153,6 +160,19 @@ export interface FlexGrammarOutput {
    * flips whether the parent flex-distributes).
    */
   styleInputs: Map<Node, StyleInputs>;
+  /**
+   * Input Fields for the root's caller-supplied `available` size,
+   * present only for an axis where the root's style is `'auto'`
+   * (v13). `markDirty` one and `recompute()` to re-lay the tree
+   * after a terminal resize.
+   */
+  availableInputs: { width?: Field<number>; height?: Field<number> };
+}
+
+/** Caller-supplied availability for an `'auto'`-sized root. */
+export interface AvailableSize {
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -171,6 +191,15 @@ interface EmitContext {
   allFields: FlexGrammarOutput['allFields'];
   styleInputs: Map<Node, StyleInputs>;
   boundary: Grammar | null;
+  /**
+   * Caller-supplied availability for an `'auto'`-sized root. The
+   * emitter wires it into the root's `available:*` input Fields.
+   * Subtree fragment builds omit it — fragments never re-emit the
+   * root.
+   */
+  available: AvailableSize;
+  /** The `available:*` input Fields, recorded as the emitter wires them. */
+  availableInputs: { width?: Field<number>; height?: Field<number> };
 }
 
 /**
@@ -186,6 +215,46 @@ function makeEmitter(
   ctx: EmitContext,
 ): (node: Node, parent: Node | null, indexInParent: number, priorSiblings: Node[]) => void {
   const { grammar, allFields, styleInputs, boundary } = ctx;
+
+  // Register (once) the input Field for the root's caller-supplied
+  // `available` size on one axis. Its `compute` reads `ctx.available`
+  // live, so a caller that mutates that object and `markDirty`s the
+  // field drives an incremental relayout after a terminal resize.
+  function availableInput(root: Node, axis: 'width' | 'height'): Field<number> {
+    const f = field<number>(root, `available:${axis}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
+    if (!grammar.has(f as Field<unknown>)) {
+      grammar.set(f as Field<unknown>, {
+        deps: [],
+        compute: () => ctx.available[axis] ?? 0,
+      } satisfies FieldRule<number>);
+      ctx.availableInputs[axis] = f;
+    }
+    return f;
+  }
+
+  // Resolve the input Field a node's main / cross size rule reads for
+  // its preferred size on `axis`. Three regimes (the auto/numeric
+  // split is structural — a mutation across it needs a fresh build):
+  //   - numeric `style[axis]` → the live `styleSizeInput`;
+  //   - `'auto'` on the root → the `available:*` input;
+  //   - `'auto'` elsewhere → a constant `0` (v13 — matches the
+  //     imperative `resolveHypotheticalMainSize` / `naturalCrossSize`
+  //     fallback for a non-measured `'auto'` node; v14 / v15 refine
+  //     this to aspectRatio / measure-func resolution).
+  function preferredSizeInput(n: Node, axis: 'width' | 'height', isRoot: boolean): Field<number> {
+    if (typeof n.style[axis] === 'number') return styleSizeInput(n, axis);
+    if (isRoot) return availableInput(n, axis);
+    const f = field<number>(n, `preferred:${axis}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
+    if (!grammar.has(f as Field<unknown>)) {
+      grammar.set(f as Field<unknown>, {
+        deps: [],
+        compute: () => 0,
+      } satisfies FieldRule<number>);
+    }
+    return f;
+  }
 
   function styleInputEntry(n: Node): StyleInputs {
     let entry = styleInputs.get(n);
@@ -356,27 +425,9 @@ function makeEmitter(
       return;
     }
 
-    // In-flow precondition: every node has an explicit numeric basis
-    // on both axes.
-    const styleWRaw = node.style.width;
-    const styleHRaw = node.style.height;
-    if (typeof styleWRaw !== 'number') {
-      throw new Error(
-        `[flex-grammar] node requires explicit numeric width; got ${JSON.stringify(styleWRaw)}`,
-      );
-    }
-    if (typeof styleHRaw !== 'number') {
-      throw new Error(
-        `[flex-grammar] node requires explicit numeric height; got ${JSON.stringify(styleHRaw)}`,
-      );
-    }
-    // styleWRaw / styleHRaw are now type-asserted numbers (proved by
-    // the preceding checks). Compute callbacks re-read `node.style`
-    // live so width / height mutations propagate through recompute()
-    // — these declarations stay only to gate the build-time
-    // precondition, not to be captured.
-    void styleWRaw;
-    void styleHRaw;
+    // `'auto'` width / height are supported (v13): a non-measured
+    // `'auto'` axis resolves to 0, the root's to its caller-supplied
+    // `available`. See `preferredSizeInput`.
 
     // The parent's base axis decides which of {width, height} is the
     // main-axis size for THIS child (and which of {left, top} is the
@@ -448,7 +499,7 @@ function makeEmitter(
     // inputs as deps means a `setWidth` / `setHeight` / `setMinWidth`
     // … mutation reaches this field precisely.
     const crossKey: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
-    const crossSizeInput = styleSizeInput(node, crossKey);
+    const crossSizeInput = preferredSizeInput(node, crossKey, parent === null);
     const minCrossInput = minMaxInput(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
     const maxCrossInput = minMaxInput(node, crossKey === 'width' ? 'maxWidth' : 'maxHeight');
     grammar.set(crossSizeField, {
@@ -491,8 +542,8 @@ function makeEmitter(
         wrapSibs.push({
           node: sib,
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
-          mainInput: styleSizeInput(sib, mainSizeName),
-          crossInput: styleSizeInput(sib, crossKeyName),
+          mainInput: preferredSizeInput(sib, mainSizeName, false),
+          crossInput: preferredSizeInput(sib, crossKeyName, false),
           growInput: flexWeightInput(sib, 'flexGrow'),
           shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, mainStart),
@@ -609,7 +660,7 @@ function makeEmitter(
       // flexBasis + main-size + min/max inputs so a size or clamp
       // mutation reaches this field precisely.
       const flexBasisInput = styleSizeInput(node, 'flexBasis');
-      const mainInput = styleSizeInput(node, mainSizeName);
+      const mainInput = preferredSizeInput(node, mainSizeName, parent === null);
       const minMainInput = minMaxInput(node, mainSizeName === 'width' ? 'minWidth' : 'minHeight');
       const maxMainInput = minMaxInput(node, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight');
       grammar.set(mainSizeField, {
@@ -645,7 +696,7 @@ function makeEmitter(
         flexSibs.push({
           node: sib,
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
-          mainInput: styleSizeInput(sib, mainSizeName),
+          mainInput: preferredSizeInput(sib, mainSizeName, false),
           growInput: flexWeightInput(sib, 'flexGrow'),
           shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, flexMainStart),
@@ -879,16 +930,23 @@ function makeEmitter(
  * each node's `{width, height, left, top}`. See the module header
  * for the field rules. A whole-tree build — `boundary` is `null`.
  *
- * Requires every in-flow node to have numeric `style.width` /
- * `style.height`; throws otherwise.
+ * `'auto'` width / height are supported (v13): a non-measured
+ * `'auto'` axis resolves to 0; the root's `'auto'` axis resolves
+ * from `available` (matching `calculateLayout`'s availability args).
  *
  * @internal
  */
-export function buildFlexGrammar(root: Node): FlexGrammarOutput {
+export function buildFlexGrammar(root: Node, available: AvailableSize = {}): FlexGrammarOutput {
   const grammar: Grammar = new Map();
   const allFields: FlexGrammarOutput['allFields'] = [];
   const styleInputs: Map<Node, StyleInputs> = new Map();
-  makeEmitter({ grammar, allFields, styleInputs, boundary: null })(root, null, 0, []);
+  const availableInputs: { width?: Field<number>; height?: Field<number> } = {};
+  makeEmitter({ grammar, allFields, styleInputs, boundary: null, available, availableInputs })(
+    root,
+    null,
+    0,
+    [],
+  );
 
   return {
     grammar,
@@ -900,6 +958,7 @@ export function buildFlexGrammar(root: Node): FlexGrammarOutput {
     },
     allFields,
     styleInputs,
+    availableInputs,
   };
 }
 
@@ -1037,6 +1096,8 @@ export function buildAppendFragment(
       allFields: [],
       styleInputs: new Map(),
       boundary: prev.grammar,
+      available: {},
+      availableInputs: {},
     };
     const priors: Node[] = [];
     for (let i = 0; i < count - 1; i++) {
@@ -1059,6 +1120,7 @@ export function buildAppendFragment(
       rootFields: prev.rootFields,
       allFields: [...prev.allFields, ...ctx.allFields],
       styleInputs: mergeStyleInputsMap(prev.styleInputs, ctx.styleInputs),
+      availableInputs: prev.availableInputs,
     };
     return { additions: ctx.grammar, newRoots, rebinds: [], next };
   }
@@ -1098,6 +1160,7 @@ export function buildAppendFragment(
     rootFields: prev.rootFields,
     allFields: fresh.allFields,
     styleInputs: fresh.styleInputs,
+    availableInputs: fresh.availableInputs,
   };
   return { additions, newRoots, rebinds, next };
 }
@@ -1242,6 +1305,7 @@ export function buildRemoveFragment(
       rootFields: prev.rootFields,
       allFields: prev.allFields.filter((e) => !removedNodes.has(e.node)),
       styleInputs: new Map([...prev.styleInputs].filter(([n]) => !removedNodes.has(n))),
+      availableInputs: prev.availableInputs,
     };
     return { removed, rebinds: [], next };
   }
@@ -1272,6 +1336,7 @@ export function buildRemoveFragment(
     rootFields: prev.rootFields,
     allFields: fresh.allFields,
     styleInputs: fresh.styleInputs,
+    availableInputs: fresh.availableInputs,
   };
   return { removed, rebinds, next };
 }
