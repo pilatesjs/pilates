@@ -49,9 +49,17 @@ grammar, prove equality."
   across the inner-main box (`padStart + innerMain − innerPos −
   childMain`), exactly the imperative `flipMainAxis`. Applies
   uniformly to the flex-start, justified and wrap regimes.
-- **v12 — `min` / `max` clamping.** The hardest: flex distribution
-  becomes the imperative freeze loop — clamp violating items, freeze
-  them, redistribute the remainder, iterate to a fixpoint.
+- **v12a — `min` / `max` clamping, leaf sizes (landed).** min / max
+  modelled as input Fields. A node's main size (when the parent does
+  not flex-distribute), its cross size, and an absolute child's
+  width / height are clamped to the node's own
+  `[minWidth/Height, maxWidth/Height]` — single `clampSize`
+  applications, no iteration.
+- **v12b — `min` / `max` in the freeze loop.** The hardest: flex
+  distribution becomes the imperative freeze loop — clamp violating
+  items, freeze them, redistribute the remainder, iterate to a
+  fixpoint. Also feeds the clamped hypothetical into the wrap line
+  packer.
 
 ## Slice v9 — `align-content`
 
@@ -125,3 +133,46 @@ distribution, padding + margin + gap, `align-items`, `flex-wrap`,
 child coexisting, and nested reverse containers — each
 byte-identical to the imperative. The obsolete v2 "throws on
 row-reverse / column-reverse" rejection tests are removed.
+
+## Slice v12a — min/max clamping of leaf sizes
+
+`min{Width,Height}` / `max{Width,Height}` are modelled as leaf input
+Fields (`minMaxInput`), alongside the other numeric style props. The
+`max*` inputs fold the `undefined` "no upper bound" sentinel to
+`Infinity`, so every consumer clamps with one unconditional
+`clampMinMax(value, min, max)` (floor before cap — when `min > max`
+the cap wins, exactly the imperative `clampSize`).
+
+Clamping is applied at three single-shot sites — no iteration, so
+this slice is independent of the freeze loop:
+
+- the **non-flex-distributed main size** rule — `clampMinMax` wraps
+  the resolved basis (the imperative `buildItem` clamps the
+  hypothetical even when no distribution follows; the root takes
+  this path too);
+- the **cross size** rule — the explicit cross style value clamped,
+  matching the imperative `finalCross`. The `align-items: center` /
+  `flex-end` cross-position rules now read the clamped `crossSize`
+  layout field rather than the raw style input, so they track the
+  clamp;
+- **absolute children** — `emitAbsoluteRules` clamps width and
+  height in every branch (explicit, edge-derived, and the `0`
+  fallback), mirroring `layoutAbsoluteChild`.
+
+`StyleInputs` and `style-dirty.ts`'s `ScalarStyleProp` gain the four
+props, so a `setMinWidth` … mutation drives a precise incremental
+relayout.
+
+Clamping *inside* the flex-distribution freeze loop and the wrap
+line packer is deferred to v12b — v12a's differential tests stay on
+non-wrap, non-distributed trees plus absolute children.
+
+### Tests
+
+`flex-grammar.test.ts` gains a `slice v12a` describe (16 tests):
+min / max on the main and cross axes, row and column parents, the
+`min > max` cap-wins case, clamps feeding `align-items` center /
+flex-end, composition with padding / margin / gap, clamped sizes
+feeding `justify-content` leftover and a reverse-direction flip, the
+root clamping its own size, three absolute-child cases (explicit,
+edge-derived, `0`-fallback `minWidth`), and a no-clamp regression.
