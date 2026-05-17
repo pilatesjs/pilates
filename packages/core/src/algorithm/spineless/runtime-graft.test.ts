@@ -390,6 +390,42 @@ describe('SpinelessRuntime.detach — primitive', () => {
     // `c` (outside the set) still reads `b`.
     expect(() => rt.detach([b])).toThrow(/outside the removed set/);
   });
+
+  it('auto-cleans a leaf input orphaned by the removed set', () => {
+    const n = Node.create();
+    const leaf = field<number>(n, 'leaf');
+    const g = field<number>(n, 'g');
+    const grammar: Grammar = new Map();
+    grammar.set(leaf, { deps: [], compute: () => 5 });
+    grammar.set(g, { deps: [leaf], compute: (read) => read(leaf) + 1 });
+    const rt = new SpinelessRuntime(grammar, [g]);
+    rt.init();
+    expect(rt.isTracked(leaf)).toBe(true);
+
+    // `g` was `leaf`'s only reader — detaching `g` orphans `leaf`,
+    // which (being a dependency-less leaf) is cleaned up too.
+    rt.detach([g]);
+    expect(rt.isTracked(g)).toBe(false);
+    expect(rt.isTracked(leaf)).toBe(false);
+  });
+
+  it('keeps a leaf input still read by a surviving field', () => {
+    const n = Node.create();
+    const leaf = field<number>(n, 'leaf');
+    const g = field<number>(n, 'g');
+    const h = field<number>(n, 'h');
+    const grammar: Grammar = new Map();
+    grammar.set(leaf, { deps: [], compute: () => 5 });
+    grammar.set(g, { deps: [leaf], compute: (read) => read(leaf) });
+    grammar.set(h, { deps: [leaf], compute: (read) => read(leaf) });
+    const rt = new SpinelessRuntime(grammar, [g, h]);
+    rt.init();
+
+    rt.detach([g]);
+    // `h` still reads `leaf` — it must survive the orphan sweep.
+    expect(rt.isTracked(leaf)).toBe(true);
+    expect(rt.isTracked(h)).toBe(true);
+  });
 });
 
 describe('SpinelessRuntime.rebindRule — primitive', () => {

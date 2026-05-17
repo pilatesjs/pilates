@@ -326,3 +326,37 @@ drops from ~7.5 ms to ~3.7 ms per op (~5× faster than the naive
 rebuild). The remaining cost is `buildRemoveFragment`, which still
 rebuilds the grammar O(tree) to diff out the removed fields — the
 matching O(subtree) removal is the next slice.
+
+## Slice 7 — O(subtree) removal
+
+`buildRemoveFragment`, in the simple regime, now builds the patch in
+**O(subtree)** with no grammar rebuild. Removal only *identifies*
+existing fields to drop, so `removed` is gathered straight from
+`prev` by walking the removed subtree (`nodeFields` reads each
+node's four layout fields plus its `styleInputs` entry).
+
+The input fields a removed subtree *orphaned* — e.g. the new last
+child's main-end margin once its follower is gone, or the parent's
+gap if it drops to a single child — are not enumerated. Instead
+`SpinelessRuntime.detach` sweeps them: after the cut, any surviving
+field the removed set read that is now a dependency-less leaf is
+dropped too (a leaf has no dependencies, so this cannot cascade).
+That makes the orphan handling robust to the grammar's exact shape.
+`runtime.isTracked(field)` lets `createStyleDirtier` no-op on a
+stale reference to an orphaned input.
+
+`hotstructural` after this slice — per structural op:
+
+| Engine | Mean |
+|---|---:|
+| `@pilates/core (layout)` imperative | ~0.27 ms |
+| `@pilates/core (spineless)` incremental | ~0.30 ms |
+| `yoga-layout (WASM)` | ~0.10 ms |
+| `@pilates/core (spineless rebuild)` | ~25 ms |
+
+The incremental structural path is now **~70× faster than a full
+Spineless rebuild** and runs **on par with the imperative
+`calculateLayout`** — structural incrementality has caught up to a
+tuned from-scratch relayout. Phase 5c's goal is met: insert and
+remove, in every regime, without a rebuild and without a
+whole-tree grammar walk.

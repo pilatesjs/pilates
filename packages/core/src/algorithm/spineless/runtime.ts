@@ -59,6 +59,8 @@
  * reverse-dependency edges into surviving fields. Valid when the
  * removed set is closed under "is read by" (nothing outside reads
  * in), which holds for removing a last child in the simple regime.
+ * Surviving leaf-input fields the removed set was the sole reader of
+ * are dropped too — the caller passes only the subtree's own fields.
  *
  * **Rebind** (`rebindRule(field, newRule)`): replace an existing
  * field's rule — used when a structural change rewrites a surviving
@@ -174,6 +176,14 @@ export class SpinelessRuntime {
    * last child from a parent in the simple regime (nothing outside
    * that subtree reads into it). No `recompute` is needed afterward —
    * removing a topological-tail subtree changes no surviving field.
+   *
+   * After the cut, any surviving leaf-input field the removed set was
+   * the sole reader of is **orphaned** — nothing reads it and the
+   * grammar cannot re-read it without a fresh build. Such orphans are
+   * dropped too (a leaf has no dependencies, so this cannot cascade).
+   * That makes the caller's removed set just the subtree's own
+   * fields — orphan input fields, e.g. the previous last child's
+   * now-unread main-end margin, need not be enumerated.
    */
   detach(fields: Iterable<Field<unknown>>): void {
     if (!this.initDone) {
@@ -195,6 +205,19 @@ export class SpinelessRuntime {
       }
     }
 
+    // Surviving fields the removed set read — candidates for orphan
+    // cleanup once their reverse-dependency lists are pruned.
+    const survivingDeps = new Set<Field<unknown>>();
+
+    const drop = (f: Field<unknown>): void => {
+      const omNode = this.omNodes.get(f);
+      if (omNode !== undefined) this.om.delete(omNode);
+      this.omNodes.delete(f);
+      this.values.delete(f);
+      this.dependents.delete(f);
+      this.grammar.delete(f);
+    };
+
     for (const f of removing) {
       // Prune `f` from the reverse-dependency list of each field it
       // read (a surviving dep must forget this removed dependent).
@@ -206,14 +229,20 @@ export class SpinelessRuntime {
             const i = revs.indexOf(f);
             if (i !== -1) revs.splice(i, 1);
           }
+          if (!removing.has(dep)) survivingDeps.add(dep);
         }
       }
-      const omNode = this.omNodes.get(f);
-      if (omNode !== undefined) this.om.delete(omNode);
-      this.omNodes.delete(f);
-      this.values.delete(f);
-      this.dependents.delete(f);
-      this.grammar.delete(f);
+      drop(f);
+    }
+
+    // Orphan cleanup: a surviving dep with no dependents left, whose
+    // own rule is a leaf (no dependencies), is now dead weight.
+    for (const dep of survivingDeps) {
+      const revs = this.dependents.get(dep);
+      if (revs !== undefined && revs.length > 0) continue;
+      const rule = this.grammar.get(dep);
+      if (rule === undefined || rule.deps.length > 0) continue;
+      drop(dep);
     }
 
     // The OM tail may have been among the removed fields; recompute
@@ -351,6 +380,16 @@ export class SpinelessRuntime {
       );
     }
     return this.values.get(field as Field<unknown>) as T;
+  }
+
+  /**
+   * Whether `field` is currently tracked by the runtime — integrated
+   * and not since detached. A caller holding a possibly-stale field
+   * reference (e.g. an input field orphaned by a `detach`) can check
+   * this before `markDirty`.
+   */
+  isTracked(field: Field<unknown>): boolean {
+    return this.omNodes.has(field);
   }
 
   /**
