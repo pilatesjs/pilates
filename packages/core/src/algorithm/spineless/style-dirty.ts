@@ -96,9 +96,15 @@ export function createStyleDirtier(
       f = entry[prop];
     }
 
-    // An absent Field means the grammar does not read that prop for
-    // this node — that mutation cannot move any layout field, so
-    // marking nothing is the correct (and precise) behaviour.
-    if (f !== undefined) runtime.markDirty(f as Field<unknown>);
+    // Marking nothing is the correct, precise behaviour when the
+    // mutation cannot move any layout field. That is the case both
+    // when no input Field exists for the prop, and when one exists
+    // but has been orphaned by a `detach` — e.g. the previous last
+    // child's main-end margin after its follower was removed. An
+    // orphaned input is no longer tracked by the runtime; a stale
+    // reference to it may linger in a `styleInputs` map.
+    if (f !== undefined && runtime.isTracked(f as Field<unknown>)) {
+      runtime.markDirty(f as Field<unknown>);
+    }
   };
 }
