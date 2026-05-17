@@ -2714,6 +2714,170 @@ describe('buildFlexGrammar — aspectRatio derivation (slice v15)', () => {
   });
 });
 
+describe('buildFlexGrammar — measure-func leaves, main axis (slice v16a)', () => {
+  const matches = (make: () => Node, available?: { width?: number; height?: number }): void => {
+    expect(evaluateGrammar(make(), available)).toEqual(evaluateImperative(make(), available));
+  };
+
+  it("a measure leaf's 'auto' main resolves to the measured size (column parent)", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      const leaf = Node.create();
+      leaf.setWidth(40); // explicit cross
+      leaf.setMeasureFunc(() => ({ width: 40, height: 26 }));
+      root.insertChild(leaf, 0);
+      return root;
+    });
+  });
+
+  it("a measure leaf's 'auto' main resolves to the measured size (row parent)", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      root.setFlexDirection('row');
+      const leaf = Node.create();
+      leaf.setHeight(30); // explicit cross
+      leaf.setMeasureFunc(() => ({ width: 55, height: 30 }));
+      root.insertChild(leaf, 0);
+      return root;
+    });
+  });
+
+  it('the measurer receives the cross style size as its AtMost constraint', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      const leaf = Node.create();
+      leaf.setWidth(45); // cross constraint passed to the measurer
+      // height (main) depends on the width constraint — text-wrap style.
+      leaf.setMeasureFunc((w) => ({ width: w, height: Math.floor(w / 3) + 4 }));
+      root.insertChild(leaf, 0);
+      return root;
+    });
+  });
+
+  it('a numeric flex-basis wins over the measurer (no measure call)', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      const leaf = Node.create();
+      leaf.setWidth(40);
+      leaf.setFlexBasis(33); // numeric basis → measurer not consulted for main
+      leaf.setMeasureFunc(() => ({ width: 40, height: 999 }));
+      root.insertChild(leaf, 0);
+      return root;
+    });
+  });
+
+  it('a measured main size feeds flex-grow as the basis', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(60);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 2; i++) {
+        const leaf = Node.create();
+        leaf.setHeight(30);
+        leaf.setFlexGrow(1);
+        leaf.setMeasureFunc(() => ({ width: 20 + i * 10, height: 30 }));
+        root.insertChild(leaf, i);
+      }
+      return root;
+    });
+  });
+
+  it('a measured main size is clamped to min / max', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(200);
+      const a = Node.create();
+      a.setWidth(30);
+      a.setMinHeight(50); // measured 12, clamped up to 50
+      a.setMeasureFunc(() => ({ width: 30, height: 12 }));
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setWidth(30);
+      b.setMaxHeight(20); // measured 90, clamped down to 20
+      b.setMeasureFunc(() => ({ width: 30, height: 90 }));
+      root.insertChild(b, 1);
+      return root;
+    });
+  });
+
+  it('a measure leaf coexists with non-measure siblings in a flex row', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(50);
+      root.setFlexDirection('row');
+      const plain = Node.create();
+      plain.setWidth(40);
+      plain.setHeight(30);
+      root.insertChild(plain, 0);
+      const leaf = Node.create();
+      leaf.setHeight(30);
+      leaf.setMeasureFunc(() => ({ width: 35, height: 30 }));
+      root.insertChild(leaf, 1);
+      return root;
+    });
+  });
+
+  it('measured main sizes feed justify-content leftover', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      root.setJustifyContent('space-between');
+      for (let i = 0; i < 3; i++) {
+        const leaf = Node.create();
+        leaf.setHeight(20);
+        leaf.setMeasureFunc(() => ({ width: 30 + i * 15, height: 20 }));
+        root.insertChild(leaf, i);
+      }
+      return root;
+    });
+  });
+
+  it('measure leaves compose with flex-wrap', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 4; i++) {
+        const leaf = Node.create();
+        leaf.setHeight(25);
+        leaf.setMeasureFunc(() => ({ width: 60, height: 25 }));
+        root.insertChild(leaf, i);
+      }
+      return root;
+    });
+  });
+
+  it('a measure leaf inside an auto-sized column container', () => {
+    matches(
+      () => {
+        const root = Node.create(); // auto from available
+        root.setFlexDirection('column');
+        const leaf = Node.create();
+        leaf.setWidth(40);
+        leaf.setMeasureFunc(() => ({ width: 40, height: 22 }));
+        root.insertChild(leaf, 0);
+        return root;
+      },
+      { width: 80, height: 80 },
+    );
+  });
+});
+
 describe('buildFlexGrammar — absolute positioning (slice v8)', () => {
   describe('basic absolute layout', () => {
     it('absolute child with explicit size + top/left edges anchors to parent outer corner', () => {
