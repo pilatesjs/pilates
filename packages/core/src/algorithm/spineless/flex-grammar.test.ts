@@ -2006,6 +2006,215 @@ describe('buildFlexGrammar — min/max clamping (slice v12a)', () => {
   });
 });
 
+describe('buildFlexGrammar — min/max in the freeze loop (slice v12b)', () => {
+  const matches = (make: () => Node): void => {
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  };
+
+  // A row flex container; each child is height 20 with the given
+  // per-child grow / shrink / basis / width / min / max.
+  function flexRow(
+    rootWidth: number,
+    children: Array<{
+      grow?: number;
+      shrink?: number;
+      basis?: number;
+      width?: number;
+      minWidth?: number;
+      maxWidth?: number;
+    }>,
+  ): Node {
+    const root = Node.create();
+    root.setWidth(rootWidth);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    children.forEach((opt, i) => {
+      const c = Node.create();
+      c.setWidth(opt.width ?? 20);
+      c.setHeight(20);
+      if (opt.grow !== undefined) c.setFlexGrow(opt.grow);
+      if (opt.shrink !== undefined) c.setFlexShrink(opt.shrink);
+      if (opt.basis !== undefined) c.setFlexBasis(opt.basis);
+      if (opt.minWidth !== undefined) c.setMinWidth(opt.minWidth);
+      if (opt.maxWidth !== undefined) c.setMaxWidth(opt.maxWidth);
+      root.insertChild(c, i);
+    });
+    return root;
+  }
+
+  it('flex-grow: a child hitting max-width freezes, leftover redistributes', () => {
+    matches(() => flexRow(300, [{ grow: 1, maxWidth: 40 }, { grow: 1 }, { grow: 1 }]));
+  });
+
+  it('flex-grow: a child with min-width raises its hypothetical', () => {
+    matches(() => flexRow(200, [{ grow: 1, minWidth: 70 }, { grow: 1 }]));
+  });
+
+  it('flex-shrink: a child hitting min-width freezes, overflow redistributes', () => {
+    matches(() =>
+      flexRow(120, [
+        { shrink: 1, width: 80, minWidth: 60 },
+        { shrink: 1, width: 80 },
+        { shrink: 1, width: 80 },
+      ]),
+    );
+  });
+
+  it('flex-shrink: a child with max-width below basis is pre-clamped', () => {
+    matches(() =>
+      flexRow(150, [
+        { shrink: 1, width: 100, maxWidth: 50 },
+        { shrink: 1, width: 100 },
+      ]),
+    );
+  });
+
+  it('flex-grow: cascading freezes need multiple freeze-loop iterations', () => {
+    matches(() =>
+      flexRow(400, [
+        { grow: 1, maxWidth: 30 },
+        { grow: 1, maxWidth: 60 },
+        { grow: 1 },
+        { grow: 1 },
+      ]),
+    );
+  });
+
+  it('flex-grow: every child hits max — leftover stays unconsumed', () => {
+    matches(() =>
+      flexRow(500, [
+        { grow: 1, maxWidth: 40 },
+        { grow: 1, maxWidth: 40 },
+        { grow: 1, maxWidth: 40 },
+      ]),
+    );
+  });
+
+  it('numeric flex-basis clamped up to min-width', () => {
+    matches(() =>
+      flexRow(300, [
+        { grow: 1, basis: 10, minWidth: 80 },
+        { grow: 1, basis: 10 },
+      ]),
+    );
+  });
+
+  it('numeric flex-basis clamped down to max-width', () => {
+    matches(() =>
+      flexRow(300, [
+        { grow: 1, basis: 200, maxWidth: 60 },
+        { grow: 1, basis: 40 },
+      ]),
+    );
+  });
+
+  it('min greater than max during distribution — the cap wins', () => {
+    matches(() => flexRow(300, [{ grow: 1, minWidth: 90, maxWidth: 30 }, { grow: 1 }]));
+  });
+
+  it('column-direction flex distribution clamps on the height axis', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(40);
+      root.setHeight(300);
+      root.setFlexDirection('column');
+      const specs = [
+        { minHeight: 50 },
+        { maxHeight: 60 },
+        {} as { minHeight?: number; maxHeight?: number },
+      ];
+      specs.forEach((opt, i) => {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(20);
+        c.setFlexGrow(1);
+        if (opt.minHeight !== undefined) c.setMinHeight(opt.minHeight);
+        if (opt.maxHeight !== undefined) c.setMaxHeight(opt.maxHeight);
+        root.insertChild(c, i);
+      });
+      return root;
+    });
+  });
+
+  it('freeze-loop clamps feed justify-content leftover', () => {
+    matches(() => {
+      const root = flexRow(360, [{ grow: 1, maxWidth: 50 }, { grow: 1 }, { grow: 1 }]);
+      root.setJustifyContent('space-between');
+      return root;
+    });
+  });
+
+  it('freeze-loop clamps feed a reverse-direction flip', () => {
+    matches(() => {
+      const root = flexRow(300, [{ grow: 1, maxWidth: 40 }, { grow: 1 }, { grow: 1 }]);
+      root.setFlexDirection('row-reverse');
+      return root;
+    });
+  });
+
+  it('wrap container: clamped hypothetical changes line packing', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(160);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      const widths = [100, 100, 100];
+      widths.forEach((w, i) => {
+        const c = Node.create();
+        c.setWidth(w);
+        c.setHeight(20);
+        c.setFlexShrink(1);
+        c.setMaxWidth(70);
+        root.insertChild(c, i);
+      });
+      return root;
+    });
+  });
+
+  it('wrap container: per-line distribution runs the freeze loop', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 4; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(20);
+        c.setFlexGrow(1);
+        if (i === 0) c.setMaxWidth(55);
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('wrap container: cross-axis clamp feeds line cross sizing', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(140);
+      root.setHeight(200);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 4; i++) {
+        const c = Node.create();
+        c.setWidth(80);
+        c.setHeight(20);
+        c.setFlexGrow(1);
+        c.setMinHeight(i === 1 ? 50 : 0);
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('regression: flex trees with no min/max are unaffected', () => {
+    matches(() => flexRow(300, [{ grow: 1 }, { grow: 2 }, { grow: 1 }]));
+  });
+});
+
 describe('buildFlexGrammar — absolute positioning (slice v8)', () => {
   describe('basic absolute layout', () => {
     it('absolute child with explicit size + top/left edges anchors to parent outer corner', () => {
