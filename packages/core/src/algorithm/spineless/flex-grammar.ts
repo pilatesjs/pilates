@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v8) covers:
+ * Current slice (v9) covers:
  *
  *   - flex-direction: `row` and `column`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -16,14 +16,18 @@
  *     or fall back to 0. Absolute children are filtered out of every
  *     in-flow computation (flex distribution, justify leftover,
  *     wrap line packing).
+ *   - align-content (v9) — for multi-line wrap containers, the cross-
+ *     axis leftover is distributed among / around the lines per
+ *     `flex-start` / `flex-end` / `center` / `space-between` /
+ *     `space-around` / `stretch`
  *   - `row-reverse`, `column-reverse`, `wrap-reverse` rejected at
  *     build time
  *
- * Subsequent PRs expand the feature set (align-content variants,
- * wrap-reverse, reverse directions, min/max clamping with the
- * multi-iteration freeze loop) one chunk at a time, each gated by a
- * differential test that asserts the grammar produces byte-identical
- * output to the imperative algorithm.
+ * Subsequent PRs expand the feature set (wrap-reverse, reverse
+ * directions, min/max clamping with the multi-iteration freeze
+ * loop) one chunk at a time, each gated by a differential test that
+ * asserts the grammar produces byte-identical output to the
+ * imperative algorithm.
  *
  * Fields emitted per node:
  *
@@ -285,11 +289,6 @@ function makeEmitter(
         `[flex-grammar] flex-wrap 'wrap-reverse' is not yet supported; only 'nowrap' and 'wrap' are implemented in this slice`,
       );
     }
-    if (wrap === 'wrap' && node.style.alignContent !== 'flex-start') {
-      throw new Error(
-        `[flex-grammar] under flex-wrap='wrap', align-content other than 'flex-start' is not yet supported; got '${node.style.alignContent}'`,
-      );
-    }
 
     // Absolute children short-circuit the in-flow flex pipeline:
     // they're positioned independently against the parent's OUTER
@@ -504,6 +503,7 @@ function makeEmitter(
           read(mainGapInput),
           read(crossGapInput),
           justify,
+          parent.style.alignContent,
           padMainStart,
           padCrossStart,
         );
@@ -1639,10 +1639,10 @@ interface WrapSibling {
  * then resolve the indicated child's `{mainSize, mainPos, crossPos}`.
  *
  * Mirrors the imperative `packIntoLines` → `distributeFlexInLine` →
- * `computeLineCrossSizes` → `positionLinesOnCross` →
- * `positionItemsInLine` → `crossAlignItemsInLine` chain. The
- * single-line case (one packed line) collapses crossSize to
- * `innerCross` and crossPos of the line to 0, matching the
+ * `computeLineCrossSizes` → `positionLinesOnCross` (the `alignContent`
+ * line distribution) → `positionItemsInLine` → `crossAlignItemsInLine`
+ * chain. The single-line case (one packed line) collapses crossSize
+ * to `innerCross` and crossPos of the line to 0, matching the
  * imperative's `singleLineMode` branch.
  *
  * Called once per child per layout pass; the per-child callbacks pick
@@ -1660,6 +1660,7 @@ function evaluateWrappedChild(
   mainGap: number,
   crossGap: number,
   justify: Justify,
+  alignContent: Align,
   padMainStart: number,
   padCrossStart: number,
 ): { mainSize: number; mainPos: number; crossPos: number } {
@@ -1733,17 +1734,52 @@ function evaluateWrappedChild(
     }
   }
 
-  // Per-line cross start: 0 for single-line; cumulative + crossGap
-  // for multi-line (matches imperative's positionLinesOnCross with
-  // align-content='flex-start').
+  // Per-line cross start (align-content). Single-line: the one line
+  // sits at 0. Multi-line: distribute the cross-axis leftover among
+  // or around the lines per `alignContent`, mirroring the imperative
+  // `positionLinesOnCross`. `stretch` / `auto` grows each line's
+  // cross size to absorb the leftover instead.
   const lineCrossStarts: number[] = new Array(numLines);
   if (!isMultiline) {
     lineCrossStarts[0] = 0;
   } else {
+    let used = 0;
+    for (let li = 0; li < numLines; li++) used += lineCrossSizes[li]!;
+    used += (numLines - 1) * crossGap;
+    const leftover = innerCross - used;
+
     let cursor = 0;
+    let extraGap = 0;
+    let lineSizeBoost = 0;
+    switch (alignContent) {
+      case 'flex-end':
+        cursor = leftover;
+        break;
+      case 'center':
+        cursor = leftover / 2;
+        break;
+      case 'space-between':
+        if (numLines > 1 && leftover > 0) extraGap = leftover / (numLines - 1);
+        break;
+      case 'space-around':
+        if (leftover > 0) {
+          const slot = leftover / numLines;
+          cursor = slot / 2;
+          extraGap = slot;
+        }
+        break;
+      case 'stretch':
+      case 'auto':
+        if (leftover > 0) lineSizeBoost = leftover / numLines;
+        break;
+      default:
+        // flex-start: lines stacked from the cross start, no extra.
+        break;
+    }
     for (let li = 0; li < numLines; li++) {
+      if (lineSizeBoost > 0) lineCrossSizes[li] = lineCrossSizes[li]! + lineSizeBoost;
       lineCrossStarts[li] = cursor;
-      cursor += lineCrossSizes[li]! + crossGap;
+      cursor += lineCrossSizes[li]! + crossGap + extraGap;
     }
   }
 

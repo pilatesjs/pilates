@@ -1419,16 +1419,6 @@ describe('buildFlexGrammar — flex-wrap (slice v7)', () => {
       root.setFlexWrap('wrap-reverse');
       expect(() => buildFlexGrammar(root)).toThrow(/flex-wrap.*wrap-reverse/);
     });
-
-    it('throws on non-flex-start align-content under wrap', () => {
-      const root = Node.create();
-      root.setWidth(100);
-      root.setHeight(40);
-      root.setFlexDirection('row');
-      root.setFlexWrap('wrap');
-      root.setAlignContent('center');
-      expect(() => buildFlexGrammar(root)).toThrow(/align-content/);
-    });
   });
 
   describe('regression: nowrap trees still match', () => {
@@ -1447,6 +1437,113 @@ describe('buildFlexGrammar — flex-wrap (slice v7)', () => {
       }
       expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
     });
+  });
+});
+
+describe('buildFlexGrammar — align-content (slice v9)', () => {
+  // A row-wrap container whose items are each wider than the line,
+  // so they stack one-per-line — `count` lines — inside a cross
+  // (height) box with `crossLeftover` slack for align-content to
+  // distribute.
+  function rowWrapLines(count: number, alignContent: string, crossLeftover: number): Node {
+    const root = Node.create();
+    root.setWidth(80);
+    root.setHeight(count * 20 + crossLeftover);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    root.setAlignContent(alignContent as never);
+    for (let i = 0; i < count; i++) {
+      const c = Node.create();
+      c.setWidth(60);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    return root;
+  }
+
+  for (const ac of [
+    'flex-start',
+    'flex-end',
+    'center',
+    'space-between',
+    'space-around',
+    'stretch',
+  ]) {
+    it(`row wrap, 3 lines, align-content: ${ac} — matches imperative`, () => {
+      expect(evaluateGrammar(rowWrapLines(3, ac, 60))).toEqual(
+        evaluateImperative(rowWrapLines(3, ac, 60)),
+      );
+    });
+  }
+
+  it('row wrap, 2 lines, align-content center — matches imperative', () => {
+    expect(evaluateGrammar(rowWrapLines(2, 'center', 50))).toEqual(
+      evaluateImperative(rowWrapLines(2, 'center', 50)),
+    );
+  });
+
+  it('align-content with no cross leftover is a no-op', () => {
+    expect(evaluateGrammar(rowWrapLines(3, 'space-between', 0))).toEqual(
+      evaluateImperative(rowWrapLines(3, 'space-between', 0)),
+    );
+  });
+
+  it('single-line wrap ignores align-content', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      root.setAlignContent('center');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('column wrap distributes lines along the width — matches imperative', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(80);
+      root.setFlexDirection('column');
+      root.setFlexWrap('wrap');
+      root.setAlignContent('space-around');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(60);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('align-content stretch composes with per-item align-items', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(80);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      root.setAlignContent('stretch');
+      root.setAlignItems('center');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
   });
 });
 
