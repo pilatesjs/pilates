@@ -1816,6 +1816,196 @@ describe('buildFlexGrammar — reverse directions (slice v11)', () => {
   });
 });
 
+describe('buildFlexGrammar — min/max clamping (slice v12a)', () => {
+  // A single-child container; the child carries explicit width +
+  // height and optional min/max clamps. No flex weights / numeric
+  // flexBasis, so the parent does NOT flex-distribute — this is the
+  // v12a no-freeze-loop path.
+  function clampedChild(opts: {
+    width: number;
+    height: number;
+    minWidth?: number;
+    maxWidth?: number;
+    minHeight?: number;
+    maxHeight?: number;
+    direction?: 'row' | 'column';
+  }): Node {
+    const root = Node.create();
+    root.setWidth(140);
+    root.setHeight(140);
+    if (opts.direction) root.setFlexDirection(opts.direction);
+    const c = Node.create();
+    c.setWidth(opts.width);
+    c.setHeight(opts.height);
+    if (opts.minWidth !== undefined) c.setMinWidth(opts.minWidth);
+    if (opts.maxWidth !== undefined) c.setMaxWidth(opts.maxWidth);
+    if (opts.minHeight !== undefined) c.setMinHeight(opts.minHeight);
+    if (opts.maxHeight !== undefined) c.setMaxHeight(opts.maxHeight);
+    root.insertChild(c, 0);
+    return root;
+  }
+
+  const matches = (make: () => Node): void => {
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  };
+
+  it('min-height raises a too-small main size (column parent)', () => {
+    matches(() => clampedChild({ width: 40, height: 10, minHeight: 50 }));
+  });
+
+  it('max-height caps an oversized main size (column parent)', () => {
+    matches(() => clampedChild({ width: 40, height: 200, maxHeight: 60 }));
+  });
+
+  it('min-width raises a too-small cross size (column parent)', () => {
+    matches(() => clampedChild({ width: 10, height: 40, minWidth: 35 }));
+  });
+
+  it('max-width caps an oversized cross size (column parent)', () => {
+    matches(() => clampedChild({ width: 300, height: 40, maxWidth: 90 }));
+  });
+
+  it('main size clamped on the width axis (row parent)', () => {
+    matches(() => clampedChild({ width: 8, height: 40, minWidth: 30, direction: 'row' }));
+  });
+
+  it('min greater than max — the cap wins, mirroring clampSize', () => {
+    matches(() => clampedChild({ width: 40, height: 50, minHeight: 80, maxHeight: 20 }));
+  });
+
+  it('cross clamp feeds align-items: center positioning', () => {
+    matches(() => {
+      const root = clampedChild({ width: 12, height: 40, minWidth: 60 });
+      root.setAlignItems('center');
+      return root;
+    });
+  });
+
+  it('cross clamp feeds align-items: flex-end positioning', () => {
+    matches(() => {
+      const root = clampedChild({ width: 250, height: 40, maxWidth: 70 });
+      root.setAlignItems('flex-end');
+      return root;
+    });
+  });
+
+  it('clamps compose with padding, margin and gap', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(160);
+      root.setHeight(220);
+      root.setPadding(Edge.Top, 10);
+      root.setPadding(Edge.Bottom, 6);
+      root.setGap('row', 8);
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(20);
+        c.setMargin(Edge.Top, 4);
+        c.setMinHeight(35);
+        c.setMaxWidth(30);
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('clamped main sizes feed justify-content leftover', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      root.setJustifyContent('space-between');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(200);
+        c.setHeight(20);
+        c.setMaxWidth(50);
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('clamped main size feeds a reverse-direction flip', () => {
+    matches(() => {
+      const root = clampedChild({ width: 4, height: 40, minWidth: 36, direction: 'row' });
+      root.setFlexDirection('row-reverse');
+      return root;
+    });
+  });
+
+  it('root node clamps its own width and height', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(180);
+      root.setHeight(20);
+      root.setMaxWidth(100);
+      root.setMinHeight(60);
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(30);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('absolute child: explicit width / height clamped', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(120);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setWidth(300);
+      abs.setHeight(5);
+      abs.setMaxWidth(70);
+      abs.setMinHeight(40);
+      abs.setPosition(Edge.Left, 10);
+      abs.setPosition(Edge.Top, 8);
+      root.insertChild(abs, 0);
+      return root;
+    });
+  });
+
+  it('absolute child: edge-derived size clamped', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(120);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setMaxWidth(30);
+      abs.setPosition(Edge.Left, 10);
+      abs.setPosition(Edge.Right, 10);
+      abs.setPosition(Edge.Top, 8);
+      root.insertChild(abs, 0);
+      return root;
+    });
+  });
+
+  it('absolute child: min-width binds even with no explicit width', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(120);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setHeight(20);
+      abs.setMinWidth(45);
+      abs.setPosition(Edge.Left, 6);
+      abs.setPosition(Edge.Top, 6);
+      root.insertChild(abs, 0);
+      return root;
+    });
+  });
+
+  it('regression: trees with no min/max are unaffected', () => {
+    matches(() => buildFixedRowTree(200, 30, [40, 50, 60]));
+  });
+});
+
 describe('buildFlexGrammar — absolute positioning (slice v8)', () => {
   describe('basic absolute layout', () => {
     it('absolute child with explicit size + top/left edges anchors to parent outer corner', () => {

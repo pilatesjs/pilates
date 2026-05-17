@@ -44,7 +44,11 @@ export type ScalarStyleProp =
   | 'flexGrow'
   | 'flexShrink'
   | 'gapRow'
-  | 'gapColumn';
+  | 'gapColumn'
+  | 'minWidth'
+  | 'minHeight'
+  | 'maxWidth'
+  | 'maxHeight';
 
 /** Style props addressed per `[top, right, bottom, left]` edge. */
 export type EdgeStyleProp = 'padding' | 'margin';

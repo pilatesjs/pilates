@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v11) covers:
+ * Current slice (v12a) covers:
  *
  *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -26,11 +26,17 @@
  *     main axis runs from the container's main END; each in-flow
  *     child's main position is reflected across the inner-main box,
  *     mirroring the imperative `flipMainAxis`
+ *   - min / max size clamping (v12a) — a node's main size (when the
+ *     parent does not flex-distribute), its cross size, and an
+ *     absolute child's width / height are clamped to the node's own
+ *     `[minWidth/Height, maxWidth/Height]`, mirroring the imperative
+ *     `clampSize`. Clamping *inside* the flex-distribution freeze
+ *     loop and the wrap line packer is the v12b slice.
  *
- * Subsequent PRs expand the feature set (min/max clamping with the
- * multi-iteration freeze loop) one chunk at a time, each gated by a
- * differential test that asserts the grammar produces byte-identical
- * output to the imperative algorithm.
+ * The remaining slice (v12b) folds min/max into the flex-distribution
+ * freeze loop and the wrap line packer, each gated by a differential
+ * test that asserts the grammar produces byte-identical output to
+ * the imperative algorithm.
  *
  * Fields emitted per node:
  *
@@ -75,6 +81,15 @@ export interface StyleInputs {
   flexShrink?: Field<number>;
   gapRow?: Field<number>;
   gapColumn?: Field<number>;
+  /**
+   * Min / max size clamps. `min*` default to 0; `max*` carry
+   * `Infinity` when `style.max{Width,Height}` is `undefined` ("no
+   * upper bound"), so a single `clampMinMax` covers both.
+   */
+  minWidth?: Field<number>;
+  minHeight?: Field<number>;
+  maxWidth?: Field<number>;
+  maxHeight?: Field<number>;
   /**
    * Per-edge `padding` input Fields, indexed `[top, right, bottom,
    * left]`. Entries are present only for edges the grammar reads
@@ -196,6 +211,29 @@ function makeEmitter(
     return f;
   }
 
+  // Register (once) the leaf input Field for a node's min / max
+  // size clamp. `min*` reads `style.min{Width,Height}` (a number,
+  // default 0); `max*` reads `style.max{Width,Height}` and folds the
+  // `undefined` "no upper bound" sentinel to `Infinity`, so every
+  // consumer can clamp with one unconditional `clampMinMax`.
+  function minMaxInput(
+    n: Node,
+    prop: 'minWidth' | 'minHeight' | 'maxWidth' | 'maxHeight',
+  ): Field<number> {
+    const f = field<number>(n, `style:${prop}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
+    if (!grammar.has(f as Field<unknown>)) {
+      const isMax = prop === 'maxWidth' || prop === 'maxHeight';
+      grammar.set(f as Field<unknown>, {
+        deps: [],
+        compute: () =>
+          isMax ? (n.style[prop] ?? Number.POSITIVE_INFINITY) : (n.style[prop] as number),
+      } satisfies FieldRule<number>);
+      styleInputEntry(n)[prop] = f;
+    }
+    return f;
+  }
+
   // Register (once) the leaf input Field for a flex weight
   // (`flexGrow` / `flexShrink`). Mutating a weight between two
   // POSITIVE values (or two zeros) is an in-regime change driven via
@@ -292,6 +330,7 @@ function makeEmitter(
         grammar,
         styleSizeInput,
         marginInput,
+        minMaxInput,
         parent,
         node,
         width,
@@ -399,15 +438,24 @@ function makeEmitter(
     // This node's own resolved basis: flexBasis if numeric, otherwise
     // style.{width|height}. Both the no-flex-distribution path (basis
     // == final size) and the flex-distribution path use this value.
-    // Cross-axis size: reads the cross-axis style input field
-    // directly (no stretch in this slice). Declaring the input as a
-    // dep means `markDirty(crossSizeInput)` after a `setWidth` /
-    // `setHeight` reaches this field precisely.
+    // Cross-axis size: the cross-axis style input clamped to the
+    // node's own [min, max] (v12 — no stretch resize in this slice,
+    // so the cross size is the explicit style value, clamped exactly
+    // as the imperative `finalCross`). Declaring the size + clamp
+    // inputs as deps means a `setWidth` / `setHeight` / `setMinWidth`
+    // … mutation reaches this field precisely.
     const crossKey: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
     const crossSizeInput = styleSizeInput(node, crossKey);
+    const minCrossInput = minMaxInput(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
+    const maxCrossInput = minMaxInput(node, crossKey === 'width' ? 'maxWidth' : 'maxHeight');
     grammar.set(crossSizeField, {
-      deps: [crossSizeInput as Field<unknown>],
-      compute: (read) => read(crossSizeInput),
+      deps: [
+        crossSizeInput as Field<unknown>,
+        minCrossInput as Field<unknown>,
+        maxCrossInput as Field<unknown>,
+      ],
+      compute: (read) =>
+        clampMinMax(read(crossSizeInput), read(minCrossInput), read(maxCrossInput)),
     } satisfies FieldRule<number>);
 
     // When the parent has flex-wrap='wrap', all three position fields
@@ -543,14 +591,29 @@ function makeEmitter(
     // style.{width|height}. Outside this case the main size is just
     // the resolved basis.
     if (parent === null || !parentNeedsFlexDistribution(parent)) {
-      // No flex distribution: this node's main size IS its resolved
-      // basis. Declare deps on the node's own flexBasis + main-size
-      // inputs so a size mutation reaches this field precisely.
+      // No flex distribution: this node's main size is its resolved
+      // basis, clamped to the node's own [min, max] (v12) — the
+      // imperative `buildItem` clamps the hypothetical main size even
+      // when no distribution follows. Declare deps on the node's own
+      // flexBasis + main-size + min/max inputs so a size or clamp
+      // mutation reaches this field precisely.
       const flexBasisInput = styleSizeInput(node, 'flexBasis');
       const mainInput = styleSizeInput(node, mainSizeName);
+      const minMainInput = minMaxInput(node, mainSizeName === 'width' ? 'minWidth' : 'minHeight');
+      const maxMainInput = minMaxInput(node, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight');
       grammar.set(mainSizeField, {
-        deps: [flexBasisInput as Field<unknown>, mainInput as Field<unknown>],
-        compute: (read) => resolveBasisFromRead(read, flexBasisInput, mainInput),
+        deps: [
+          flexBasisInput as Field<unknown>,
+          mainInput as Field<unknown>,
+          minMainInput as Field<unknown>,
+          maxMainInput as Field<unknown>,
+        ],
+        compute: (read) =>
+          clampMinMax(
+            resolveBasisFromRead(read, flexBasisInput, mainInput),
+            read(minMainInput),
+            read(maxMainInput),
+          ),
       } satisfies FieldRule<number>);
     } else {
       // Flex distribution. Capture the in-flow siblings + this
@@ -722,14 +785,14 @@ function makeEmitter(
         grammar.set(crossPosField, {
           deps: [
             parentCrossField as Field<unknown>,
-            crossSizeInput as Field<unknown>,
+            crossSizeField,
             padCrossEndF as Field<unknown>,
             myMarginCrossEndF as Field<unknown>,
           ],
           compute: (read) =>
             read(parentCrossField) -
             read(padCrossEndF!) -
-            read(crossSizeInput) -
+            read(crossSizeField as Field<number>) -
             read(myMarginCrossEndF!),
         } satisfies FieldRule<number>);
       } else {
@@ -747,7 +810,7 @@ function makeEmitter(
       grammar.set(crossPosField, {
         deps: [
           parentCrossField as Field<unknown>,
-          crossSizeInput as Field<unknown>,
+          crossSizeField,
           padCrossStartF as Field<unknown>,
           padCrossEndF as Field<unknown>,
           myMarginCrossStartF as Field<unknown>,
@@ -758,7 +821,7 @@ function makeEmitter(
           const innerCross = Math.max(0, read(parentCrossField) - padStart - read(padCrossEndF!));
           const marginStart = read(myMarginCrossStartF!);
           const innerLine = innerCross - marginStart - read(myMarginCrossEndF!);
-          const myCross = read(crossSizeInput);
+          const myCross = read(crossSizeField as Field<number>);
           return padStart + marginStart + Math.max(0, (innerLine - myCross) / 2);
         },
       } satisfies FieldRule<number>);
@@ -863,6 +926,10 @@ function mergeStyleInputs(a: StyleInputs, b: StyleInputs): StyleInputs {
   if (b.flexBasis !== undefined) m.flexBasis = b.flexBasis;
   if (b.gapRow !== undefined) m.gapRow = b.gapRow;
   if (b.gapColumn !== undefined) m.gapColumn = b.gapColumn;
+  if (b.minWidth !== undefined) m.minWidth = b.minWidth;
+  if (b.minHeight !== undefined) m.minHeight = b.minHeight;
+  if (b.maxWidth !== undefined) m.maxWidth = b.maxWidth;
+  if (b.maxHeight !== undefined) m.maxHeight = b.maxHeight;
   for (const k of ['padding', 'margin'] as const) {
     const bArr = b[k];
     if (bArr === undefined) continue;
@@ -1241,6 +1308,18 @@ function resolveBasisFromRead(
 }
 
 /**
+ * Clamp `value` to `[min, max]`. `max` carries `Infinity` for "no
+ * upper bound" (see `minMaxInput`). Mirrors the imperative
+ * `clampSize`: the floor is applied before the cap, so when
+ * `min > max` the cap wins — `clampMinMax(5, 10, 3) === 3`.
+ *
+ * @internal
+ */
+function clampMinMax(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), max);
+}
+
+/**
  * Per-sibling inputs to `distributeMainAxis`, resolved inside a
  * compute callback by `read`ing the sibling's declared input fields.
  *
@@ -1583,8 +1662,11 @@ function crossEndEdge(direction: 'row' | 'column'): number {
  *   - top: symmetric, using TOP / BOTTOM and `parent.height`.
  *
  * The parent's OUTER size is used (no padding subtraction) —
- * matches Yoga / RN semantics that Pilates follows. No min/max
- * clamping in this slice (matches every other v8-and-prior slice).
+ * matches Yoga / RN semantics that Pilates follows. Width and height
+ * are clamped to the child's own [min, max] in every branch (v12),
+ * exactly as the imperative `layoutAbsoluteChild` — including the
+ * `0` fallback, so e.g. a `minWidth` with no explicit width still
+ * binds.
  *
  * @internal
  */
@@ -1592,6 +1674,10 @@ function emitAbsoluteRules(
   grammar: Grammar,
   styleSizeInput: (n: Node, prop: 'width' | 'height' | 'flexBasis') => Field<number>,
   marginInput: (n: Node, edge: number) => Field<number>,
+  minMaxInput: (
+    n: Node,
+    prop: 'minWidth' | 'minHeight' | 'maxWidth' | 'maxHeight',
+  ) => Field<number>,
   parent: Node,
   child: Node,
   width: Field<number>,
@@ -1615,28 +1701,45 @@ function emitAbsoluteRules(
   const styleH = child.style.height;
   const parentWField = field<number>(parent, 'width');
   const parentHField = field<number>(parent, 'height');
+  // Min / max clamp inputs — declared deps so a `setMinWidth` … on
+  // the absolute child propagates precisely.
+  const minW = minMaxInput(child, 'minWidth');
+  const maxW = minMaxInput(child, 'maxWidth');
+  const minH = minMaxInput(child, 'minHeight');
+  const maxH = minMaxInput(child, 'maxHeight');
 
   // Width. The explicit-width branch reads the child's `style:width`
   // input field, so a `setWidth` on the absolute child propagates
   // precisely through markDirty + recompute. Mutating the child from
   // explicit to 'auto' (or vice-versa) requires a fresh grammar build
-  // since that crosses branch boundaries — out of scope here.
+  // since that crosses branch boundaries — out of scope here. Every
+  // branch clamps to [minW, maxW], matching `layoutAbsoluteChild`.
   if (typeof styleW === 'number') {
     const wInput = styleSizeInput(child, 'width');
     grammar.set(width as Field<unknown>, {
-      deps: [wInput as Field<unknown>],
-      compute: (read) => read(wInput),
+      deps: [wInput as Field<unknown>, minW as Field<unknown>, maxW as Field<unknown>],
+      compute: (read) => clampMinMax(read(wInput), read(minW), read(maxW)),
     } satisfies FieldRule<number>);
   } else if (posLeft !== undefined && posRight !== undefined) {
     grammar.set(width as Field<unknown>, {
-      deps: [parentWField as Field<unknown>, mLeft as Field<unknown>, mRight as Field<unknown>],
+      deps: [
+        parentWField as Field<unknown>,
+        mLeft as Field<unknown>,
+        mRight as Field<unknown>,
+        minW as Field<unknown>,
+        maxW as Field<unknown>,
+      ],
       compute: (read) =>
-        Math.max(0, read(parentWField) - posLeft - posRight - read(mLeft) - read(mRight)),
+        clampMinMax(
+          Math.max(0, read(parentWField) - posLeft - posRight - read(mLeft) - read(mRight)),
+          read(minW),
+          read(maxW),
+        ),
     } satisfies FieldRule<number>);
   } else {
     grammar.set(width as Field<unknown>, {
-      deps: [],
-      compute: () => 0,
+      deps: [minW as Field<unknown>, maxW as Field<unknown>],
+      compute: (read) => clampMinMax(0, read(minW), read(maxW)),
     } satisfies FieldRule<number>);
   }
 
@@ -1644,19 +1747,29 @@ function emitAbsoluteRules(
   if (typeof styleH === 'number') {
     const hInput = styleSizeInput(child, 'height');
     grammar.set(height as Field<unknown>, {
-      deps: [hInput as Field<unknown>],
-      compute: (read) => read(hInput),
+      deps: [hInput as Field<unknown>, minH as Field<unknown>, maxH as Field<unknown>],
+      compute: (read) => clampMinMax(read(hInput), read(minH), read(maxH)),
     } satisfies FieldRule<number>);
   } else if (posTop !== undefined && posBottom !== undefined) {
     grammar.set(height as Field<unknown>, {
-      deps: [parentHField as Field<unknown>, mTop as Field<unknown>, mBottom as Field<unknown>],
+      deps: [
+        parentHField as Field<unknown>,
+        mTop as Field<unknown>,
+        mBottom as Field<unknown>,
+        minH as Field<unknown>,
+        maxH as Field<unknown>,
+      ],
       compute: (read) =>
-        Math.max(0, read(parentHField) - posTop - posBottom - read(mTop) - read(mBottom)),
+        clampMinMax(
+          Math.max(0, read(parentHField) - posTop - posBottom - read(mTop) - read(mBottom)),
+          read(minH),
+          read(maxH),
+        ),
     } satisfies FieldRule<number>);
   } else {
     grammar.set(height as Field<unknown>, {
-      deps: [],
-      compute: () => 0,
+      deps: [minH as Field<unknown>, maxH as Field<unknown>],
+      compute: (read) => clampMinMax(0, read(minH), read(maxH)),
     } satisfies FieldRule<number>);
   }
 
