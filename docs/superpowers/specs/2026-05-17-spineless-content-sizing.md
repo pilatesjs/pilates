@@ -64,10 +64,12 @@ is byte-identical to `evaluateImperative`.
   reached for explicit cross sizes too but is a no-op there. Needs
   the line cross size, so it touches the non-wrap cross-size rule
   and the wrap line packer.
-- **v15 — `aspectRatio`.** When an axis is `'auto'` and the
+- **v15 — `aspectRatio` (landed).** When an axis is `'auto'` and the
   perpendicular axis is an explicit number, derive
   `width = height × ratio` / `height = width ÷ ratio`, mirroring
-  `effectivePreferredSize`. Explicit-on-both → ratio ignored.
+  `effectivePreferredSize`. Explicit-on-both → ratio ignored;
+  both-`'auto'` → cannot derive. A derived axis is definite — not
+  content-sized — so `align-items: stretch` does not resize it.
 - **v16 — measure-func leaves.** A leaf (`getChildCount() === 0`)
   with a measure function resolves its `'auto'` axes by calling the
   measurer with axis constraints derived from the parent's inner
@@ -135,3 +137,39 @@ child cross margins, min/max clamping of the stretched size,
 composition with an `'auto'` root, both-axes-auto leaves,
 single-line and multi-line wrap, an `align-content` line boost,
 reverse direction, and nested auto-cross containers.
+
+## Slice v15 — `aspectRatio` derivation
+
+A build-time `aspectDerivable(node, axis)` predicate holds when the
+axis is `'auto'`, an `aspectRatio` is set, and the perpendicular
+axis is an explicit number — exactly when `effectivePreferredSize`
+derives a concrete size. `preferredSizeInput` gains a branch: a
+derivable axis returns an `aspect:*` Field whose `compute` reads the
+other axis's `styleSizeInput` and applies the ratio
+(`width = other × ratio`, `height = other ÷ ratio`). The ratio
+itself is captured at build time (a `setAspectRatio` is structural);
+the perpendicular axis stays an input Field, so mutating it
+re-derives.
+
+Precedence mirrors `effectivePreferredSize` / `resolveRootAxisSize`:
+explicit → aspectRatio-derived → (root) `available` / (non-root)
+`0`. So a derived size wins over an `'auto'` root's `available` and
+over the `0` fallback.
+
+A derived axis is **definite**, not content-sized: the v14 stretch
+condition is narrowed from "cross is `'auto'`" to "cross is
+content-`'auto'`" (`'auto'` *and* not `aspectDerivable`), matching
+the imperative `crossAlignItemsInLine` stretch branch which treats
+an `effectivePreferredSize` number as explicit. The `WrapSibling` /
+`WrapSibInputs` `crossIsAuto` flag is renamed `crossIsContentAuto`
+accordingly.
+
+### Tests
+
+A `slice v15` describe (12 tests): width-from-height and
+height-from-width derivation, a fractional ratio, both-axes-auto
+(cannot derive) and both-explicit (ratio ignored), a derived main
+size feeding flex layout and acting as the flex-grow basis, a
+derived cross size staying definite under `stretch`, an `'auto'`
+root deriving over `available`, min/max clamping of a derived size,
+composition with `flex-wrap`, and nested derived containers.
