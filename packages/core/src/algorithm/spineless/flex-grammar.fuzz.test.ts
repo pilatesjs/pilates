@@ -149,7 +149,8 @@ const nodeSpecArbitrary: fc.Arbitrary<NodeSpec> = fc.letrec((tie) => ({
   }) as fc.Arbitrary<NodeSpec>,
   node: fc.record({
     ...baseProps,
-    measure: fc.constant(undefined),
+    // No `measure` key — a non-leaf never carries a measurer, and
+    // `exactOptionalPropertyTypes` rejects an explicit `undefined`.
     children: fc.array(
       fc.oneof(
         { depthSize: 'small' },
@@ -295,7 +296,11 @@ describe('flex grammar differential fuzzer (phase 7, v17)', () => {
         optInt(20, 200),
         optInt(10, 120),
         (treeSpec, availW, availH) => {
-          const available = { width: availW, height: availH };
+          // Build with only the defined axes present —
+          // `exactOptionalPropertyTypes` rejects explicit `undefined`.
+          const available: { width?: number; height?: number } = {};
+          if (availW !== undefined) available.width = availW;
+          if (availH !== undefined) available.height = availH;
           const grammarOut = evaluateGrammar(buildTree(treeSpec), available);
           const imperativeOut = evaluateImperative(buildTree(treeSpec), available);
           expect(grammarOut).toEqual(imperativeOut);
