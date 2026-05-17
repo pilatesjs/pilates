@@ -35,8 +35,13 @@ grammar, prove equality."
   imperative `positionLinesOnCross`. `stretch` grows each line's
   cross size; the rest shift the line stack. Single-line containers
   ignore `align-content`.
-- **v10 — `flex-wrap: wrap-reverse`.** Mirrors the imperative
-  `reverseLineStack` — the line stack is mirrored on the cross axis.
+- **v10 — `flex-wrap: wrap-reverse` (landed).** Mirrors the
+  imperative `reverseLineStack` — after `align-content` has placed
+  the lines, each line's cross start is mirrored:
+  `innerCross − crossStart − crossSize`. The wrap branch now fires
+  for `wrap` *and* `wrap-reverse`; `evaluateWrappedChild` takes a
+  `reverse` flag. A no-op for a single line (its cross size already
+  fills `innerCross`).
 - **v11 — reverse directions.** `row-reverse` / `column-reverse`
   lay children out from the main-axis *end*; the main-position
   formula is mirrored, and justify-content interacts.
@@ -62,3 +67,22 @@ no-leftover no-op case, a single-line container (ignores
 `align-content`), a column-wrap case, and `stretch` composed with a
 per-item `align-items`. The obsolete v7 "throws on non-flex-start
 align-content" rejection test is removed.
+
+## Slice v10 — `flex-wrap: wrap-reverse`
+
+`buildFlexGrammar` no longer rejects `wrap-reverse`; the wrap branch
+fires for any `flexWrap !== 'nowrap'`. `evaluateWrappedChild` takes
+a `reverse` flag (`flexWrap === 'wrap-reverse'`); after
+`align-content` has placed the lines, when `reverse` it mirrors each
+line's cross start (`innerCross − crossStart − crossSize`), exactly
+as the imperative `reverseLineStack`. A `wrap-reverse` parent is
+non-simple for the structural fast-paths (the `flexWrap === 'nowrap'`
+checks already exclude it).
+
+### Tests
+
+`flex-grammar.test.ts` gains a `slice v10` describe: 3-line
+row `wrap-reverse` under every `align-content` value, a single-line
+case, a column `wrap-reverse`, and `wrap-reverse` composed with
+`align-items` — each byte-identical to the imperative. The obsolete
+v7 "throws on wrap-reverse" rejection test is removed.

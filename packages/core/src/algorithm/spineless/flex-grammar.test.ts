@@ -1410,17 +1410,6 @@ describe('buildFlexGrammar — flex-wrap (slice v7)', () => {
     });
   });
 
-  describe('out-of-scope wrap features', () => {
-    it('throws on wrap-reverse — reserved for a later slice', () => {
-      const root = Node.create();
-      root.setWidth(100);
-      root.setHeight(40);
-      root.setFlexDirection('row');
-      root.setFlexWrap('wrap-reverse');
-      expect(() => buildFlexGrammar(root)).toThrow(/flex-wrap.*wrap-reverse/);
-    });
-  });
-
   describe('regression: nowrap trees still match', () => {
     it('v6 alignment tree (nowrap by default) still matches imperative', () => {
       const root = Node.create();
@@ -1534,6 +1523,95 @@ describe('buildFlexGrammar — align-content (slice v9)', () => {
       root.setFlexDirection('row');
       root.setFlexWrap('wrap');
       root.setAlignContent('stretch');
+      root.setAlignItems('center');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+});
+
+describe('buildFlexGrammar — flex-wrap: wrap-reverse (slice v10)', () => {
+  // A wrap-reverse row whose oversized items stack one-per-line —
+  // `count` lines — mirrored on the cross (height) axis.
+  function wrapReverseRow(count: number, alignContent: string, crossLeftover: number): Node {
+    const root = Node.create();
+    root.setWidth(80);
+    root.setHeight(count * 20 + crossLeftover);
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap-reverse');
+    root.setAlignContent(alignContent as never);
+    for (let i = 0; i < count; i++) {
+      const c = Node.create();
+      c.setWidth(60);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    return root;
+  }
+
+  it('row wrap-reverse, 3 lines — line stack is mirrored, matches imperative', () => {
+    expect(evaluateGrammar(wrapReverseRow(3, 'flex-start', 40))).toEqual(
+      evaluateImperative(wrapReverseRow(3, 'flex-start', 40)),
+    );
+  });
+
+  for (const ac of ['flex-end', 'center', 'space-between', 'space-around', 'stretch']) {
+    it(`row wrap-reverse, 3 lines, align-content: ${ac} — matches imperative`, () => {
+      expect(evaluateGrammar(wrapReverseRow(3, ac, 50))).toEqual(
+        evaluateImperative(wrapReverseRow(3, ac, 50)),
+      );
+    });
+  }
+
+  it('single-line wrap-reverse — matches imperative', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(60);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap-reverse');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('column wrap-reverse mirrors the line stack along the width', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(80);
+      root.setFlexDirection('column');
+      root.setFlexWrap('wrap-reverse');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(60);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('wrap-reverse composes with per-item align-items', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(80);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap-reverse');
       root.setAlignItems('center');
       for (let i = 0; i < 3; i++) {
         const c = Node.create();
