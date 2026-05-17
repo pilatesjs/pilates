@@ -19,10 +19,10 @@ with reasoning, the fuzzer wins.
 
 A property-based differential fuzzer (`fast-check`): generate a
 random `Node` tree spanning the full v1–v16 feature set, then assert
-the Spineless result is **byte-identical** to the imperative
-`calculateLayout`. Two layers:
+the Spineless **float** layout matches the imperative's within a
+small tolerance. Two layers:
 
-1. **Static** (v17) — `evaluateGrammar(tree)` vs `evaluateImperative`
+1. **Static** (v17) — the grammar's float layout vs the imperative's
    over random trees. Validates the grammar's static correctness
    across feature combinations.
 2. **Incremental** (v18) — random tree + a random style-mutation
@@ -30,9 +30,20 @@ the Spineless result is **byte-identical** to the imperative
    (`markStyleDirty` + `recompute`) and assert it still matches the
    imperative. Validates the incremental path.
 
-Any divergence is reproduced from its `fast-check` seed, pinned as a
-deterministic regression test in `flex-grammar.test.ts`, the bug
-fixed, and the seed left pinned.
+**Float, not rounded:** the fuzzer compares the pre-rounding float
+layouts, not integer cells. The grammar and the imperative reach the
+same layout by different floating-point operation orders, so a value
+on an exact `x.5` cell boundary can round in opposite directions
+purely from sub-ULP noise — not a layout bug. Byte-identical
+integer-cell rounding (`round.ts`) is deterministic shared code,
+covered by the curated `flex-grammar.test.ts` corpus; the fuzzer's
+job is the grammar's *layout* correctness, so it leaves rounding
+out. A real layout bug shifts a value by ≥ ~1 cell — far above the
+`1e-6` tolerance.
+
+Any genuine divergence is reproduced from its `fast-check` seed,
+pinned as a deterministic regression test in `flex-grammar.test.ts`,
+the bug fixed, and the seed left pinned.
 
 ## Slices
 
@@ -45,11 +56,12 @@ fixed, and the seed left pinned.
   property builds the tree, runs `evaluateGrammar` and
   `evaluateImperative` with a random `available`, and asserts
   equality. Found and fixed four real grammar bugs (see below).
-- **v18 — incremental differential fuzzer.** Random tree + a random
-  sequence of value mutations (`setWidth`, `setMinHeight`, `setGap`,
-  …); after each, `markStyleDirty` the affected input Field and
-  `recompute()`, asserting the runtime's layout still matches a
-  fresh imperative pass.
+- **v18 — incremental differential fuzzer (landed).** Random tree +
+  a random sequence of value mutations (`setWidth`, `setMinHeight`,
+  `setGap`, …); after each, `markStyleDirty` the affected input
+  Field and `recompute()`, asserting the runtime's layout still
+  matches a fresh imperative pass. Found no divergences — the
+  incremental path held across 300 random mutation sequences.
 
 ## Slice v17 — static differential fuzzer
 
@@ -98,3 +110,31 @@ a deterministic regression in `flex-grammar.test.ts`'s
    root `minWidth` inflated an unavailable axis. Latent since v13.
    Fix: `rootAxisIsBareZero` flags the case; the root size rule
    skips the clamp for it.
+
+## Slice v18 — incremental differential fuzzer
+
+`runtime-incremental.fuzz.test.ts` builds a `SpinelessRuntime` for a
+random tree, then applies a random sequence of 1–15 value mutations.
+Each mutation goes through `markStyleDirty` + `recompute()`; after
+every step the runtime's rounded layout is asserted byte-identical
+to a fresh `imperativeLayout` pass.
+
+Only **value** mutations are generated — `setWidth` / `setHeight`,
+`setMin*` / `setMax*`, `setGap`, `setPadding`, `setMargin`. A
+`setWidth` / `setHeight` on a currently-`'auto'` axis is an
+`'auto'` → numeric flip (structural — it reshapes the dependency
+graph), so `applyMutation` skips it, leaving both sides in step.
+Flex weights, `flexBasis`, direction / wrap / align and
+`positionType` are likewise structural and excluded; the static
+fuzzer (v17) covers those.
+
+The generated tree still spans the full static surface (`'auto'`
+sizes, `aspectRatio`, measure leaves, absolute, wrap, reverse,
+align) so `recompute()` propagation is exercised through every kind
+of dependency edge.
+
+Result: **no divergences** over 300 random mutation sequences — the
+incremental `markStyleDirty` + `recompute()` path is byte-identical
+to a from-scratch imperative pass. (Phase 5b's design — every numeric
+style prop modelled as a declared-dependency input Field — holds up
+under fuzzing.)
