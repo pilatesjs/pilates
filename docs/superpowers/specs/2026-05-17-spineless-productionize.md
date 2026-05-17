@@ -37,11 +37,12 @@ cells. So the write-back is: evaluate every node's
   `computeScrollSizes`. Differentially verified, on a curated
   integer-friendly corpus, against imperative `calculateLayout`.
   No incrementality yet — every `layout()` rebuilds.
-- **v20 — persistent runtime, incremental value relayout.** The
-  driver keeps the runtime between `layout()` calls. When only
-  value mutations occurred (every dirty node's change is a
-  value-input mutation), it `markStyleDirty`s the changed inputs and
-  `recompute()`s instead of rebuilding.
+- **v20 — persistent runtime, incremental value relayout (landed).**
+  The driver keeps the grammar + runtime between `layout()` calls.
+  It compares a structural fingerprint of the tree; when nothing
+  structural changed it diffs every leaf input Field (`deps: []`),
+  `markDirty`s the ones whose live value drifted, and `recompute()`s
+  — no rebuild. A structural change rebuilds.
 - **v21 — structural change handling.** Child insert / remove and
   other structural mutations drive `graft` / `detach` when the
   fast-path applies, a full grammar rebuild otherwise.
@@ -77,3 +78,44 @@ imperative `calculateLayout`, asserting every node's `layout`
 `scrollHeight` are byte-identical. Trees are kept integer-friendly
 so rounding is unambiguous (see the phase-7 spec on the `x.5`
 boundary).
+
+## Slice v20 — persistent runtime + incremental value relayout
+
+`SpinelessLayout` keeps a `Built` record between `layout()` calls:
+the `FlexGrammarOutput`, the `SpinelessRuntime`, the `available`
+holder, the list of leaf input Fields, and a structural
+fingerprint.
+
+Each `layout()` decides build-vs-reuse:
+
+- **Structural fingerprint.** `captureStructure` walks the tree
+  pre-order recording, per node, its identity, a `nodeSig` string
+  (flex-direction / wrap / justify / align* / position-type /
+  display, the `typeof` of each size and `flexBasis`, the
+  zero/positive boundary of each flex weight, `aspectRatio`,
+  child count, and absolute `position` edges) and its measure
+  function. Anything in that signature reshapes the rule graph, so
+  a mismatch — or an `available` presence change — forces a full
+  rebuild.
+- **Incremental relayout.** When the fingerprint matches, the
+  grammar is unchanged: the driver re-runs each leaf input Field's
+  `compute` (a `deps: []` rule reads `node.style` live), compares
+  it to the runtime's cached value, `markDirty`s the ones that
+  drifted, and `recompute()`s. The `available` holder is mutated in
+  place so an `available` value change flows through the
+  `available:*` input Fields the same way.
+
+A `stats` counter (`fullBuilds` / `incrementalRelayouts`) records
+which path each call took, asserted by the tests.
+
+### Tests
+
+`spineless-layout.test.ts` gains a `slice v20` describe (13 tests):
+a persistent driver is run through mutation sequences, each step
+applied to a parallel imperative tree and the layouts asserted
+equal. Value mutations (size, gap, padding, margin, min/max, a
+positive→positive flex-weight tweak, a new `available`) take the
+incremental path (`stats` confirms); structural changes
+(flex-direction, a flex weight crossing zero, an `'auto'` boundary
+crossing, child insert/remove, `aspectRatio`, an `available`
+presence change) force a rebuild; a mixed sequence interleaves both.

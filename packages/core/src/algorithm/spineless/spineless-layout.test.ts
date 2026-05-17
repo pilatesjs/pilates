@@ -294,3 +294,195 @@ describe('SpinelessLayout — differential vs calculateLayout (slice v19)', () =
     });
   });
 });
+
+describe('SpinelessLayout — persistent runtime + incremental relayout (slice v20)', () => {
+  /**
+   * Drive a persistent `SpinelessLayout` through a mutation sequence,
+   * applying each step to a parallel imperative tree, and assert the
+   * two layouts match after every step. Returns the driver so the
+   * caller can inspect `stats`.
+   */
+  function checkSequence(
+    make: () => Node,
+    steps: Array<(root: Node) => void>,
+    availableWidth?: number,
+    availableHeight?: number,
+  ): SpinelessLayout {
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+
+    sl.layout(availableWidth, availableHeight);
+    impTree.calculateLayout(availableWidth, availableHeight);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+
+    for (const step of steps) {
+      step(slTree);
+      step(impTree);
+      sl.layout(availableWidth, availableHeight);
+      impTree.calculateLayout(availableWidth, availableHeight);
+      expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    }
+    return sl;
+  }
+
+  const fixedRow = (): Node => {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(40);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    return root;
+  };
+
+  it('a value mutation takes the incremental path', () => {
+    const sl = checkSequence(fixedRow, [(r) => r.getChild(1)!.setWidth(70)]);
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1 });
+  });
+
+  it('a sequence of value mutations all stay incremental', () => {
+    const sl = checkSequence(fixedRow, [
+      (r) => r.getChild(0)!.setWidth(55),
+      (r) => r.getChild(2)!.setHeight(20),
+      (r) => r.setWidth(260),
+      (r) => r.getChild(1)!.setWidth(10),
+    ]);
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 4 });
+  });
+
+  it('gap / padding / margin / min / max mutations stay incremental', () => {
+    const sl = checkSequence(fixedRow, [
+      (r) => r.setGap('column', 6),
+      (r) => r.setPadding(Edge.Left, 9),
+      (r) => r.getChild(0)!.setMargin(Edge.Right, 5),
+      (r) => r.getChild(1)!.setMinWidth(80),
+      (r) => r.getChild(2)!.setMaxWidth(15),
+    ]);
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 5 });
+  });
+
+  it('a positive→positive flex-weight tweak stays incremental', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        c.setFlexGrow(1);
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [(r) => r.getChild(0)!.setFlexGrow(3)]);
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1 });
+  });
+
+  it("an 'auto' root re-sized from a new available stays incremental", () => {
+    const make = (): Node => {
+      const root = Node.create(); // both axes 'auto'
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      return root;
+    };
+    const slTree = make();
+    const sl = new SpinelessLayout(slTree);
+    const impTree = make();
+
+    sl.layout(100, 80);
+    impTree.calculateLayout(100, 80);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+
+    // A new available — same PRESENCE — feeds the `available:*`
+    // input Fields, so it relays incrementally.
+    sl.layout(140, 90);
+    impTree.calculateLayout(140, 90);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1 });
+  });
+
+  it('an available presence change forces a rebuild', () => {
+    const slTree = (() => {
+      const root = Node.create();
+      const c = Node.create();
+      c.setWidth(20);
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      return root;
+    })();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout(100, 80);
+    sl.layout(undefined, undefined); // width/height availability dropped
+    expect(sl.stats.fullBuilds).toBe(2);
+  });
+
+  it('a flex-direction change forces a rebuild and stays correct', () => {
+    const sl = checkSequence(fixedRow, [(r) => r.setFlexDirection('column')]);
+    expect(sl.stats).toEqual({ fullBuilds: 2, incrementalRelayouts: 0 });
+  });
+
+  it('a flex weight crossing zero forces a rebuild', () => {
+    const sl = checkSequence(fixedRow, [(r) => r.getChild(0)!.setFlexGrow(1)]);
+    expect(sl.stats.fullBuilds).toBe(2);
+  });
+
+  it("a width crossing the 'auto' boundary forces a rebuild", () => {
+    const sl = checkSequence(fixedRow, [(r) => r.getChild(0)!.setWidth('auto' as never)]);
+    expect(sl.stats.fullBuilds).toBe(2);
+  });
+
+  it('inserting a child forces a rebuild and stays correct', () => {
+    const sl = checkSequence(fixedRow, [
+      (r) => {
+        const c = Node.create();
+        c.setWidth(25);
+        c.setHeight(30);
+        r.insertChild(c, r.getChildCount());
+      },
+    ]);
+    expect(sl.stats.fullBuilds).toBe(2);
+  });
+
+  it('removing a child forces a rebuild and stays correct', () => {
+    const sl = checkSequence(fixedRow, [(r) => r.removeChild(r.getChild(2)!)]);
+    expect(sl.stats.fullBuilds).toBe(2);
+  });
+
+  it('an aspectRatio change forces a rebuild', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(200);
+      const c = Node.create();
+      c.setWidth(60);
+      c.setAspectRatio(2);
+      root.insertChild(c, 0);
+      return root;
+    }, [(r) => r.getChild(0)!.setAspectRatio(3)]);
+    expect(sl.stats.fullBuilds).toBe(2);
+  });
+
+  it('a mixed value / structural / value sequence stays correct throughout', () => {
+    checkSequence(fixedRow, [
+      (r) => r.getChild(0)!.setWidth(60), // value → incremental
+      (r) => r.setFlexDirection('column'), // structural → rebuild
+      (r) => r.getChild(1)!.setHeight(12), // value → incremental
+      (r) => {
+        const c = Node.create(); // structural → rebuild
+        c.setWidth(30);
+        c.setHeight(18);
+        r.insertChild(c, 0);
+      },
+      (r) => r.setGap('row', 4), // value → incremental
+    ]);
+  });
+});
