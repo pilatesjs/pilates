@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v13) covers:
+ * Current slice (v14) covers:
  *
  *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -36,12 +36,17 @@
  *     is frozen at its bound and its share redistributed, iterating
  *     to a fixpoint, exactly as the imperative `distributeGrow` /
  *     `distributeShrink`.
- *   - `'auto'` width / height (v13) — a non-measured `'auto'` axis
- *     resolves to 0 (mirroring `resolveHypotheticalMainSize` /
- *     `naturalCrossSize`); the root's `'auto'` axis resolves from
- *     the caller-supplied `available` size, modelled as a root
- *     input Field so a terminal resize is incremental. (Measure-func
- *     leaves and `aspectRatio` are subsequent slices.)
+ *   - `'auto'` main size (v13) — a non-measured `'auto'` main-axis
+ *     size resolves to 0 (mirroring `resolveHypotheticalMainSize`);
+ *     the root's `'auto'` axis resolves from the caller-supplied
+ *     `available` size, modelled as a root input Field so a terminal
+ *     resize is incremental.
+ *   - `'auto'` cross size + `align-items: stretch` (v14) — an
+ *     `'auto'` cross-axis size is 0 under a non-stretch align, but
+ *     `stretch` (the default) resizes it to fill the line's inner
+ *     cross, mirroring the imperative `crossAlignItemsInLine`
+ *     stretch branch. (Measure-func leaves and `aspectRatio` are
+ *     subsequent slices.)
  *
  * The grammar covers the whole imperative flexbox feature set for
  * explicitly-sized trees; phase 6 (v13+) extends it to `'auto'`
@@ -489,28 +494,52 @@ function makeEmitter(
           ? parent.style.alignItems
           : node.style.alignSelf;
 
-    // This node's own resolved basis: flexBasis if numeric, otherwise
-    // style.{width|height}. Both the no-flex-distribution path (basis
-    // == final size) and the flex-distribution path use this value.
-    // Cross-axis size: the cross-axis style input clamped to the
-    // node's own [min, max] (v12 — no stretch resize in this slice,
-    // so the cross size is the explicit style value, clamped exactly
-    // as the imperative `finalCross`). Declaring the size + clamp
-    // inputs as deps means a `setWidth` / `setHeight` / `setMinWidth`
-    // … mutation reaches this field precisely.
+    // Cross-axis size. For a numeric cross style, the `'auto'` root
+    // (sized from `available`), or an `'auto'` cross under a
+    // non-stretch align, the size is the resolved input clamped to
+    // the node's own [min, max] (v12). `align-items: stretch` (the
+    // default) instead resizes an `'auto'` cross size to fill the
+    // line's inner cross (v14) — mirroring the imperative
+    // `crossAlignItemsInLine` stretch branch. For a non-wrap parent
+    // the line cross IS the parent's inner cross; a wrapping parent
+    // overrides `crossSizeField` below with the per-line value.
     const crossKey: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
+    const crossIsAuto = typeof node.style[crossKey] !== 'number';
     const crossSizeInput = preferredSizeInput(node, crossKey, parent === null);
     const minCrossInput = minMaxInput(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
     const maxCrossInput = minMaxInput(node, crossKey === 'width' ? 'maxWidth' : 'maxHeight');
-    grammar.set(crossSizeField, {
-      deps: [
-        crossSizeInput as Field<unknown>,
-        minCrossInput as Field<unknown>,
-        maxCrossInput as Field<unknown>,
-      ],
-      compute: (read) =>
-        clampMinMax(read(crossSizeInput), read(minCrossInput), read(maxCrossInput)),
-    } satisfies FieldRule<number>);
+    if (crossIsAuto && parent !== null && align === 'stretch') {
+      const parentCrossF = field<number>(parent, crossKey);
+      grammar.set(crossSizeField, {
+        deps: [
+          parentCrossF as Field<unknown>,
+          padCrossStartF as Field<unknown>,
+          padCrossEndF as Field<unknown>,
+          myMarginCrossStartF as Field<unknown>,
+          myMarginCrossEndF as Field<unknown>,
+          minCrossInput as Field<unknown>,
+          maxCrossInput as Field<unknown>,
+        ],
+        compute: (read) => {
+          const innerCross = Math.max(
+            0,
+            read(parentCrossF) - read(padCrossStartF!) - read(padCrossEndF!),
+          );
+          const lineInner = innerCross - read(myMarginCrossStartF!) - read(myMarginCrossEndF!);
+          return clampMinMax(Math.max(0, lineInner), read(minCrossInput), read(maxCrossInput));
+        },
+      } satisfies FieldRule<number>);
+    } else {
+      grammar.set(crossSizeField, {
+        deps: [
+          crossSizeInput as Field<unknown>,
+          minCrossInput as Field<unknown>,
+          maxCrossInput as Field<unknown>,
+        ],
+        compute: (read) =>
+          clampMinMax(read(crossSizeInput), read(minCrossInput), read(maxCrossInput)),
+      } satisfies FieldRule<number>);
+    }
 
     // When the parent has flex-wrap='wrap', all three position fields
     // (mainSize, mainPos, crossPos) flow through a single per-line
@@ -554,6 +583,7 @@ function makeEmitter(
           maxInput: minMaxInput(sib, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight'),
           minCrossInput: minMaxInput(sib, crossKeyName === 'width' ? 'minWidth' : 'minHeight'),
           maxCrossInput: minMaxInput(sib, crossKeyName === 'width' ? 'maxWidth' : 'maxHeight'),
+          crossIsAuto: typeof sib.style[crossKeyName] !== 'number',
         });
       }
       const parentMainField = field<number>(parent, mainSizeName);
@@ -633,6 +663,13 @@ function makeEmitter(
       grammar.set(crossPosField, {
         deps: wrapDeps,
         compute: (read) => evalWrapped(read).crossPos,
+      } satisfies FieldRule<number>);
+      // Override the shared cross-size rule: a wrapped child's cross
+      // size depends on its own LINE's cross size (v14 stretch
+      // resize), which only the line packer knows.
+      grammar.set(crossSizeField, {
+        deps: wrapDeps,
+        compute: (read) => evalWrapped(read).crossSize,
       } satisfies FieldRule<number>);
       allFields.push({ node, width, height, left, top });
       // Recurse into children.
@@ -1374,6 +1411,8 @@ interface WrapSibInputs extends SizeInputs {
   marginCrossEndInput: Field<number>;
   minCrossInput: Field<number>;
   maxCrossInput: Field<number>;
+  /** `style[cross]` is `'auto'` — eligible for the stretch resize (v14). */
+  crossIsAuto: boolean;
 }
 
 /**
@@ -1476,6 +1515,9 @@ function liveWrapSiblings(
       crossSize: clampMinMax(crossNatural, read(s.minCrossInput), read(s.maxCrossInput)),
       crossMarginStart: read(s.marginCrossStartInput),
       crossMarginEnd: read(s.marginCrossEndInput),
+      crossIsAuto: s.crossIsAuto,
+      crossMin: read(s.minCrossInput),
+      crossMax: read(s.maxCrossInput),
       align: alignSelf === 'auto' ? parent.style.alignItems : alignSelf,
     };
   });
@@ -2026,6 +2068,11 @@ interface WrapSibling {
   crossSize: number;
   crossMarginStart: number;
   crossMarginEnd: number;
+  /** `style[cross]` is `'auto'` — eligible for the stretch resize (v14). */
+  crossIsAuto: boolean;
+  /** Cross-axis clamp bounds; `crossMax` carries `Infinity` when unset. */
+  crossMin: number;
+  crossMax: number;
   align: Align;
 }
 
@@ -2060,7 +2107,7 @@ function evaluateWrappedChild(
   reverse: boolean,
   padMainStart: number,
   padCrossStart: number,
-): { mainSize: number; mainPos: number; crossPos: number } {
+): { mainSize: number; mainPos: number; crossPos: number; crossSize: number } {
   const n = siblings.length;
 
   // Pack greedily, recording per-line start index and count.
@@ -2273,9 +2320,21 @@ function evaluateWrappedChild(
   }
   const crossPos = padCrossStart + myLineCrossStart + withinLineCross;
 
+  // Cross size: `align-items: stretch` (the default) resizes an
+  // `'auto'` cross to fill the line's inner cross (v14); otherwise
+  // the already-clamped `me.crossSize` stands (clamped explicit, or
+  // 0 for a non-stretched `'auto'`). Mirrors the imperative
+  // `crossAlignItemsInLine` stretch branch.
+  let crossSize = me.crossSize;
+  if (me.crossIsAuto && me.align === 'stretch') {
+    const lineInner = myLineCrossSize - me.crossMarginStart - me.crossMarginEnd;
+    crossSize = clampMinMax(Math.max(0, lineInner), me.crossMin, me.crossMax);
+  }
+
   return {
     mainSize: finalMainSizes[childIndex]!,
     mainPos,
     crossPos,
+    crossSize,
   };
 }

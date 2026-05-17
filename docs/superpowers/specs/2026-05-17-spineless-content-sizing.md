@@ -56,14 +56,14 @@ is byte-identical to `evaluateImperative`.
   `resolveHypotheticalMainSize`. The root's `'auto'` axis resolves
   from a caller-supplied `available`, modelled as a root input
   Field so a terminal resize drives a precise incremental relayout.
-- **v14 — `'auto'` cross axis + `align-items: stretch`.** An
-  `'auto'` **cross-axis** size is `0` under a non-stretch align, but
-  `align-items: stretch` (the default) resizes it to fill the line's
-  inner cross — `clampSize(lineCross − crossMargins)`. This is the
-  imperative `crossAlignItemsInLine` stretch branch; it is reached
-  for explicit cross sizes too but is a no-op there. Needs the
-  line cross size, so it touches the non-wrap rule and the wrap line
-  packer.
+- **v14 — `'auto'` cross axis + `align-items: stretch` (landed).**
+  An `'auto'` **cross-axis** size is `0` under a non-stretch align,
+  but `align-items: stretch` (the default) resizes it to fill the
+  line's inner cross — `clampSize(lineCross − crossMargins)`. This
+  is the imperative `crossAlignItemsInLine` stretch branch; it is
+  reached for explicit cross sizes too but is a no-op there. Needs
+  the line cross size, so it touches the non-wrap cross-size rule
+  and the wrap line packer.
 - **v15 — `aspectRatio`.** When an axis is `'auto'` and the
   perpendicular axis is an explicit number, derive
   `width = height × ratio` / `height = width ÷ ratio`, mirroring
@@ -105,3 +105,33 @@ main composed with flex-grow / min-width / justify-content, an
 `'auto'` absolute child, and nested auto-main containers — all with
 the cross axis explicit. The three obsolete "requires explicit
 numeric width/height" precondition tests are removed.
+
+## Slice v14 — `'auto'` cross axis + `align-items: stretch`
+
+The cross-size rule branches at build time. For a numeric cross, the
+`'auto'` root, or an `'auto'` cross under a non-stretch align it is
+the resolved input clamped to `[min, max]` (v12/v13 — `0` for a
+non-stretched `'auto'`). For an `'auto'` cross with `align: stretch`
+the size instead fills the line's inner cross:
+`clampMinMax(max(0, lineCross − crossMarginStart − crossMarginEnd))`,
+mirroring `crossAlignItemsInLine`'s stretch branch.
+
+For a **non-wrap** parent the line cross is the parent's inner cross
+(`parentCross − padding`), so the rule depends on the parent's
+cross-size Field plus the cross paddings and the child's cross
+margins. For a **wrap** parent the line cross is per-line:
+`evaluateWrappedChild` now also returns `crossSize`, and the wrap
+regime overrides `crossSizeField` with it. `WrapSibling` /
+`WrapSibInputs` carry `crossIsAuto` and the cross-axis clamp bounds;
+the stretch resize uses the post-`align-content` line cross, so an
+`align-content` line boost flows through.
+
+### Tests
+
+A `slice v14` describe (14 tests): `'auto'` cross stretching in a
+column and a row parent, `align-items: flex-start` / `align-self`
+override leaving it at `0`, the fill subtracting parent padding and
+child cross margins, min/max clamping of the stretched size,
+composition with an `'auto'` root, both-axes-auto leaves,
+single-line and multi-line wrap, an `align-content` line boost,
+reverse direction, and nested auto-cross containers.
