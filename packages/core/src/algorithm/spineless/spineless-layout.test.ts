@@ -342,7 +342,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
 
   it('a value mutation takes the incremental path', () => {
     const sl = checkSequence(fixedRow, [(r) => r.getChild(1)!.setWidth(70)]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1 });
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 0 });
   });
 
   it('a sequence of value mutations all stay incremental', () => {
@@ -352,7 +352,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       (r) => r.setWidth(260),
       (r) => r.getChild(1)!.setWidth(10),
     ]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 4 });
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 4, graftRelayouts: 0 });
   });
 
   it('gap / padding / margin / min / max mutations stay incremental', () => {
@@ -363,7 +363,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       (r) => r.getChild(1)!.setMinWidth(80),
       (r) => r.getChild(2)!.setMaxWidth(15),
     ]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 5 });
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 5, graftRelayouts: 0 });
   });
 
   it('a positive→positive flex-weight tweak stays incremental', () => {
@@ -381,7 +381,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       }
       return root;
     }, [(r) => r.getChild(0)!.setFlexGrow(3)]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1 });
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 0 });
   });
 
   it("an 'auto' root re-sized from a new available stays incremental", () => {
@@ -407,7 +407,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
     impTree.calculateLayout(140, 90);
     expect(snapshot(slTree)).toEqual(snapshot(impTree));
 
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1 });
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 0 });
   });
 
   it('an available presence change forces a rebuild', () => {
@@ -427,7 +427,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
 
   it('a flex-direction change forces a rebuild and stays correct', () => {
     const sl = checkSequence(fixedRow, [(r) => r.setFlexDirection('column')]);
-    expect(sl.stats).toEqual({ fullBuilds: 2, incrementalRelayouts: 0 });
+    expect(sl.stats).toEqual({ fullBuilds: 2, incrementalRelayouts: 0, graftRelayouts: 0 });
   });
 
   it('a flex weight crossing zero forces a rebuild', () => {
@@ -437,18 +437,6 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
 
   it("a width crossing the 'auto' boundary forces a rebuild", () => {
     const sl = checkSequence(fixedRow, [(r) => r.getChild(0)!.setWidth('auto' as never)]);
-    expect(sl.stats.fullBuilds).toBe(2);
-  });
-
-  it('inserting a child forces a rebuild and stays correct', () => {
-    const sl = checkSequence(fixedRow, [
-      (r) => {
-        const c = Node.create();
-        c.setWidth(25);
-        c.setHeight(30);
-        r.insertChild(c, r.getChildCount());
-      },
-    ]);
     expect(sl.stats.fullBuilds).toBe(2);
   });
 
@@ -477,12 +465,185 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       (r) => r.setFlexDirection('column'), // structural → rebuild
       (r) => r.getChild(1)!.setHeight(12), // value → incremental
       (r) => {
-        const c = Node.create(); // structural → rebuild
+        const c = Node.create(); // mid-list insert → rebuild
         c.setWidth(30);
         c.setHeight(18);
         r.insertChild(c, 0);
       },
       (r) => r.setGap('row', 4), // value → incremental
     ]);
+  });
+});
+
+describe('SpinelessLayout — graft fast-path for child append (slice v21)', () => {
+  function checkSequence(make: () => Node, steps: Array<(root: Node) => void>): SpinelessLayout {
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout();
+    impTree.calculateLayout();
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    for (const step of steps) {
+      step(slTree);
+      step(impTree);
+      sl.layout();
+      impTree.calculateLayout();
+      expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    }
+    return sl;
+  }
+
+  const fixedRow = (): Node => {
+    const root = Node.create();
+    root.setWidth(240);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(40);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    return root;
+  };
+
+  const appendLeaf = (w: number, h: number) => (r: Node) => {
+    const c = Node.create();
+    c.setWidth(w);
+    c.setHeight(h);
+    r.insertChild(c, r.getChildCount());
+  };
+
+  it('appending a last child takes the graft fast-path', () => {
+    const sl = checkSequence(fixedRow, [appendLeaf(50, 25)]);
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 0, graftRelayouts: 1 });
+  });
+
+  it('several sequential appends each graft', () => {
+    const sl = checkSequence(fixedRow, [
+      appendLeaf(20, 20),
+      appendLeaf(30, 24),
+      appendLeaf(10, 18),
+    ]);
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 0, graftRelayouts: 3 });
+  });
+
+  it('appending a whole subtree grafts in one shot', () => {
+    const sl = checkSequence(fixedRow, [
+      (r) => {
+        const box = Node.create();
+        box.setWidth(60);
+        box.setHeight(36);
+        box.setFlexDirection('column');
+        for (let i = 0; i < 2; i++) {
+          const leaf = Node.create();
+          leaf.setWidth(60);
+          leaf.setHeight(15);
+          box.insertChild(leaf, i);
+        }
+        r.insertChild(box, r.getChildCount());
+      },
+    ]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+  });
+
+  it('appending into a flex-distributing parent grafts (rebinds the siblings)', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        c.setFlexGrow(1);
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [
+      (r) => {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        c.setFlexGrow(1);
+        r.insertChild(c, r.getChildCount());
+      },
+    ]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+  });
+
+  it('appending into a wrap container grafts', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(30);
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [appendLeaf(60, 30)]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+  });
+
+  it('an append composed with a value mutation grafts and applies both', () => {
+    const sl = checkSequence(fixedRow, [
+      (r) => {
+        appendLeaf(50, 25)(r);
+        r.getChild(0)!.setWidth(70);
+      },
+    ]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+  });
+
+  it('a mid-list insert is not a graft — full rebuild', () => {
+    const sl = checkSequence(fixedRow, [
+      (r) => {
+        const c = Node.create();
+        c.setWidth(25);
+        c.setHeight(30);
+        r.insertChild(c, 0); // not the last child
+      },
+    ]);
+    expect(sl.stats.fullBuilds).toBe(2);
+    expect(sl.stats.graftRelayouts).toBe(0);
+  });
+
+  it('appending to a reverse-direction parent falls back to a rebuild', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(240);
+      root.setHeight(40);
+      root.setFlexDirection('row-reverse');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(30);
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [appendLeaf(40, 30)]);
+    expect(sl.stats.fullBuilds).toBe(2);
+    expect(sl.stats.graftRelayouts).toBe(0);
+  });
+
+  it('a remove is not a graft — full rebuild', () => {
+    const sl = checkSequence(fixedRow, [(r) => r.removeChild(r.getChild(2)!)]);
+    expect(sl.stats.fullBuilds).toBe(2);
+    expect(sl.stats.graftRelayouts).toBe(0);
+  });
+
+  it('an append then a value relayout then another append', () => {
+    const sl = checkSequence(fixedRow, [
+      appendLeaf(30, 22),
+      (r) => r.getChild(1)!.setWidth(55),
+      appendLeaf(15, 18),
+    ]);
+    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 2 });
   });
 });
