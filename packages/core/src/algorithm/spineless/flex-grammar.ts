@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v15) covers:
+ * Current slice (v16a) covers:
  *
  *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -50,7 +50,12 @@
  *     axis is an explicit number derives `width = height × ratio` /
  *     `height = width ÷ ratio`, mirroring `effectivePreferredSize`.
  *     A derived axis is definite (not content-sized) — so it is not
- *     stretched. (Measure-func leaves are a subsequent slice.)
+ *     stretched.
+ *   - measure-func leaves, main axis (v16a) — a childless node with
+ *     a measure function resolves its `'auto'` MAIN-axis size by
+ *     calling the measurer (main axis free, cross axis constrained),
+ *     mirroring `resolveHypotheticalMainSize`. (The `'auto'` cross
+ *     axis of a measure leaf is a subsequent slice.)
  *
  * The grammar covers the whole imperative flexbox feature set for
  * explicitly-sized trees; phase 6 (v13+) extends it to `'auto'`
@@ -77,6 +82,7 @@
  * @internal
  */
 
+import { MeasureMode } from '../../measure-func.js';
 import type { Node } from '../../node.js';
 import type { Align, Justify } from '../../style.js';
 import { isReverse, mainAxis } from '../axis.js';
@@ -242,6 +248,55 @@ function makeEmitter(
     return f;
   }
 
+  // Register (once) the `measure:main` input Field for a measure-leaf
+  // node's `'auto'` MAIN-axis size (v16a). Mirrors the imperative
+  // `resolveHypotheticalMainSize` measure branch: the measurer is
+  // called with the main axis FREE (`Undefined`) and the cross axis
+  // constrained `AtMost` the cross constraint — the cross style size
+  // when numeric, else the parent's inner cross. `mainProp` is the
+  // node's main-axis prop; `parent` supplies the inner-cross fields.
+  function measureMainInput(n: Node, mainProp: 'width' | 'height', parent: Node): Field<number> {
+    const f = field<number>(n, 'measure:main');
+    if (boundary?.has(f as Field<unknown>)) return f;
+    if (!grammar.has(f as Field<unknown>)) {
+      const fn = n.getMeasureFunc()!;
+      const crossProp: 'width' | 'height' = mainProp === 'width' ? 'height' : 'width';
+      const deps: Field<unknown>[] = [];
+      let readCrossConstraint: (read: ReadFn) => number;
+      if (typeof n.style[crossProp] === 'number') {
+        const csInput = styleSizeInput(n, crossProp);
+        deps.push(csInput as Field<unknown>);
+        readCrossConstraint = (read) => read(csInput);
+      } else {
+        // Cross is `'auto'` — constrain to the parent's inner cross.
+        const pdir = mainAxis(parent.style.flexDirection);
+        const parentCrossF = field<number>(parent, crossProp);
+        const padStartF = paddingInput(parent, crossStartEdge(pdir));
+        const padEndF = paddingInput(parent, crossEndEdge(pdir));
+        deps.push(
+          parentCrossF as Field<unknown>,
+          padStartF as Field<unknown>,
+          padEndF as Field<unknown>,
+        );
+        readCrossConstraint = (read) =>
+          Math.max(0, read(parentCrossF) - read(padStartF) - read(padEndF));
+      }
+      grammar.set(f as Field<unknown>, {
+        deps,
+        compute: (read) => {
+          const cc = readCrossConstraint(read);
+          // Main axis free; cross axis constrained AtMost.
+          const r =
+            mainProp === 'width'
+              ? fn(0, MeasureMode.Undefined, cc, MeasureMode.AtMost)
+              : fn(cc, MeasureMode.AtMost, 0, MeasureMode.Undefined);
+          return mainProp === 'width' ? r.width : r.height;
+        },
+      } satisfies FieldRule<number>);
+    }
+    return f;
+  }
+
   // Resolve the input Field a node's main / cross size rule reads for
   // its preferred size on `axis`. Regimes (the auto/numeric split is
   // structural — a mutation across it needs a fresh build):
@@ -249,12 +304,18 @@ function makeEmitter(
   //   - `'auto'` + `aspectRatio` + the perpendicular axis numeric →
   //     an `aspect:*` Field deriving the size from the other axis
   //     (v15), mirroring `effectivePreferredSize`;
+  //   - `'auto'` MAIN axis of a measure-leaf → a `measure:main` Field
+  //     (v16a), mirroring `resolveHypotheticalMainSize`;
   //   - `'auto'` on the root → the `available:*` input;
   //   - `'auto'` elsewhere → a constant `0` (v13 — matches the
-  //     imperative `resolveHypotheticalMainSize` / `naturalCrossSize`
-  //     fallback for a non-measured `'auto'` node; v16 refines this
-  //     to measure-func resolution).
-  function preferredSizeInput(n: Node, axis: 'width' | 'height', isRoot: boolean): Field<number> {
+  //     imperative fallback for a non-measured `'auto'` node; the
+  //     `'auto'` cross axis of a measure-leaf is a later slice).
+  function preferredSizeInput(
+    n: Node,
+    axis: 'width' | 'height',
+    role: 'main' | 'cross',
+    parentOfN: Node | null,
+  ): Field<number> {
     if (typeof n.style[axis] === 'number') return styleSizeInput(n, axis);
     if (aspectDerivable(n, axis)) {
       const other: 'width' | 'height' = axis === 'width' ? 'height' : 'width';
@@ -272,7 +333,10 @@ function makeEmitter(
       }
       return f;
     }
-    if (isRoot) return availableInput(n, axis);
+    if (parentOfN !== null && role === 'main' && isMeasureLeaf(n)) {
+      return measureMainInput(n, axis, parentOfN);
+    }
+    if (parentOfN === null) return availableInput(n, axis);
     const f = field<number>(n, `preferred:${axis}`);
     if (boundary?.has(f as Field<unknown>)) return f;
     if (!grammar.has(f as Field<unknown>)) {
@@ -531,7 +595,7 @@ function makeEmitter(
     const crossKey: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
     const crossIsContentAuto =
       typeof node.style[crossKey] !== 'number' && !aspectDerivable(node, crossKey);
-    const crossSizeInput = preferredSizeInput(node, crossKey, parent === null);
+    const crossSizeInput = preferredSizeInput(node, crossKey, 'cross', parent);
     const minCrossInput = minMaxInput(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
     const maxCrossInput = minMaxInput(node, crossKey === 'width' ? 'maxWidth' : 'maxHeight');
     if (crossIsContentAuto && parent !== null && align === 'stretch') {
@@ -597,8 +661,8 @@ function makeEmitter(
         wrapSibs.push({
           node: sib,
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
-          mainInput: preferredSizeInput(sib, mainSizeName, false),
-          crossInput: preferredSizeInput(sib, crossKeyName, false),
+          mainInput: preferredSizeInput(sib, mainSizeName, 'main', node),
+          crossInput: preferredSizeInput(sib, crossKeyName, 'cross', node),
           growInput: flexWeightInput(sib, 'flexGrow'),
           shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, mainStart),
@@ -724,7 +788,7 @@ function makeEmitter(
       // flexBasis + main-size + min/max inputs so a size or clamp
       // mutation reaches this field precisely.
       const flexBasisInput = styleSizeInput(node, 'flexBasis');
-      const mainInput = preferredSizeInput(node, mainSizeName, parent === null);
+      const mainInput = preferredSizeInput(node, mainSizeName, 'main', parent);
       const minMainInput = minMaxInput(node, mainSizeName === 'width' ? 'minWidth' : 'minHeight');
       const maxMainInput = minMaxInput(node, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight');
       grammar.set(mainSizeField, {
@@ -760,7 +824,7 @@ function makeEmitter(
         flexSibs.push({
           node: sib,
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
-          mainInput: preferredSizeInput(sib, mainSizeName, false),
+          mainInput: preferredSizeInput(sib, mainSizeName, 'main', node),
           growInput: flexWeightInput(sib, 'flexGrow'),
           shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, flexMainStart),
@@ -1490,6 +1554,18 @@ function aspectDerivable(node: Node, axis: 'width' | 'height'): boolean {
   if (node.style.aspectRatio === undefined) return false;
   const other: 'width' | 'height' = axis === 'width' ? 'height' : 'width';
   return typeof node.style[other] === 'number';
+}
+
+/**
+ * True iff `node` is a measure-function leaf: a childless node with
+ * a measure function. The imperative algorithm consults the measurer
+ * for such a node's `'auto'` axes (`resolveHypotheticalMainSize` /
+ * `naturalCrossSize`); a non-leaf or measure-less node does not.
+ *
+ * @internal
+ */
+function isMeasureLeaf(node: Node): boolean {
+  return node.getChildCount() === 0 && node.getMeasureFunc() !== null;
 }
 
 /**

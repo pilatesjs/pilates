@@ -70,11 +70,18 @@ is byte-identical to `evaluateImperative`.
   `effectivePreferredSize`. Explicit-on-both → ratio ignored;
   both-`'auto'` → cannot derive. A derived axis is definite — not
   content-sized — so `align-items: stretch` does not resize it.
-- **v16 — measure-func leaves.** A leaf (`getChildCount() === 0`)
-  with a measure function resolves its `'auto'` axes by calling the
-  measurer with axis constraints derived from the parent's inner
-  size. The measure function + its result cache become grammar
-  inputs; the constraint is a new parent→child dependency edge.
+- **v16a — measure-func leaves, main axis (landed).** A leaf
+  (`getChildCount() === 0`) with a measure function resolves its
+  `'auto'` **main-axis** size by calling the measurer — main axis
+  free (`Undefined`), cross axis constrained `AtMost` the cross
+  style size (or, when the cross is `'auto'`, the parent's inner
+  cross). Mirrors `resolveHypotheticalMainSize`.
+- **v16b — measure-func leaves, cross axis.** The `'auto'`
+  **cross-axis** size of a measure leaf — `naturalCrossSize` — feeds
+  the line cross-size aggregation and the non-stretch cross size;
+  `align-items: stretch` still wins over it. The measure call
+  constrains the cross `AtMost` the parent inner cross and the main
+  with a hint.
 
 ## Slice v13 — `'auto'` main axis → `0`, root from `available`
 
@@ -173,3 +180,42 @@ size feeding flex layout and acting as the flex-grow basis, a
 derived cross size staying definite under `stretch`, an `'auto'`
 root deriving over `available`, min/max clamping of a derived size,
 composition with `flex-wrap`, and nested derived containers.
+
+## Slice v16a — measure-func leaves, main axis
+
+`isMeasureLeaf(node)` holds for a childless node with a measure
+function. `preferredSizeInput` gains a `role: 'main' | 'cross'`
+parameter and a `parentOfN` (replacing the `isRoot` boolean); for
+`role === 'main'` on a measure leaf it returns a `measure:main`
+Field.
+
+`measureMainInput` builds that Field: its `compute` calls the
+captured measure function with the main axis free
+(`MeasureMode.Undefined`, arg `0`) and the cross axis constrained
+`AtMost` a *cross constraint* — the cross style size when the cross
+is numeric (a dep on that `styleSizeInput`), else the parent's inner
+cross (`parentCross − crossPadding`, deps on those Fields). It
+returns the measured main dimension. Mirrors
+`resolveHypotheticalMainSize`'s measure branch; the result is
+clamped to `[min, max]` by the size rule, exactly as `buildItem`.
+
+Precedence in `preferredSizeInput`: explicit → aspectRatio →
+measure (main role) → `available` (root) / `0`. A numeric
+`flexBasis` still wins over the measurer — `resolveBasisFromRead`
+short-circuits before reading `measure:main`.
+
+The measure function is captured at build time; the Field's deps are
+the constraint inputs. Caching the measurer's result (the imperative
+`callMeasureFunc` does) and a measure "epoch" input for content
+changes are future work. The `'auto'` *cross* axis of a measure
+leaf is v16b.
+
+### Tests
+
+A `slice v16a` describe (10 tests): a measured `'auto'` main in a
+column and a row parent, a constraint-dependent measurer (text-wrap
+style), a numeric `flexBasis` overriding the measurer, a measured
+basis feeding flex-grow, min/max clamping of a measured size,
+coexistence with non-measure siblings, `justify-content` leftover,
+`flex-wrap`, and a measure leaf inside an `'auto'` container — all
+with explicit cross sizes.
