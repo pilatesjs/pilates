@@ -43,9 +43,12 @@ cells. So the write-back is: evaluate every node's
   structural changed it diffs every leaf input Field (`deps: []`),
   `markDirty`s the ones whose live value drifted, and `recompute()`s
   — no rebuild. A structural change rebuilds.
-- **v21 — structural change handling.** Child insert / remove and
-  other structural mutations drive `graft` / `detach` when the
-  fast-path applies, a full grammar rebuild otherwise.
+- **v21 — graft fast-path for child append (landed).** When the
+  only structural change is a single child append (to a parent the
+  fragment fast-path covers), `buildAppendFragment` + `graft` patch
+  the runtime in place — no whole-tree rebuild. Any other structural
+  change (remove, mid-list insert, reverse-parent append,
+  flex-direction, …) still rebuilds.
 - **v22 — public wiring.** `calculateLayout` routes through
   `SpinelessLayout`, with an imperative fallback for trees the
   grammar does not cover (`display: none`, a measure function on an
@@ -119,3 +122,41 @@ incremental path (`stats` confirms); structural changes
 (flex-direction, a flex weight crossing zero, an `'auto'` boundary
 crossing, child insert/remove, `aspectRatio`, an `available`
 presence change) force a rebuild; a mixed sequence interleaves both.
+
+## Slice v21 — graft fast-path for child append
+
+When `layout()` finds a structural change, it tries `tryGraftAppend`
+before falling back to a rebuild. The classifier compares the
+current `StructuralFingerprint` to the built one:
+
+- no node removed, ≥ 1 added;
+- every surviving node's `nodeSig` + measure function unchanged
+  (`graft` patches only the append — a concurrent style-structural
+  change would be missed);
+- the added nodes form exactly one subtree (a unique added node
+  whose parent is not itself added — its root is the appended
+  `child`, its parent the `parent`).
+
+On a match it calls `buildAppendFragment(prev, root, parent, child)`;
+if that returns a fragment (the parent is not reverse-direction and
+`child` is the last child), the driver `graft`s the additions,
+applies the `rebinds` via `rebindRule`, adopts `fragment.next`,
+re-collects the input Fields, and runs the value-change diff +
+`recompute()` (so a value mutation in the same gap is picked up
+too). `buildAppendFragment` returning `null`, a removed node, a
+mid-list insert, or a touched sibling signature all fall back to a
+full rebuild.
+
+`stats` gains a `graftRelayouts` counter.
+
+### Tests
+
+`spineless-layout.test.ts` gains a `slice v21` describe (10 tests):
+appending a last child / several in sequence / a whole subtree /
+into a flex-distributing parent / into a wrap container takes the
+graft path (`stats.graftRelayouts` confirms); an append composed
+with a value mutation grafts and applies both; a mid-list insert, a
+reverse-parent append and a child removal all fall back to a
+rebuild; each step is mirrored on a parallel imperative tree and the
+layouts asserted equal. The obsolete v20 "inserting a child forces a
+rebuild" test is removed (a last-child append now grafts).

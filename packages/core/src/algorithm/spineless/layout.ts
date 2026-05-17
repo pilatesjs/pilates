@@ -8,14 +8,17 @@
  * shared integer-cell rounding (`roundLayout`) and scroll-extent
  * pass — mirroring the tail of the imperative `calculateLayoutImpl`.
  *
- * The driver persists the grammar + runtime between `layout()` calls
- * (v20). A second `layout()` after only VALUE mutations
- * (`setWidth` to another number, `setGap`, `setMinHeight`, …)
- * re-`markDirty`s the changed input Fields and `recompute()`s — no
- * rebuild. A STRUCTURAL change (tree shape, `flex-direction`, an
- * `'auto'` ↔ numeric size flip, a flex weight crossing zero, …)
- * triggers a full rebuild. `graft` / `detach` fast-paths for
- * structural mutation are a later slice.
+ * The driver persists the grammar + runtime between `layout()` calls.
+ * It picks one of three paths per call:
+ *
+ *   - VALUE relayout (v20) — nothing structural changed; re-`markDirty`
+ *     the input Fields whose value drifted and `recompute()`.
+ *   - GRAFT relayout (v21) — the only structural change is a single
+ *     child append; `buildAppendFragment` + `graft` patch the runtime
+ *     in place, no whole-tree rebuild.
+ *   - full REBUILD — any other structural change (`flex-direction`,
+ *     an `'auto'` ↔ numeric flip, a flex weight crossing zero, a
+ *     child removed or mid-list inserted, a reverse-parent append, …).
  *
  * @internal
  */
@@ -23,9 +26,23 @@
 import type { MeasureFunc } from '../../measure-func.js';
 import type { Node } from '../../node.js';
 import { roundLayout } from '../round.js';
-import { type AvailableSize, type FlexGrammarOutput, buildFlexGrammar } from './flex-grammar.js';
-import type { Field, ReadFn } from './grammar.js';
+import {
+  type AvailableSize,
+  type FlexGrammarOutput,
+  buildAppendFragment,
+  buildFlexGrammar,
+} from './flex-grammar.js';
+import type { Field, Grammar, ReadFn } from './grammar.js';
 import { SpinelessRuntime } from './runtime.js';
+
+/** Every leaf input Field (`deps: []`) the runtime currently tracks. */
+function collectInputs(grammar: Grammar, runtime: SpinelessRuntime): Array<Field<unknown>> {
+  const inputs: Array<Field<unknown>> = [];
+  for (const [field, rule] of grammar) {
+    if (rule.deps.length === 0 && runtime.isTracked(field)) inputs.push(field);
+  }
+  return inputs;
+}
 
 /** An input field's `compute` never calls `read` — guard against it. */
 const NEVER_READ: ReadFn = () => {
@@ -67,12 +84,13 @@ function nodeSig(node: Node): string {
     // `aspectRatio` is captured by value at build time, so any
     // change to it needs a rebuild.
     s.aspectRatio === undefined ? 'n' : String(s.aspectRatio),
-    node.getChildCount(),
     // Absolute children capture their `position` edges by value.
     s.position
       .map((p) => (p === undefined ? '_' : String(p)))
       .join(','),
   ].join('|');
+  // Tree shape is NOT in the signature — `StructuralFingerprint`'s
+  // `nodes` array already captures every child insert / remove.
 }
 
 function captureStructure(root: Node): StructuralFingerprint {
@@ -122,7 +140,7 @@ export class SpinelessLayout {
   private built: Built | null = null;
 
   /** Build / relayout counters — for tests and diagnostics. */
-  readonly stats = { fullBuilds: 0, incrementalRelayouts: 0 };
+  readonly stats = { fullBuilds: 0, incrementalRelayouts: 0, graftRelayouts: 0 };
 
   constructor(root: Node) {
     this.root = root;
@@ -133,18 +151,24 @@ export class SpinelessLayout {
    * `'auto'` root, matching `calculateLayout`'s availability args.
    */
   layout(availableWidth?: number, availableHeight?: number): void {
-    const reusable =
+    const current = captureStructure(this.root);
+    // `available` PRESENCE (defined vs not) is structural — it
+    // selects the root size rule shape (`rootAxisIsBareZero`).
+    const samePresence =
       this.built !== null &&
-      // `available` PRESENCE (defined vs not) is structural — it
-      // selects the root size rule shape (`rootAxisIsBareZero`).
       (this.built.available.width !== undefined) === (availableWidth !== undefined) &&
-      (this.built.available.height !== undefined) === (availableHeight !== undefined) &&
-      structureEqual(captureStructure(this.root), this.built.structure);
+      (this.built.available.height !== undefined) === (availableHeight !== undefined);
 
-    if (reusable) {
-      this.relayout(availableWidth, availableHeight);
+    if (samePresence && structureEqual(current, this.built!.structure)) {
+      // Nothing structural changed — incremental value relayout.
+      this.applyValueChanges(availableWidth, availableHeight);
+      this.stats.incrementalRelayouts++;
+    } else if (samePresence && this.tryGraftAppend(current, availableWidth, availableHeight)) {
+      // A single child append — patched in place via `graft`.
+      this.stats.graftRelayouts++;
     } else {
-      this.fullBuild(availableWidth, availableHeight);
+      this.fullBuild(current, availableWidth, availableHeight);
+      this.stats.fullBuilds++;
     }
 
     this.writeBack();
@@ -154,7 +178,11 @@ export class SpinelessLayout {
   }
 
   /** Discard any persisted state and build the grammar afresh. */
-  private fullBuild(availableWidth?: number, availableHeight?: number): void {
+  private fullBuild(
+    current: StructuralFingerprint,
+    availableWidth?: number,
+    availableHeight?: number,
+  ): void {
     const available: AvailableSize = {};
     if (availableWidth !== undefined) available.width = availableWidth;
     if (availableHeight !== undefined) available.height = availableHeight;
@@ -167,23 +195,87 @@ export class SpinelessLayout {
     const runtime = new SpinelessRuntime(output.grammar, rootFields);
     runtime.init();
 
-    // The leaf input Fields — `deps: []` — are the ones a value
-    // mutation can move; collect them once for the relayout diff.
-    const inputs: Array<Field<unknown>> = [];
-    for (const [field, rule] of output.grammar) {
-      if (rule.deps.length === 0 && runtime.isTracked(field)) inputs.push(field);
-    }
-
-    this.built = { available, output, runtime, inputs, structure: captureStructure(this.root) };
-    this.stats.fullBuilds++;
+    this.built = {
+      available,
+      output,
+      runtime,
+      inputs: collectInputs(output.grammar, runtime),
+      structure: current,
+    };
   }
 
   /**
-   * Incremental relayout: the grammar is unchanged, so re-`markDirty`
-   * every input Field whose live value drifted from the runtime's
-   * cached value and `recompute()`.
+   * Fast-path a structural change that is exactly a single child
+   * append: `buildAppendFragment` + `graft`, no whole-tree rebuild.
+   * Returns `false` (and changes nothing) when the change is not a
+   * clean append the fast-path covers — the caller then rebuilds.
    */
-  private relayout(availableWidth?: number, availableHeight?: number): void {
+  private tryGraftAppend(
+    current: StructuralFingerprint,
+    availableWidth?: number,
+    availableHeight?: number,
+  ): boolean {
+    const built = this.built!;
+    const prevNodes = new Set(built.structure.nodes);
+    const curNodes = new Set(current.nodes);
+
+    // A pure append: no node removed, at least one added.
+    for (const n of built.structure.nodes) {
+      if (!curNodes.has(n)) return false;
+    }
+    const added = current.nodes.filter((n) => !prevNodes.has(n));
+    if (added.length === 0) return false;
+
+    // No surviving node's own structural signature may have changed
+    // — `graft` patches only the append, nothing else.
+    const sigByNode = new Map<Node, string>();
+    const measureByNode = new Map<Node, MeasureFunc | null>();
+    for (let i = 0; i < current.nodes.length; i++) {
+      sigByNode.set(current.nodes[i]!, current.sigs[i]!);
+      measureByNode.set(current.nodes[i]!, current.measures[i]!);
+    }
+    for (let i = 0; i < built.structure.nodes.length; i++) {
+      const n = built.structure.nodes[i]!;
+      if (sigByNode.get(n) !== built.structure.sigs[i]) return false;
+      if (measureByNode.get(n) !== built.structure.measures[i]) return false;
+    }
+
+    // The added nodes must form exactly one subtree — its root is
+    // the unique added node whose parent is NOT itself added.
+    const addedSet = new Set(added);
+    let child: Node | null = null;
+    for (const n of added) {
+      const p = n.getParent();
+      if (p === null || !addedSet.has(p)) {
+        if (child !== null) return false; // two separate appends
+        child = n;
+      }
+    }
+    if (child === null) return false;
+    const parent = child.getParent();
+    if (parent === null) return false;
+
+    const fragment = buildAppendFragment(built.output, this.root, parent, child);
+    if (fragment === null) return false;
+
+    built.runtime.graft(fragment.additions, fragment.newRoots);
+    for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
+    built.output = fragment.next;
+    built.inputs = collectInputs(fragment.next.grammar, built.runtime);
+    built.structure = current;
+
+    // Pick up any value mutations that landed in the same gap, then
+    // recompute (covering the grafted / rebound fields too).
+    this.applyValueChanges(availableWidth, availableHeight);
+    return true;
+  }
+
+  /**
+   * Re-`markDirty` every input Field whose live value drifted from
+   * the runtime's cached value, then `recompute()`. The grammar is
+   * assumed unchanged (or already patched by `graft`).
+   */
+  private applyValueChanges(availableWidth?: number, availableHeight?: number): void {
     const built = this.built!;
     // `available` values feed `available:*` input Fields via the
     // closure over this object — mutate it in place so the diff
@@ -197,7 +289,6 @@ export class SpinelessLayout {
       if (live !== runtime.evaluate(field)) runtime.markDirty(field);
     }
     runtime.recompute();
-    this.stats.incrementalRelayouts++;
   }
 
   /** Write the runtime's float layout into every node's `_layout`. */
