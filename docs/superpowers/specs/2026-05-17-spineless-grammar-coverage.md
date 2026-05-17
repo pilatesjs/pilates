@@ -55,11 +55,12 @@ grammar, prove equality."
   width / height are clamped to the node's own
   `[minWidth/Height, maxWidth/Height]` — single `clampSize`
   applications, no iteration.
-- **v12b — `min` / `max` in the freeze loop.** The hardest: flex
-  distribution becomes the imperative freeze loop — clamp violating
-  items, freeze them, redistribute the remainder, iterate to a
-  fixpoint. Also feeds the clamped hypothetical into the wrap line
-  packer.
+- **v12b — `min` / `max` in the freeze loop (landed).** Flex
+  distribution becomes the imperative freeze loop — an item whose
+  proportional grow / shrink target breaches a clamp is frozen at
+  its bound and its share redistributed, iterating to a fixpoint.
+  The clamped hypothetical also feeds the wrap line packer. With
+  v12b the grammar covers the whole imperative flexbox feature set.
 
 ## Slice v9 — `align-content`
 
@@ -176,3 +177,41 @@ flex-end, composition with padding / margin / gap, clamped sizes
 feeding `justify-content` leftover and a reverse-direction flip, the
 root clamping its own size, three absolute-child cases (explicit,
 edge-derived, `0`-fallback `minWidth`), and a no-clamp regression.
+
+## Slice v12b — min/max in the flex freeze loop
+
+`distributeMainAxis` becomes the real CSS freeze loop. Each
+sibling's hypothetical is its basis clamped to its own `[min, max]`;
+`freezeLoopGrow` / `freezeLoopShrink` then iterate — an unfrozen
+item whose proportional target breaches a clamp is pinned at the
+bound, removed from `totalGrow` / `totalScaled`, its delta booked as
+`frozenContribution`, and the remainder redistributed, up to `n + 1`
+rounds. Byte-for-byte the imperative `distributeGrow` /
+`distributeShrink`. With no min/max present the loop settles in one
+round and reproduces the prior single-pass result, so v9–v11 trees
+are unchanged.
+
+`SizeInputs` / `WrapSibInputs` gain main-axis `min` / `max` input
+Fields (and `WrapSibInputs` also cross-axis ones); the
+flex-distribution and wrap `mainSize` rules declare them as deps.
+The wrap line packer (`evaluateWrappedChild`) packs on the clamped
+hypothetical and runs the freeze loop per line.
+
+One subtlety the differential fuzzing-style tests surfaced: the
+imperative computes a line's cross size from each item's
+**unclamped** natural cross (`computeLineCrossSizes` →
+`naturalCross`) but positions an item within its line against the
+**clamped** cross (`crossAlignItemsInLine` →
+`clampSize(naturalCross)`). A min/max clamp can thus make an item
+overflow its line. `WrapSibling` carries both `crossSizeNatural`
+(line aggregation) and `crossSize` (within-line alignment).
+
+### Tests
+
+`flex-grammar.test.ts` gains a `slice v12b` describe (16 tests):
+flex-grow / flex-shrink with a child hitting max / min, cascading
+freezes needing multiple iterations, every child hitting max,
+numeric flex-basis clamped both ways, `min > max`, column-direction
+distribution, clamps feeding `justify-content` and a reverse flip,
+three wrap cases (clamped packing, per-line freeze loop, the
+natural-vs-clamped cross-size split), and a no-clamp regression.

@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v12a) covers:
+ * Current slice (v12b) covers:
  *
  *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -26,17 +26,20 @@
  *     main axis runs from the container's main END; each in-flow
  *     child's main position is reflected across the inner-main box,
  *     mirroring the imperative `flipMainAxis`
- *   - min / max size clamping (v12a) — a node's main size (when the
- *     parent does not flex-distribute), its cross size, and an
- *     absolute child's width / height are clamped to the node's own
- *     `[minWidth/Height, maxWidth/Height]`, mirroring the imperative
- *     `clampSize`. Clamping *inside* the flex-distribution freeze
- *     loop and the wrap line packer is the v12b slice.
+ *   - min / max size clamping (v12) — every node's main size, cross
+ *     size, and an absolute child's width / height are clamped to
+ *     the node's own `[minWidth/Height, maxWidth/Height]`. v12a
+ *     covered the single-shot sites (non-distributed main size,
+ *     cross size, absolute children); v12b folds min/max into the
+ *     flex-distribution freeze loop and the wrap line packer — an
+ *     item whose proportional grow / shrink target breaches a clamp
+ *     is frozen at its bound and its share redistributed, iterating
+ *     to a fixpoint, exactly as the imperative `distributeGrow` /
+ *     `distributeShrink`.
  *
- * The remaining slice (v12b) folds min/max into the flex-distribution
- * freeze loop and the wrap line packer, each gated by a differential
- * test that asserts the grammar produces byte-identical output to
- * the imperative algorithm.
+ * With v12 the grammar covers the whole imperative flexbox feature
+ * set: the Spineless engine is a drop-in for `calculateLayout` on
+ * any tree of explicitly-sized nodes.
  *
  * Fields emitted per node:
  *
@@ -496,6 +499,10 @@ function makeEmitter(
           marginMainEndInput: marginInput(sib, mainEnd),
           marginCrossStartInput: marginInput(sib, crossStart),
           marginCrossEndInput: marginInput(sib, crossEnd),
+          minInput: minMaxInput(sib, mainSizeName === 'width' ? 'minWidth' : 'minHeight'),
+          maxInput: minMaxInput(sib, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight'),
+          minCrossInput: minMaxInput(sib, crossKeyName === 'width' ? 'minWidth' : 'minHeight'),
+          maxCrossInput: minMaxInput(sib, crossKeyName === 'width' ? 'maxWidth' : 'maxHeight'),
         });
       }
       const parentMainField = field<number>(parent, mainSizeName);
@@ -526,6 +533,10 @@ function makeEmitter(
           s.marginMainEndInput as Field<unknown>,
           s.marginCrossStartInput as Field<unknown>,
           s.marginCrossEndInput as Field<unknown>,
+          s.minInput as Field<unknown>,
+          s.maxInput as Field<unknown>,
+          s.minCrossInput as Field<unknown>,
+          s.maxCrossInput as Field<unknown>,
         );
       }
       const evalWrapped = (read: ReadFn) => {
@@ -639,6 +650,8 @@ function makeEmitter(
           shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, flexMainStart),
           marginMainEndInput: marginInput(sib, flexMainEnd),
+          minInput: minMaxInput(sib, mainSizeName === 'width' ? 'minWidth' : 'minHeight'),
+          maxInput: minMaxInput(sib, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight'),
         });
       }
       const parentMainField = field<number>(parent, mainSizeName);
@@ -657,6 +670,8 @@ function makeEmitter(
           s.shrinkInput as Field<unknown>,
           s.marginMainStartInput as Field<unknown>,
           s.marginMainEndInput as Field<unknown>,
+          s.minInput as Field<unknown>,
+          s.maxInput as Field<unknown>,
         );
       }
       grammar.set(mainSizeField, {
@@ -1276,11 +1291,15 @@ interface SizeInputs {
   shrinkInput: Field<number>;
   marginMainStartInput: Field<number>;
   marginMainEndInput: Field<number>;
+  /** Main-axis min / max clamp inputs (v12b — the freeze loop). */
+  minInput: Field<number>;
+  maxInput: Field<number>;
 }
 
 /**
  * A wrap sibling's input fields — `SizeInputs` plus the cross-axis
- * size and cross-axis margin inputs the wrap line packer needs.
+ * size, cross-axis margin and cross-axis min / max inputs the wrap
+ * line packer needs.
  *
  * @internal
  */
@@ -1288,6 +1307,8 @@ interface WrapSibInputs extends SizeInputs {
   crossInput: Field<number>;
   marginCrossStartInput: Field<number>;
   marginCrossEndInput: Field<number>;
+  minCrossInput: Field<number>;
+  maxCrossInput: Field<number>;
 }
 
 /**
@@ -1331,6 +1352,9 @@ interface FlexSibling {
   shrink: number;
   marginStart: number;
   marginEnd: number;
+  /** Main-axis clamp bounds; `max` carries `Infinity` when unset. */
+  min: number;
+  max: number;
 }
 
 /**
@@ -1348,6 +1372,8 @@ function liveFlexSiblings(sibs: readonly SizeInputs[], read: ReadFn): FlexSiblin
     shrink: read(s.shrinkInput),
     marginStart: read(s.marginMainStartInput),
     marginEnd: read(s.marginMainEndInput),
+    min: read(s.minInput),
+    max: read(s.maxInput),
   }));
 }
 
@@ -1366,13 +1392,23 @@ function liveWrapSiblings(
 ): WrapSibling[] {
   return sibs.map((s) => {
     const alignSelf = s.node.style.alignSelf;
+    const crossNatural = read(s.crossInput);
     return {
       basis: resolveBasisFromRead(read, s.flexBasisInput, s.mainInput),
       grow: read(s.growInput),
       shrink: read(s.shrinkInput),
+      min: read(s.minInput),
+      max: read(s.maxInput),
       mainMarginStart: read(s.marginMainStartInput),
       mainMarginEnd: read(s.marginMainEndInput),
-      crossSize: read(s.crossInput),
+      // Two cross sizes (v12b): the imperative computes a line's
+      // cross size from each item's UNCLAMPED natural cross
+      // (`computeLineCrossSizes` → `naturalCross`), but positions an
+      // item within its line using the CLAMPED cross
+      // (`crossAlignItemsInLine` → `clampSize(naturalCross)`). A
+      // min/max clamp can therefore make an item overflow its line.
+      crossSizeNatural: crossNatural,
+      crossSize: clampMinMax(crossNatural, read(s.minCrossInput), read(s.maxCrossInput)),
       crossMarginStart: read(s.marginCrossStartInput),
       crossMarginEnd: read(s.marginCrossEndInput),
       align: alignSelf === 'auto' ? parent.style.alignItems : alignSelf,
@@ -1556,9 +1592,21 @@ function parentNeedsFlexDistribution(parent: Node): boolean {
   return false;
 }
 
+/** The per-sibling shape `distributeMainAxis` consumes. */
+interface DistributeSibling {
+  basis: number;
+  grow: number;
+  shrink: number;
+  marginStart: number;
+  marginEnd: number;
+  /** Main-axis clamp bounds; `max` carries `Infinity` when unset. */
+  min: number;
+  max: number;
+}
+
 /**
- * Distribute `budget` across siblings using CSS flex semantics
- * (without min/max clamping). Returns each sibling's final main-axis
+ * Distribute `budget` across siblings using CSS flex semantics with
+ * min/max clamping (v12b). Returns each sibling's final main-axis
  * size in input order.
  *
  * `budget` is the parent's inner main size (containerMain minus
@@ -1567,53 +1615,132 @@ function parentNeedsFlexDistribution(parent: Node): boolean {
  * (grow) or contracts (shrink); margins and gaps are fixed-width
  * spacers that consume budget but never resize.
  *
- * Mirrors the imperative `distributeGrow` / `distributeShrink` in
- * `main-axis.ts`. Without clamping the CSS freeze loop terminates in
- * one iteration for either branch, so we fold it down to a single
- * pass:
- *
- *   - leftover > 0 and any grow weight > 0 → each grow-positive
- *     sibling receives `(leftover * grow) / totalGrow`.
- *   - leftover < 0 and any shrink weight > 0 → each shrink-positive
- *     sibling loses `(overflow * shrink * basis) / sum(shrink * basis)`.
- *   - otherwise → every sibling stays at its basis.
+ * Each sibling's hypothetical size is its basis clamped to its own
+ * `[min, max]` — the imperative `buildItem` clamps before packing /
+ * distribution. The grow / shrink passes then run the CSS freeze
+ * loop (`freezeLoopGrow` / `freezeLoopShrink`): an item whose
+ * proportional target would breach a clamp is pinned ("frozen") at
+ * its bound and its share is redistributed among the rest, iterating
+ * to a fixpoint. Mirrors `distributeGrow` / `distributeShrink` in
+ * `main-axis.ts`.
  *
  * @internal
  */
 function distributeMainAxis(
-  siblings: readonly {
-    basis: number;
-    grow: number;
-    shrink: number;
-    marginStart: number;
-    marginEnd: number;
-  }[],
+  siblings: readonly DistributeSibling[],
   budget: number,
   gap: number,
 ): number[] {
-  let hypothetical = 0;
-  let totalGrow = 0;
-  let totalShrinkScaled = 0;
-  for (const s of siblings) {
-    hypothetical += s.basis + s.marginStart + s.marginEnd;
-    if (s.grow > 0) totalGrow += s.grow;
-    if (s.shrink > 0) totalShrinkScaled += s.shrink * s.basis;
+  const n = siblings.length;
+  // Hypothetical = basis clamped to the sibling's own [min, max].
+  const hyp = siblings.map((s) => clampMinMax(s.basis, s.min, s.max));
+  let hypotheticalMain = 0;
+  for (let i = 0; i < n; i++) {
+    hypotheticalMain += hyp[i]! + siblings[i]!.marginStart + siblings[i]!.marginEnd;
   }
-  if (siblings.length > 1) hypothetical += (siblings.length - 1) * gap;
-  const leftover = budget - hypothetical;
-  if (leftover > 0 && totalGrow > 0) {
-    return siblings.map((s) => (s.grow > 0 ? s.basis + (leftover * s.grow) / totalGrow : s.basis));
+  if (n > 1) hypotheticalMain += (n - 1) * gap;
+  const slack = budget - hypotheticalMain;
+
+  const final = hyp.slice();
+  if (slack > 0) {
+    freezeLoopGrow(siblings, hyp, final, slack);
+  } else if (slack < 0) {
+    freezeLoopShrink(siblings, hyp, final, -slack);
   }
-  if (leftover < 0 && totalShrinkScaled > 0) {
-    const overflow = -leftover;
-    return siblings.map((s) => {
-      if (s.shrink <= 0) return s.basis;
-      const scaled = s.shrink * s.basis;
-      const reduction = (overflow * scaled) / totalShrinkScaled;
-      return s.basis - reduction;
-    });
+  return final;
+}
+
+/**
+ * The flex-grow freeze loop. `hyp` holds each sibling's clamped
+ * hypothetical; `final` is seeded with `hyp` and mutated in place to
+ * the post-distribution sizes. Items with `grow <= 0` never grow;
+ * an item whose proportional target breaches its `[min, max]` is
+ * frozen at the clamped bound and drops out of subsequent rounds.
+ * Mirrors the imperative `distributeGrow`.
+ */
+function freezeLoopGrow(
+  siblings: readonly DistributeSibling[],
+  hyp: readonly number[],
+  final: number[],
+  slack: number,
+): void {
+  const n = siblings.length;
+  const frozen: boolean[] = new Array(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    if (siblings[i]!.grow <= 0) frozen[i] = true;
   }
-  return siblings.map((s) => s.basis);
+  for (let iter = 0; iter < n + 1; iter++) {
+    let totalGrow = 0;
+    let frozenContribution = 0;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) frozenContribution += final[i]! - hyp[i]!;
+      else totalGrow += siblings[i]!.grow;
+    }
+    if (totalGrow <= 0) return;
+    const remaining = slack - frozenContribution;
+    if (remaining <= 0) return;
+    let frozeAny = false;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) continue;
+      const s = siblings[i]!;
+      const target = hyp[i]! + (remaining * s.grow) / totalGrow;
+      const clamped = clampMinMax(target, s.min, s.max);
+      final[i] = clamped;
+      if (clamped !== target) {
+        frozen[i] = true;
+        frozeAny = true;
+      }
+    }
+    if (!frozeAny) return;
+  }
+}
+
+/**
+ * The flex-shrink freeze loop — symmetric to `freezeLoopGrow`. The
+ * shrink share is scaled by `shrink * hypothetical` (CSS weights
+ * shrink by base size). Mirrors the imperative `distributeShrink`.
+ */
+function freezeLoopShrink(
+  siblings: readonly DistributeSibling[],
+  hyp: readonly number[],
+  final: number[],
+  overflow: number,
+): void {
+  const n = siblings.length;
+  const frozen: boolean[] = new Array(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    if (siblings[i]!.shrink <= 0) frozen[i] = true;
+  }
+  for (let iter = 0; iter < n + 1; iter++) {
+    let totalScaled = 0;
+    let frozenContribution = 0;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) frozenContribution += hyp[i]! - final[i]!;
+      else totalScaled += siblings[i]!.shrink * hyp[i]!;
+    }
+    if (totalScaled <= 0) return;
+    const remaining = overflow - frozenContribution;
+    if (remaining <= 0) return;
+    let frozeAny = false;
+    for (let i = 0; i < n; i++) {
+      if (frozen[i]) continue;
+      const s = siblings[i]!;
+      const scaled = s.shrink * hyp[i]!;
+      if (scaled <= 0) {
+        frozen[i] = true;
+        continue;
+      }
+      const reduction = (remaining * scaled) / totalScaled;
+      const target = hyp[i]! - reduction;
+      const clamped = clampMinMax(target, s.min, s.max);
+      final[i] = clamped;
+      if (clamped !== target) {
+        frozen[i] = true;
+        frozeAny = true;
+      }
+    }
+    if (!frozeAny) return;
+  }
 }
 
 // ─── axis-aware spacing readers ─────────────────────────────────────────
@@ -1816,8 +1943,21 @@ interface WrapSibling {
   basis: number;
   grow: number;
   shrink: number;
+  /** Main-axis clamp bounds; `max` carries `Infinity` when unset. */
+  min: number;
+  max: number;
   mainMarginStart: number;
   mainMarginEnd: number;
+  /**
+   * Unclamped cross style size — feeds the line cross-size
+   * aggregation (`computeLineCrossSizes` uses `naturalCross`).
+   */
+  crossSizeNatural: number;
+  /**
+   * Cross size clamped to the cross-axis [min, max] — feeds
+   * within-line cross-alignment (the imperative positions against
+   * `clampSize(naturalCross)`).
+   */
   crossSize: number;
   crossMarginStart: number;
   crossMarginEnd: number;
@@ -1866,7 +2006,9 @@ function evaluateWrappedChild(
     let acc = 0;
     for (let i = 0; i < n; i++) {
       const s = siblings[i]!;
-      const itemMain = s.basis + s.mainMarginStart + s.mainMarginEnd;
+      // Pack on the clamped hypothetical (v12b) — the imperative
+      // `packIntoLines` keys on `item.hypothetical`, not raw basis.
+      const itemMain = clampMinMax(s.basis, s.min, s.max) + s.mainMarginStart + s.mainMarginEnd;
       const inLine = i > start;
       const wouldUse = acc + (inLine ? mainGap : 0) + itemMain;
       if (inLine && wouldUse > innerMain) {
@@ -1900,6 +2042,8 @@ function evaluateWrappedChild(
       shrink: s.shrink,
       marginStart: s.mainMarginStart,
       marginEnd: s.mainMarginEnd,
+      min: s.min,
+      max: s.max,
     }));
     const distributed = distributeMainAxis(lineSiblings, innerMain, mainGap);
     for (let k = 0; k < count; k++) {
@@ -1919,7 +2063,8 @@ function evaluateWrappedChild(
       let max = 0;
       for (let k = 0; k < count; k++) {
         const s = siblings[first + k]!;
-        const candidate = s.crossSize + s.crossMarginStart + s.crossMarginEnd;
+        // Unclamped natural cross — a clamped item may overflow.
+        const candidate = s.crossSizeNatural + s.crossMarginStart + s.crossMarginEnd;
         if (candidate > max) max = candidate;
       }
       lineCrossSizes[li] = max;
