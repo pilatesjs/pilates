@@ -19,10 +19,10 @@ with reasoning, the fuzzer wins.
 
 A property-based differential fuzzer (`fast-check`): generate a
 random `Node` tree spanning the full v1–v16 feature set, then assert
-the Spineless result is **byte-identical** to the imperative
-`calculateLayout`. Two layers:
+the Spineless **float** layout matches the imperative's within a
+small tolerance. Two layers:
 
-1. **Static** (v17) — `evaluateGrammar(tree)` vs `evaluateImperative`
+1. **Static** (v17) — the grammar's float layout vs the imperative's
    over random trees. Validates the grammar's static correctness
    across feature combinations.
 2. **Incremental** (v18) — random tree + a random style-mutation
@@ -30,9 +30,20 @@ the Spineless result is **byte-identical** to the imperative
    (`markStyleDirty` + `recompute`) and assert it still matches the
    imperative. Validates the incremental path.
 
-Any divergence is reproduced from its `fast-check` seed, pinned as a
-deterministic regression test in `flex-grammar.test.ts`, the bug
-fixed, and the seed left pinned.
+**Float, not rounded:** the fuzzer compares the pre-rounding float
+layouts, not integer cells. The grammar and the imperative reach the
+same layout by different floating-point operation orders, so a value
+on an exact `x.5` cell boundary can round in opposite directions
+purely from sub-ULP noise — not a layout bug. Byte-identical
+integer-cell rounding (`round.ts`) is deterministic shared code,
+covered by the curated `flex-grammar.test.ts` corpus; the fuzzer's
+job is the grammar's *layout* correctness, so it leaves rounding
+out. A real layout bug shifts a value by ≥ ~1 cell — far above the
+`1e-6` tolerance.
+
+Any genuine divergence is reproduced from its `fast-check` seed,
+pinned as a deterministic regression test in `flex-grammar.test.ts`,
+the bug fixed, and the seed left pinned.
 
 ## Slices
 

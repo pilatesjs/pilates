@@ -9,11 +9,16 @@
  * `flex-direction` and `flex-wrap`, justify / align*, absolute
  * positioning, `aspectRatio`, and measure-function leaves.
  *
- * For each generated tree the property asserts
- * `evaluateGrammar(tree) === evaluateImperative(tree)` after the
- * shared integer-cell rounding. Any divergence should be reproduced
- * from its `fast-check` seed and pinned as a deterministic
- * regression test in `flex-grammar.test.ts`.
+ * For each generated tree the property asserts the grammar's FLOAT
+ * layout matches the imperative's within a small tolerance. It does
+ * NOT compare rounded integer cells: the grammar and the imperative
+ * reach the same layout by different floating-point operation
+ * orders, so a value on an exact `x.5` cell boundary can round in
+ * opposite directions purely from sub-ULP noise. Byte-identical
+ * rounding is covered by the curated `flex-grammar.test.ts` corpus;
+ * this fuzzer's job is the grammar's *layout* correctness. Any
+ * divergence should be reproduced from its `fast-check` seed and
+ * pinned as a deterministic regression test in `flex-grammar.test.ts`.
  *
  * Known uncovered (deliberately not generated): `display: none`,
  * and a measure function on an `'absolute'` node — the grammar's
@@ -26,6 +31,7 @@ import { describe, expect, it } from 'vitest';
 import { Edge } from '../../edge.js';
 import type { MeasureMode } from '../../measure-func.js';
 import { Node } from '../../node.js';
+import { layoutChildren, resolveRootAxisSize } from '../main-axis.js';
 import { buildFlexGrammar } from './flex-grammar.js';
 import { TopoInterpreter } from './grammar.js';
 
@@ -223,62 +229,57 @@ function buildTree(spec: NodeSpec): Node {
   return n;
 }
 
-// ─── differential evaluation (mirrors flex-grammar.test.ts) ─────────────
+// ─── differential evaluation ────────────────────────────────────────────
+//
+// The fuzzer compares the FLOAT layouts (pre-rounding) within a small
+// tolerance, not the rounded integer cells. The grammar and the
+// imperative reach the same layout by different floating-point
+// operation orders, so a value sitting exactly on an `x.5` cell
+// boundary can round in opposite directions purely from sub-ULP
+// noise — not a layout bug. Integer-cell rounding (`round.ts`) is
+// deterministic shared code, covered byte-identically by the curated
+// `flex-grammar.test.ts` corpus; here we assert the grammar computes
+// the same *layout*, leaving rounding out of the comparison.
 
-function roundTree(root: Node, floatByNode: Map<Node, Box>): Box[] {
-  const out: Box[] = [];
-  function visit(
-    node: Node,
-    parentAbsX: number,
-    parentAbsY: number,
-    parentRoundedX: number,
-    parentRoundedY: number,
-  ): void {
-    const f = floatByNode.get(node)!;
-    const absX = parentAbsX + f.left;
-    const absY = parentAbsY + f.top;
-    const roundedX = Math.round(absX);
-    const roundedY = Math.round(absY);
-    const roundedR = Math.round(absX + f.width);
-    const roundedB = Math.round(absY + f.height);
-    out.push({
-      left: roundedX - parentRoundedX,
-      top: roundedY - parentRoundedY,
-      width: Math.max(0, roundedR - roundedX),
-      height: Math.max(0, roundedB - roundedY),
-    });
-    for (let i = 0; i < node.getChildCount(); i++) {
-      visit(node.getChild(i)!, absX, absY, roundedX, roundedY);
-    }
-  }
-  visit(root, 0, 0, 0, 0);
-  return out;
-}
-
-function evaluateGrammar(root: Node, available: { width?: number; height?: number }): Box[] {
+/** Per-node float layout, in pre-order. */
+function grammarFloats(root: Node, available: { width?: number; height?: number }): Box[] {
   const { grammar, allFields } = buildFlexGrammar(root, available);
   const interp = new TopoInterpreter(grammar);
-  const floatByNode = new Map<Node, Box>();
+  const byNode = new Map<Node, Box>();
   for (const f of allFields) {
-    floatByNode.set(f.node, {
+    byNode.set(f.node, {
       left: interp.evaluate(f.left),
       top: interp.evaluate(f.top),
       width: interp.evaluate(f.width),
       height: interp.evaluate(f.height),
     });
   }
-  return roundTree(root, floatByNode);
+  const out: Box[] = [];
+  function visit(n: Node): void {
+    out.push(byNode.get(n)!);
+    for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
+  }
+  visit(root);
+  return out;
 }
 
-function evaluateImperative(root: Node, available: { width?: number; height?: number }): Box[] {
-  root.calculateLayout(available.width, available.height);
+/**
+ * The imperative float layout — `resolveRootAxisSize` + `layoutChildren`
+ * with no `roundLayout` pass, so `_layout` holds the raw float result.
+ */
+function imperativeFloats(root: Node, available: { width?: number; height?: number }): Box[] {
+  root._layout.left = 0;
+  root._layout.top = 0;
+  root._layout.width = resolveRootAxisSize(root, 'row', available.width);
+  root._layout.height = resolveRootAxisSize(root, 'column', available.height);
+  layoutChildren(root);
   const out: Box[] = [];
   function visit(n: Node): void {
     out.push({
-      left: n.layout.left,
-      top: n.layout.top,
-      width: n.layout.width,
-      height: n.layout.height,
+      left: n._layout.left,
+      top: n._layout.top,
+      width: n._layout.width,
+      height: n._layout.height,
     });
     for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
   }
@@ -286,10 +287,26 @@ function evaluateImperative(root: Node, available: { width?: number; height?: nu
   return out;
 }
 
+const EPSILON = 1e-6;
+
+function expectClose(grammar: Box[], imperative: Box[]): void {
+  expect(grammar.length).toBe(imperative.length);
+  for (let i = 0; i < grammar.length; i++) {
+    const g = grammar[i]!;
+    const m = imperative[i]!;
+    for (const k of ['left', 'top', 'width', 'height'] as const) {
+      if (Math.abs(g[k] - m[k]) >= EPSILON) {
+        // Surface the full pair on failure for a legible counterexample.
+        expect(grammar).toEqual(imperative);
+      }
+    }
+  }
+}
+
 // ─── the property ───────────────────────────────────────────────────────
 
 describe('flex grammar differential fuzzer (phase 7, v17)', () => {
-  it('evaluateGrammar matches evaluateImperative for random feature combinations', () => {
+  it('grammar layout matches the imperative for random feature combinations', () => {
     fc.assert(
       fc.property(
         nodeSpecArbitrary,
@@ -301,9 +318,10 @@ describe('flex grammar differential fuzzer (phase 7, v17)', () => {
           const available: { width?: number; height?: number } = {};
           if (availW !== undefined) available.width = availW;
           if (availH !== undefined) available.height = availH;
-          const grammarOut = evaluateGrammar(buildTree(treeSpec), available);
-          const imperativeOut = evaluateImperative(buildTree(treeSpec), available);
-          expect(grammarOut).toEqual(imperativeOut);
+          expectClose(
+            grammarFloats(buildTree(treeSpec), available),
+            imperativeFloats(buildTree(treeSpec), available),
+          );
         },
       ),
       { numRuns: 500 },

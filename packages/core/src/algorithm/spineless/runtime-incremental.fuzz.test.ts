@@ -7,8 +7,9 @@
  * This file validates INCREMENTALITY: build a runtime for a random
  * tree, then apply a random sequence of value mutations — each
  * driven through `markStyleDirty` + `recompute()` — and assert the
- * runtime's layout stays byte-identical to a fresh imperative pass
- * after every step.
+ * runtime's float layout stays in step (within tolerance) with a
+ * fresh imperative pass after every step. See `flex-grammar.fuzz.test.ts`
+ * for why the comparison is float-with-tolerance, not rounded cells.
  *
  * Only VALUE mutations are generated: `setWidth` / `setHeight` (on an
  * already-numeric axis — an `'auto'` → numeric flip is structural),
@@ -23,6 +24,7 @@ import { describe, expect, it } from 'vitest';
 import type { Edge } from '../../edge.js';
 import type { MeasureMode } from '../../measure-func.js';
 import { Node } from '../../node.js';
+import { layoutChildren, resolveRootAxisSize } from '../main-axis.js';
 import { buildFlexGrammar } from './flex-grammar.js';
 import type { Field } from './grammar.js';
 import { SpinelessRuntime } from './runtime.js';
@@ -274,46 +276,29 @@ function applyMutation(root: Node, m: Mutation, markStyleDirty: StyleDirtier): v
 }
 
 // ─── differential evaluation ────────────────────────────────────────────
+//
+// FLOAT layouts compared within a small tolerance — see the header of
+// `flex-grammar.fuzz.test.ts` for why rounded integer cells are not
+// the comparison surface (sub-ULP noise on an exact `x.5` boundary).
 
-function roundTree(root: Node, floatByNode: Map<Node, Box>): Box[] {
-  const out: Box[] = [];
-  function visit(
-    node: Node,
-    parentAbsX: number,
-    parentAbsY: number,
-    parentRoundedX: number,
-    parentRoundedY: number,
-  ): void {
-    const f = floatByNode.get(node)!;
-    const absX = parentAbsX + f.left;
-    const absY = parentAbsY + f.top;
-    const roundedX = Math.round(absX);
-    const roundedY = Math.round(absY);
-    const roundedR = Math.round(absX + f.width);
-    const roundedB = Math.round(absY + f.height);
-    out.push({
-      left: roundedX - parentRoundedX,
-      top: roundedY - parentRoundedY,
-      width: Math.max(0, roundedR - roundedX),
-      height: Math.max(0, roundedB - roundedY),
-    });
-    for (let i = 0; i < node.getChildCount(); i++) {
-      visit(node.getChild(i)!, absX, absY, roundedX, roundedY);
-    }
-  }
-  visit(root, 0, 0, 0, 0);
-  return out;
-}
-
-function imperativeLayout(root: Node, available: { width?: number; height?: number }): Box[] {
-  root.calculateLayout(available.width, available.height);
+/**
+ * The imperative float layout — `resolveRootAxisSize` + `layoutChildren`
+ * with no `roundLayout` pass, so `_layout` holds the raw float result.
+ * Re-runs from scratch (no cache), so it is correct after a mutation.
+ */
+function imperativeFloats(root: Node, available: { width?: number; height?: number }): Box[] {
+  root._layout.left = 0;
+  root._layout.top = 0;
+  root._layout.width = resolveRootAxisSize(root, 'row', available.width);
+  root._layout.height = resolveRootAxisSize(root, 'column', available.height);
+  layoutChildren(root);
   const out: Box[] = [];
   function visit(n: Node): void {
     out.push({
-      left: n.layout.left,
-      top: n.layout.top,
-      width: n.layout.width,
-      height: n.layout.height,
+      left: n._layout.left,
+      top: n._layout.top,
+      width: n._layout.width,
+      height: n._layout.height,
     });
     for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
   }
@@ -321,10 +306,25 @@ function imperativeLayout(root: Node, available: { width?: number; height?: numb
   return out;
 }
 
+const EPSILON = 1e-6;
+
+function expectClose(runtime: Box[], imperative: Box[]): void {
+  expect(runtime.length).toBe(imperative.length);
+  for (let i = 0; i < runtime.length; i++) {
+    const r = runtime[i]!;
+    const m = imperative[i]!;
+    for (const k of ['left', 'top', 'width', 'height'] as const) {
+      if (Math.abs(r[k] - m[k]) >= EPSILON) {
+        expect(runtime).toEqual(imperative);
+      }
+    }
+  }
+}
+
 // ─── the property ───────────────────────────────────────────────────────
 
 describe('SpinelessRuntime incremental fuzzer (phase 7, v18)', () => {
-  it('recompute() after random value mutations stays byte-identical to the imperative', () => {
+  it('recompute() after random value mutations stays in step with the imperative', () => {
     fc.assert(
       fc.property(
         nodeSpecArbitrary,
@@ -347,26 +347,32 @@ describe('SpinelessRuntime incremental fuzzer (phase 7, v18)', () => {
           const markStyleDirty = createStyleDirtier(rt, styleInputs);
 
           const readRuntime = (): Box[] => {
-            const floatByNode = new Map<Node, Box>();
+            const byNode = new Map<Node, Box>();
             for (const f of allFields) {
-              floatByNode.set(f.node, {
+              byNode.set(f.node, {
                 left: rt.evaluate(f.left),
                 top: rt.evaluate(f.top),
                 width: rt.evaluate(f.width),
                 height: rt.evaluate(f.height),
               });
             }
-            return roundTree(root, floatByNode);
+            const out: Box[] = [];
+            function visit(n: Node): void {
+              out.push(byNode.get(n)!);
+              for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
+            }
+            visit(root);
+            return out;
           };
 
           // Baseline: the freshly-init'd runtime matches the imperative.
-          expect(readRuntime()).toEqual(imperativeLayout(root, available));
+          expectClose(readRuntime(), imperativeFloats(root, available));
 
           // Then each mutation, driven incrementally, keeps matching.
           for (const m of mutations) {
             applyMutation(root, m, markStyleDirty);
             rt.recompute();
-            expect(readRuntime()).toEqual(imperativeLayout(root, available));
+            expectClose(readRuntime(), imperativeFloats(root, available));
           }
         },
       ),
