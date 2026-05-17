@@ -42,9 +42,13 @@ grammar, prove equality."
   for `wrap` *and* `wrap-reverse`; `evaluateWrappedChild` takes a
   `reverse` flag. A no-op for a single line (its cross size already
   fills `innerCross`).
-- **v11 — reverse directions.** `row-reverse` / `column-reverse`
-  lay children out from the main-axis *end*; the main-position
-  formula is mirrored, and justify-content interacts.
+- **v11 — reverse directions (landed).** `row-reverse` /
+  `column-reverse` lay children out from the main-axis *end*. The
+  base axis (`mainAxis`) drives field assignment unchanged; a
+  post-hoc wrapper reflects each in-flow child's main position
+  across the inner-main box (`padStart + innerMain − innerPos −
+  childMain`), exactly the imperative `flipMainAxis`. Applies
+  uniformly to the flex-start, justified and wrap regimes.
 - **v12 — `min` / `max` clamping.** The hardest: flex distribution
   becomes the imperative freeze loop — clamp violating items, freeze
   them, redistribute the remainder, iterate to a fixpoint.
@@ -86,3 +90,38 @@ row `wrap-reverse` under every `align-content` value, a single-line
 case, a column `wrap-reverse`, and `wrap-reverse` composed with
 `align-items` — each byte-identical to the imperative. The obsolete
 v7 "throws on wrap-reverse" rejection test is removed.
+
+## Slice v11 — reverse directions
+
+`buildFlexGrammar` no longer rejects `row-reverse` / `column-reverse`.
+`parentDirection` is computed via `mainAxis` (collapsing `*-reverse`
+onto its base axis) so all main/cross field assignment is unchanged;
+a separate `parentReverse` flag records the reverse.
+
+`applyReverseMainPos` re-wraps a child's already-emitted
+main-position rule: it preserves the forward rule, invokes it for
+the forward offset, and reflects the result across the parent's
+inner-main box — `padStart + innerMain − (forwardPos − padStart) −
+childMain`, byte-for-byte the imperative `flipMainAxis`. The deps
+become the union of the forward rule's deps and the parent main
+size / both main-axis paddings / the child's own main size. It is
+called once per in-flow child in both the wrap and non-wrap regimes,
+so flex-start, justified and wrapped positioning all reverse
+uniformly. Absolute children are positioned against the parent's
+outer box and never flip — they return before the wrapper.
+
+The structural fast-paths (`buildAppendFragment` /
+`buildRemoveFragment`) still bail to a full rebuild for a
+reverse-direction parent: a flip reflects every sibling, so it is a
+whole-subtree rewrite rather than a topological-tail graft.
+
+### Tests
+
+`flex-grammar.test.ts` gains a `slice v11` describe (16 tests):
+`row-reverse` / `column-reverse` with fixed children, `row-reverse`
+under every `justify-content` value, flex-grow / flex-shrink
+distribution, padding + margin + gap, `align-items`, `flex-wrap`,
+`column-reverse` × `wrap-reverse` (both axes mirrored), an absolute
+child coexisting, and nested reverse containers — each
+byte-identical to the imperative. The obsolete v2 "throws on
+row-reverse / column-reverse" rejection tests are removed.
