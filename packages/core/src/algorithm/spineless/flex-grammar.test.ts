@@ -3066,6 +3066,100 @@ describe('buildFlexGrammar — measure-func leaves, cross axis (slice v16b)', ()
   });
 });
 
+describe('buildFlexGrammar — fuzzer-found regressions (slice v17)', () => {
+  // Each case below was first surfaced by the differential fuzzer
+  // (`flex-grammar.fuzz.test.ts`) and is pinned here as a
+  // deterministic guard, independent of the fuzzer's random seed.
+  const matches = (make: () => Node, available?: { width?: number; height?: number }): void => {
+    expect(evaluateGrammar(make(), available)).toEqual(evaluateImperative(make(), available));
+  };
+
+  it("the root ignores its own flexBasis (resolveRootAxisSize doesn't read it)", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(60);
+      root.setHeight(40);
+      root.setFlexBasis(20); // a flex-CHILD property — irrelevant for the root
+      const c = Node.create();
+      c.setWidth(10);
+      c.setHeight(10);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("an 'auto' flexBasis root sized from available ignores flexBasis too", () => {
+    matches(
+      () => {
+        const root = Node.create();
+        root.setFlexBasis(7);
+        const c = Node.create();
+        c.setWidth(10);
+        c.setHeight(10);
+        root.insertChild(c, 0);
+        return root;
+      },
+      { width: 50, height: 50 },
+    );
+  });
+
+  it('align: flex-end clamps a negative inner cross to zero', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(10);
+      root.setHeight(40);
+      root.setFlexDirection('column');
+      root.setAlignItems('flex-end');
+      root.setPadding(Edge.Left, 8);
+      root.setPadding(Edge.Right, 8); // inner cross = 10 - 16 < 0
+      const c = Node.create();
+      c.setWidth(4);
+      c.setHeight(6);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('an absolute child in a wrapped subtree does not shift its in-flow sibling', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(80);
+      root.setHeight(80);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap'); // makes `a` a wrap-regime node
+      const a = Node.create();
+      a.setWidth(60);
+      a.setHeight(40);
+      a.setFlexDirection('row');
+      root.insertChild(a, 0);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setWidth(10);
+      abs.setHeight(10);
+      abs.setMargin(Edge.Left, 5);
+      a.insertChild(abs, 0); // index 0, but out-of-flow
+      const inflow = Node.create();
+      inflow.setWidth(12);
+      inflow.setHeight(12);
+      a.insertChild(inflow, 1); // its in-flow index is 0, not 1
+      return root;
+    });
+  });
+
+  it("an 'auto' root with no available is a bare 0 — min size is not clamped in", () => {
+    matches(() => {
+      const root = Node.create(); // both axes 'auto'
+      root.setMinWidth(5);
+      root.setMinHeight(5); // resolveRootAxisSize returns bare 0, unclamped
+      const c = Node.create();
+      c.setWidth(8);
+      c.setHeight(8);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+});
+
 describe('buildFlexGrammar — absolute positioning (slice v8)', () => {
   describe('basic absolute layout', () => {
     it('absolute child with explicit size + top/left edges anchors to parent outer corner', () => {

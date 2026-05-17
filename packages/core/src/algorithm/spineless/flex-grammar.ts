@@ -400,6 +400,20 @@ function makeEmitter(
     return f;
   }
 
+  // The imperative `resolveRootAxisSize` clamps the root's size to
+  // [min, max] for an explicit / `aspectRatio` / `available`-derived
+  // axis — but its `'auto'` + no-`available` fallback returns a bare
+  // `0`, *unclamped*. This predicate flags exactly that case so the
+  // root size rule can skip the clamp and mirror the quirk (a root
+  // `minWidth` must not inflate an unavailable axis).
+  function rootAxisIsBareZero(n: Node, axis: 'width' | 'height'): boolean {
+    return (
+      typeof n.style[axis] !== 'number' &&
+      !aspectDerivable(n, axis) &&
+      ctx.available[axis] === undefined
+    );
+  }
+
   function styleInputEntry(n: Node): StyleInputs {
     let entry = styleInputs.get(n);
     if (entry === undefined) {
@@ -671,6 +685,13 @@ function makeEmitter(
           return clampMinMax(Math.max(0, lineInner), read(minCrossInput), read(maxCrossInput));
         },
       } satisfies FieldRule<number>);
+    } else if (parent === null && rootAxisIsBareZero(node, crossKey)) {
+      // `'auto'` root, no `available` → bare 0, unclamped (see
+      // `rootAxisIsBareZero`).
+      grammar.set(crossSizeField, {
+        deps: [crossSizeInput as Field<unknown>],
+        compute: (read) => read(crossSizeInput),
+      } satisfies FieldRule<number>);
     } else {
       grammar.set(crossSizeField, {
         deps: [
@@ -815,13 +836,21 @@ function makeEmitter(
         compute: (read) => evalWrapped(read).crossSize,
       } satisfies FieldRule<number>);
       allFields.push({ node, width, height, left, top });
-      // Recurse into children.
+      // Recurse into children. Absolute children are out-of-flow:
+      // they must NOT advance the in-flow index or the priorSiblings
+      // list (the same filtering the non-wrap path does below) —
+      // otherwise an absolute child's margin / size leaks into a
+      // later in-flow sibling's main position.
       const childCount = node.getChildCount();
-      const childSiblings: Node[] = [];
+      const inFlowSiblings: Node[] = [];
       for (let i = 0; i < childCount; i++) {
         const child = node.getChild(i)!;
-        visit(child, node, i, [...childSiblings]);
-        childSiblings.push(child);
+        if (child.style.positionType === 'absolute') {
+          visit(child, node, -1, []);
+        } else {
+          visit(child, node, inFlowSiblings.length, [...inFlowSiblings]);
+          inFlowSiblings.push(child);
+        }
       }
       return;
     }
@@ -839,24 +868,48 @@ function makeEmitter(
       // when no distribution follows. Declare deps on the node's own
       // flexBasis + main-size + min/max inputs so a size or clamp
       // mutation reaches this field precisely.
-      const flexBasisInput = styleSizeInput(node, 'flexBasis');
+      //
+      // The ROOT is special: `flexBasis` describes how a node behaves
+      // as a flex CHILD, and the root is not one. `resolveRootAxisSize`
+      // never consults it — so the root's main size is its preferred
+      // size directly, no `flexBasis` short-circuit.
       const mainInput = preferredSizeInput(node, mainSizeName, 'main', parent);
       const minMainInput = minMaxInput(node, mainSizeName === 'width' ? 'minWidth' : 'minHeight');
       const maxMainInput = minMaxInput(node, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight');
-      grammar.set(mainSizeField, {
-        deps: [
-          flexBasisInput as Field<unknown>,
-          mainInput as Field<unknown>,
-          minMainInput as Field<unknown>,
-          maxMainInput as Field<unknown>,
-        ],
-        compute: (read) =>
-          clampMinMax(
-            resolveBasisFromRead(read, flexBasisInput, mainInput),
-            read(minMainInput),
-            read(maxMainInput),
-          ),
-      } satisfies FieldRule<number>);
+      if (parent === null) {
+        if (rootAxisIsBareZero(node, mainSizeName)) {
+          // `'auto'` root, no `available` → bare 0, unclamped.
+          grammar.set(mainSizeField, {
+            deps: [mainInput as Field<unknown>],
+            compute: (read) => read(mainInput),
+          } satisfies FieldRule<number>);
+        } else {
+          grammar.set(mainSizeField, {
+            deps: [
+              mainInput as Field<unknown>,
+              minMainInput as Field<unknown>,
+              maxMainInput as Field<unknown>,
+            ],
+            compute: (read) => clampMinMax(read(mainInput), read(minMainInput), read(maxMainInput)),
+          } satisfies FieldRule<number>);
+        }
+      } else {
+        const flexBasisInput = styleSizeInput(node, 'flexBasis');
+        grammar.set(mainSizeField, {
+          deps: [
+            flexBasisInput as Field<unknown>,
+            mainInput as Field<unknown>,
+            minMainInput as Field<unknown>,
+            maxMainInput as Field<unknown>,
+          ],
+          compute: (read) =>
+            clampMinMax(
+              resolveBasisFromRead(read, flexBasisInput, mainInput),
+              read(minMainInput),
+              read(maxMainInput),
+            ),
+        } satisfies FieldRule<number>);
+      }
     } else {
       // Flex distribution. Capture the in-flow siblings + this
       // child's index (structural); declare every per-sibling value
@@ -1032,14 +1085,24 @@ function makeEmitter(
           deps: [
             parentCrossField as Field<unknown>,
             crossSizeField,
+            padCrossStartF as Field<unknown>,
             padCrossEndF as Field<unknown>,
             myMarginCrossEndF as Field<unknown>,
           ],
-          compute: (read) =>
-            read(parentCrossField) -
-            read(padCrossEndF!) -
-            read(crossSizeField as Field<number>) -
-            read(myMarginCrossEndF!),
+          // Anchor against the line's inner cross, which the
+          // imperative `crossAlignItemsInLine` clamps to >= 0 — a
+          // container whose cross padding exceeds its cross size has
+          // a zero-width line, not a negative one.
+          compute: (read) => {
+            const padStart = read(padCrossStartF!);
+            const innerCross = Math.max(0, read(parentCrossField) - padStart - read(padCrossEndF!));
+            return (
+              padStart +
+              innerCross -
+              read(crossSizeField as Field<number>) -
+              read(myMarginCrossEndF!)
+            );
+          },
         } satisfies FieldRule<number>);
       } else {
         // Root: no parent, no alignment to apply — anchor at 0.
