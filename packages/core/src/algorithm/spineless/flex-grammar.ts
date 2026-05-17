@@ -1,7 +1,7 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v16a) covers:
+ * Current slice (v16b) covers:
  *
  *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
@@ -51,16 +51,18 @@
  *     `height = width ÷ ratio`, mirroring `effectivePreferredSize`.
  *     A derived axis is definite (not content-sized) — so it is not
  *     stretched.
- *   - measure-func leaves, main axis (v16a) — a childless node with
- *     a measure function resolves its `'auto'` MAIN-axis size by
- *     calling the measurer (main axis free, cross axis constrained),
- *     mirroring `resolveHypotheticalMainSize`. (The `'auto'` cross
- *     axis of a measure leaf is a subsequent slice.)
+ *   - measure-func leaves (v16) — a childless node with a measure
+ *     function resolves its `'auto'` axes by calling the measurer.
+ *     v16a covers the MAIN axis (main free, cross constrained,
+ *     mirroring `resolveHypotheticalMainSize`); v16b the CROSS axis
+ *     (cross constrained `AtMost` the parent inner cross, main free
+ *     with a hint, mirroring `naturalCrossSize`). A measured cross
+ *     feeds the wrap line cross-size aggregation and the non-stretch
+ *     cross size; `align-items: stretch` still overrides it.
  *
- * The grammar covers the whole imperative flexbox feature set for
- * explicitly-sized trees; phase 6 (v13+) extends it to `'auto'`
- * sizing, so the Spineless engine becomes a drop-in for
- * `calculateLayout` on real content-sized trees.
+ * With v16 the grammar covers the full imperative `'auto'` /
+ * measure / `aspectRatio` resolution: the Spineless engine is a
+ * drop-in for `calculateLayout` on real content-sized trees.
  *
  * Fields emitted per node:
  *
@@ -297,6 +299,53 @@ function makeEmitter(
     return f;
   }
 
+  // Register (once) the `measure:cross` input Field for a
+  // measure-leaf node's `'auto'` CROSS-axis size (v16b). Mirrors the
+  // imperative `naturalCrossSize`: the measurer is called with the
+  // cross axis constrained `AtMost` the parent's inner cross and the
+  // main axis FREE (`Undefined`) with a hint — the main style size
+  // when numeric, else the parent's inner cross. `crossProp` is the
+  // node's cross-axis prop; `parent` supplies the inner-cross fields.
+  function measureCrossInput(n: Node, crossProp: 'width' | 'height', parent: Node): Field<number> {
+    const f = field<number>(n, 'measure:cross');
+    if (boundary?.has(f as Field<unknown>)) return f;
+    if (!grammar.has(f as Field<unknown>)) {
+      const fn = n.getMeasureFunc()!;
+      const mainProp: 'width' | 'height' = crossProp === 'width' ? 'height' : 'width';
+      const pdir = mainAxis(parent.style.flexDirection);
+      const parentCrossF = field<number>(parent, crossProp);
+      const padStartF = paddingInput(parent, crossStartEdge(pdir));
+      const padEndF = paddingInput(parent, crossEndEdge(pdir));
+      const deps: Field<unknown>[] = [
+        parentCrossF as Field<unknown>,
+        padStartF as Field<unknown>,
+        padEndF as Field<unknown>,
+      ];
+      // The main-axis hint is the main STYLE size when numeric (a
+      // raw `preferredSize`, no aspectRatio), else the parent inner
+      // cross — matching `naturalCrossSize`'s `mainHint`.
+      let mainHintInput: Field<number> | null = null;
+      if (typeof n.style[mainProp] === 'number') {
+        mainHintInput = styleSizeInput(n, mainProp);
+        deps.push(mainHintInput as Field<unknown>);
+      }
+      grammar.set(f as Field<unknown>, {
+        deps,
+        compute: (read) => {
+          const innerCross = Math.max(0, read(parentCrossF) - read(padStartF) - read(padEndF));
+          const mainHint = mainHintInput !== null ? read(mainHintInput) : innerCross;
+          // Cross axis constrained AtMost the inner cross; main free.
+          const r =
+            crossProp === 'width'
+              ? fn(innerCross, MeasureMode.AtMost, mainHint, MeasureMode.Undefined)
+              : fn(mainHint, MeasureMode.Undefined, innerCross, MeasureMode.AtMost);
+          return crossProp === 'width' ? r.width : r.height;
+        },
+      } satisfies FieldRule<number>);
+    }
+    return f;
+  }
+
   // Resolve the input Field a node's main / cross size rule reads for
   // its preferred size on `axis`. Regimes (the auto/numeric split is
   // structural — a mutation across it needs a fresh build):
@@ -306,10 +355,11 @@ function makeEmitter(
   //     (v15), mirroring `effectivePreferredSize`;
   //   - `'auto'` MAIN axis of a measure-leaf → a `measure:main` Field
   //     (v16a), mirroring `resolveHypotheticalMainSize`;
+  //   - `'auto'` CROSS axis of a measure-leaf → a `measure:cross`
+  //     Field (v16b), mirroring `naturalCrossSize`;
   //   - `'auto'` on the root → the `available:*` input;
   //   - `'auto'` elsewhere → a constant `0` (v13 — matches the
-  //     imperative fallback for a non-measured `'auto'` node; the
-  //     `'auto'` cross axis of a measure-leaf is a later slice).
+  //     imperative fallback for a non-measured `'auto'` node).
   function preferredSizeInput(
     n: Node,
     axis: 'width' | 'height',
@@ -333,8 +383,10 @@ function makeEmitter(
       }
       return f;
     }
-    if (parentOfN !== null && role === 'main' && isMeasureLeaf(n)) {
-      return measureMainInput(n, axis, parentOfN);
+    if (parentOfN !== null && isMeasureLeaf(n)) {
+      return role === 'main'
+        ? measureMainInput(n, axis, parentOfN)
+        : measureCrossInput(n, axis, parentOfN);
     }
     if (parentOfN === null) return availableInput(n, axis);
     const f = field<number>(n, `preferred:${axis}`);
@@ -661,8 +713,8 @@ function makeEmitter(
         wrapSibs.push({
           node: sib,
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
-          mainInput: preferredSizeInput(sib, mainSizeName, 'main', node),
-          crossInput: preferredSizeInput(sib, crossKeyName, 'cross', node),
+          mainInput: preferredSizeInput(sib, mainSizeName, 'main', parent),
+          crossInput: preferredSizeInput(sib, crossKeyName, 'cross', parent),
           growInput: flexWeightInput(sib, 'flexGrow'),
           shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, mainStart),
@@ -824,7 +876,7 @@ function makeEmitter(
         flexSibs.push({
           node: sib,
           flexBasisInput: styleSizeInput(sib, 'flexBasis'),
-          mainInput: preferredSizeInput(sib, mainSizeName, 'main', node),
+          mainInput: preferredSizeInput(sib, mainSizeName, 'main', parent),
           growInput: flexWeightInput(sib, 'flexGrow'),
           shrinkInput: flexWeightInput(sib, 'flexShrink'),
           marginMainStartInput: marginInput(sib, flexMainStart),

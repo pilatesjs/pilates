@@ -76,12 +76,13 @@ is byte-identical to `evaluateImperative`.
   free (`Undefined`), cross axis constrained `AtMost` the cross
   style size (or, when the cross is `'auto'`, the parent's inner
   cross). Mirrors `resolveHypotheticalMainSize`.
-- **v16b — measure-func leaves, cross axis.** The `'auto'`
+- **v16b — measure-func leaves, cross axis (landed).** The `'auto'`
   **cross-axis** size of a measure leaf — `naturalCrossSize` — feeds
   the line cross-size aggregation and the non-stretch cross size;
   `align-items: stretch` still wins over it. The measure call
   constrains the cross `AtMost` the parent inner cross and the main
-  with a hint.
+  free with a hint. With v16b the grammar covers the full imperative
+  content-sizing resolution.
 
 ## Slice v13 — `'auto'` main axis → `0`, root from `available`
 
@@ -219,3 +220,41 @@ basis feeding flex-grow, min/max clamping of a measured size,
 coexistence with non-measure siblings, `justify-content` leftover,
 `flex-wrap`, and a measure leaf inside an `'auto'` container — all
 with explicit cross sizes.
+
+## Slice v16b — measure-func leaves, cross axis
+
+`preferredSizeInput` with `role === 'cross'` on a measure leaf
+returns a `measure:cross` Field built by `measureCrossInput`. Its
+`compute` calls the measurer with the cross axis constrained
+`AtMost` the parent's inner cross (`parentCross − crossPadding`) and
+the main axis free (`Undefined`) with a *main hint* — the main style
+size when numeric (a raw `preferredSize`, no aspectRatio), else the
+parent's inner cross. Mirrors `naturalCrossSize`.
+
+The measured cross flows naturally through the existing rules: the
+non-wrap / non-stretch cross-size rule clamps `read(measure:cross)`;
+the v14 `align-items: stretch` rule still overrides it (a measure
+leaf's `'auto'` cross is content-`'auto'`); and the wrap line packer
+reads `measure:cross` as `crossSizeNatural`, so a measured cross
+feeds the line cross-size aggregation.
+
+Precedence order is unchanged — explicit → aspectRatio → measure →
+`available` / `0` — so an `aspectRatio`-derived cross still wins
+over the measurer.
+
+Regression fixed: the flex-distribution and wrap sibling
+`preferredSizeInput` calls passed the visited node as `parentOfN`
+instead of the actual parent. Harmless while `parentOfN` only
+decided `isRoot` (v13–v16a), but v16b's `measure:cross` reads
+`field(parentOfN, …)` — the wrong node produced a dependency cycle.
+Both call sites now pass `parent`.
+
+### Tests
+
+A `slice v16b` describe (11 tests): a measured `'auto'` cross in a
+column and a row parent, a both-axes-auto measure leaf, `stretch`
+overriding the measured cross, the cross constraint being the
+parent's inner cross, min/max clamping, `aspectRatio` winning over
+the measurer, measured crosses feeding wrap line sizing under both
+`flex-start` and `stretch`, a measure leaf among flex siblings, and
+nested measure leaves.
