@@ -1,9 +1,9 @@
 /**
  * Flexbox layout expressed as an attribute grammar.
  *
- * Current slice (v10) covers:
+ * Current slice (v11) covers:
  *
- *   - flex-direction: `row` and `column`
+ *   - flex-direction: `row`, `column`, `row-reverse`, `column-reverse`
  *   - flex-grow / flex-shrink / flex-basis (v3-v4)
  *   - padding / margin / gap (v5)
  *   - justify-content + align-items / align-self (v6)
@@ -22,12 +22,15 @@
  *     `space-around` / `stretch`
  *   - flex-wrap: `wrap-reverse` (v10) — the line stack is mirrored
  *     on the cross axis
- *   - `row-reverse`, `column-reverse` rejected at build time
+ *   - flex-direction: `row-reverse` / `column-reverse` (v11) — the
+ *     main axis runs from the container's main END; each in-flow
+ *     child's main position is reflected across the inner-main box,
+ *     mirroring the imperative `flipMainAxis`
  *
- * Subsequent PRs expand the feature set (reverse directions, min/max
- * clamping with the multi-iteration freeze loop) one chunk at a
- * time, each gated by a differential test that asserts the grammar
- * produces byte-identical output to the imperative algorithm.
+ * Subsequent PRs expand the feature set (min/max clamping with the
+ * multi-iteration freeze loop) one chunk at a time, each gated by a
+ * differential test that asserts the grammar produces byte-identical
+ * output to the imperative algorithm.
  *
  * Fields emitted per node:
  *
@@ -51,6 +54,7 @@
 
 import type { Node } from '../../node.js';
 import type { Align, Justify } from '../../style.js';
+import { isReverse, mainAxis } from '../axis.js';
 import { type Field, type FieldRule, type Grammar, type ReadFn, field } from './grammar.js';
 
 /**
@@ -274,15 +278,9 @@ function makeEmitter(
     const left = field<number>(node, 'left');
     const top = field<number>(node, 'top');
 
-    // Universal preconditions: direction / wrap / align-content
-    // policy applies to every node (in-flow or absolute) since they
-    // describe THIS node as a potential flex container.
-    const direction = node.style.flexDirection;
-    if (direction !== 'row' && direction !== 'column') {
-      throw new Error(
-        `[flex-grammar] flex-direction '${direction}' is not yet supported; only 'row' and 'column' are implemented in this slice`,
-      );
-    }
+    // All four flex-direction values are supported (v11): the base
+    // axis (`row` / `column`) drives field assignment; reverse
+    // (`row-reverse` / `column-reverse`) flips child main positions.
     // Absolute children short-circuit the in-flow flex pipeline:
     // they're positioned independently against the parent's OUTER
     // box (no padding subtraction) using their own `style.position`
@@ -338,15 +336,16 @@ function makeEmitter(
     void styleWRaw;
     void styleHRaw;
 
-    // The parent's direction decides which of {width, height} is the
+    // The parent's base axis decides which of {width, height} is the
     // main-axis size for THIS child (and which of {left, top} is the
     // main-axis position). Root is parent-less and treats both axes as
-    // cross — sizes from style, positions at 0. The cast is safe: the
-    // parent was visited before this child, and visit's direction
-    // check throws on row-reverse / column-reverse — so a non-null
-    // `parentDirection` is provably `'row' | 'column'` here.
-    const parentDirection =
-      parent === null ? null : (parent.style.flexDirection as 'row' | 'column');
+    // cross — sizes from style, positions at 0. `parentDirection` is
+    // the base axis (`mainAxis` collapses `*-reverse` onto `row` /
+    // `column`); `parentReverse` records whether the parent runs its
+    // main axis backwards, applied as a post-hoc position flip.
+    const parentDirection: 'row' | 'column' | null =
+      parent === null ? null : mainAxis(parent.style.flexDirection);
+    const parentReverse = parent !== null && isReverse(parent.style.flexDirection);
     const mainSizeField =
       parentDirection === 'column' ? (height as Field<unknown>) : (width as Field<unknown>);
     const crossSizeField =
@@ -510,6 +509,17 @@ function makeEmitter(
         deps: wrapDeps,
         compute: (read) => evalWrapped(read).mainPos,
       } satisfies FieldRule<number>);
+      if (parentReverse) {
+        applyReverseMainPos(
+          grammar,
+          parent,
+          mainPosField,
+          mainSizeField,
+          mainSizeName,
+          padMainStartF!,
+          padMainEndF!,
+        );
+      }
       grammar.set(crossPosField, {
         deps: wrapDeps,
         compute: (read) => evalWrapped(read).crossPos,
@@ -680,6 +690,22 @@ function makeEmitter(
         padMainStartF!,
         padMainEndF!,
         marginInput,
+      );
+    }
+
+    // Reverse flex-direction (`row-reverse` / `column-reverse`): the
+    // main axis runs from the container's main END. The position
+    // rules above computed the forward-axis cursor; reflect it across
+    // the inner-main box, exactly as the imperative `flipMainAxis`.
+    if (parent !== null && parentReverse) {
+      applyReverseMainPos(
+        grammar,
+        parent,
+        mainPosField,
+        mainSizeField,
+        mainSizeName,
+        padMainStartF!,
+        padMainEndF!,
       );
     }
 
@@ -870,9 +896,11 @@ function mergeStyleInputsMap(
 /**
  * Fast-path a child APPEND for the Spineless runtime. If appending
  * `child` as `parent`'s last child can be absorbed without a fresh
- * runtime, return the patch inputs; return `null` only when a true
+ * runtime, return the patch inputs; return `null` when a full
  * rebuild is required — `child` is not the last child, or `parent`
- * uses a reverse `flex-direction` (unsupported by the grammar).
+ * uses a reverse `flex-direction` (supported by the grammar since
+ * v11, but not yet by this structural fast-path — reflecting every
+ * sibling's position is a whole-subtree rewrite).
  *
  * The new subtree's fields are always a pure topological-tail
  * addition handled by `graft` (`additions` / `newRoots`). When
@@ -903,7 +931,9 @@ export function buildAppendFragment(
   const count = parent.getChildCount();
   if (count === 0 || parent.getChild(count - 1) !== child) return null;
 
-  // Reverse flex-direction is unsupported by the grammar entirely.
+  // A reverse-direction parent is supported by the grammar (v11) but
+  // not by this fast-path: the flip reflects every sibling, so fall
+  // back to a full rebuild.
   const dir = parent.style.flexDirection;
   if (dir !== 'row' && dir !== 'column') return null;
 
@@ -1049,9 +1079,10 @@ function nodeFields(node: Node, styleInputs: Map<Node, StyleInputs>): Array<Fiel
  * Fast-path a child REMOVAL for the Spineless runtime — the mirror
  * of `buildAppendFragment`. Call this **before** detaching `child`
  * from `parent`: the simple-regime check needs `child` still in
- * place. Returns the patch inputs, or `null` only when a true
- * rebuild is required (`child` is not `parent`'s child, or `parent`
- * uses a reverse `flex-direction`).
+ * place. Returns the patch inputs, or `null` when a full rebuild is
+ * required (`child` is not `parent`'s child, or `parent` uses a
+ * reverse `flex-direction` — supported by the grammar since v11 but
+ * not by this fast-path).
  *
  * In the "simple" regime (no flex distribution, default `flex-start`
  * justify, no wrap — or `child` is absolute) the patch is built in
@@ -1087,7 +1118,9 @@ export function buildRemoveFragment(
   }
   if (index === -1) return null;
 
-  // Reverse flex-direction is unsupported by the grammar entirely.
+  // A reverse-direction parent is supported by the grammar (v11) but
+  // not by this fast-path: the flip reflects every sibling, so fall
+  // back to a full rebuild.
   const dir = parent.style.flexDirection;
   if (dir !== 'row' && dir !== 'column') return null;
 
@@ -1370,6 +1403,57 @@ function emitJustifiedMainPos(
       }
       cursor += read(marginStarts[indexInParent]!);
       return cursor;
+    },
+  } satisfies FieldRule<number>);
+}
+
+/**
+ * Re-wrap a child's already-emitted main-position rule so a
+ * reverse-direction parent (`row-reverse` / `column-reverse`) lays
+ * the child out from the main-axis END.
+ *
+ * Mirrors the imperative `flipMainAxis`: with `innerPos` the child's
+ * forward offset inside the parent's inner-main box, the reflected
+ * position is `padStart + innerMain - innerPos - childMain`. The
+ * forward rule is preserved and invoked for `innerPos`; this wrapper
+ * only reflects its result, so every regime (flex-start, justified,
+ * wrap) reverses uniformly.
+ *
+ * The deps become the union of the forward rule's deps and the three
+ * fields the reflection adds — the parent's main size, both main-axis
+ * padding edges, and the child's own main size.
+ *
+ * @internal
+ */
+function applyReverseMainPos(
+  grammar: Grammar,
+  parent: Node,
+  mainPosField: Field<unknown>,
+  mainSizeField: Field<unknown>,
+  mainSizeName: 'width' | 'height',
+  padMainStartF: Field<number>,
+  padMainEndF: Field<number>,
+): void {
+  const forward = grammar.get(mainPosField) as FieldRule<number>;
+  const parentMainField = field<number>(parent, mainSizeName);
+  const deps = [...forward.deps];
+  for (const d of [
+    parentMainField as Field<unknown>,
+    padMainStartF as Field<unknown>,
+    padMainEndF as Field<unknown>,
+    mainSizeField,
+  ]) {
+    if (!deps.includes(d)) deps.push(d);
+  }
+  grammar.set(mainPosField, {
+    deps,
+    compute: (read) => {
+      const forwardPos = forward.compute(read);
+      const padStart = read(padMainStartF);
+      const innerMain = Math.max(0, read(parentMainField) - padStart - read(padMainEndF));
+      const childMain = read(mainSizeField as Field<number>);
+      const innerPos = forwardPos - padStart;
+      return padStart + innerMain - innerPos - childMain;
     },
   } satisfies FieldRule<number>);
 }

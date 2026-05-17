@@ -285,24 +285,6 @@ describe('buildFlexGrammar — fixed-size column (slice v2)', () => {
       expect(evaluateGrammar(root)).toEqual(evaluateImperative(root));
     });
   });
-
-  describe('out-of-scope directions', () => {
-    it('throws on row-reverse — reserved for a later slice', () => {
-      const root = Node.create();
-      root.setWidth(100);
-      root.setHeight(50);
-      root.setFlexDirection('row-reverse');
-      expect(() => buildFlexGrammar(root)).toThrow(/flex-direction.*row-reverse/);
-    });
-
-    it('throws on column-reverse — reserved for a later slice', () => {
-      const root = Node.create();
-      root.setWidth(100);
-      root.setHeight(50);
-      root.setFlexDirection('column-reverse');
-      expect(() => buildFlexGrammar(root)).toThrow(/flex-direction.*column-reverse/);
-    });
-  });
 });
 
 describe('buildFlexGrammar — flex-grow (slice v3)', () => {
@@ -1618,6 +1600,215 @@ describe('buildFlexGrammar — flex-wrap: wrap-reverse (slice v10)', () => {
         c.setWidth(60);
         c.setHeight(20);
         root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+});
+
+describe('buildFlexGrammar — reverse directions (slice v11)', () => {
+  // A `row-reverse` / `column-reverse` container with `count` fixed
+  // children — the main axis runs from the container's END.
+  function reverseRow(count: number): Node {
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(40);
+    root.setFlexDirection('row-reverse');
+    for (let i = 0; i < count; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(20);
+      root.insertChild(c, i);
+    }
+    return root;
+  }
+
+  it('row-reverse, 3 fixed children — children laid out from the end', () => {
+    expect(evaluateGrammar(reverseRow(3))).toEqual(evaluateImperative(reverseRow(3)));
+  });
+
+  it('column-reverse, 3 fixed children — matches imperative', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(40);
+      root.setHeight(200);
+      root.setFlexDirection('column-reverse');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  for (const j of [
+    'flex-start',
+    'flex-end',
+    'center',
+    'space-between',
+    'space-around',
+    'space-evenly',
+  ]) {
+    it(`row-reverse, justify-content: ${j} — matches imperative`, () => {
+      const make = (): Node => {
+        const root = reverseRow(3);
+        root.setJustifyContent(j as never);
+        return root;
+      };
+      expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+    });
+  }
+
+  it('row-reverse with flex-grow distribution — matches imperative', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(40);
+      root.setFlexDirection('row-reverse');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(20);
+        c.setFlexGrow(i + 1);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('row-reverse with flex-shrink — matches imperative', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(40);
+      root.setFlexDirection('row-reverse');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(20);
+        c.setFlexShrink(1);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('column-reverse with padding, margin and gap — matches imperative', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(80);
+      root.setHeight(200);
+      root.setFlexDirection('column-reverse');
+      root.setPadding(Edge.Top, 12);
+      root.setPadding(Edge.Bottom, 8);
+      root.setGap('row', 6);
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(30);
+        c.setMargin(Edge.Top, 4);
+        c.setMargin(Edge.Bottom, 2);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('row-reverse composes with align-items: center', () => {
+    const make = (): Node => {
+      const root = reverseRow(3);
+      root.setHeight(80);
+      root.setAlignItems('center');
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('row-reverse with flex-wrap — each line reversed on the main axis', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(80);
+      root.setFlexDirection('row-reverse');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 4; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('column-reverse with flex-wrap: wrap-reverse — both axes mirrored', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(80);
+      root.setFlexDirection('column-reverse');
+      root.setFlexWrap('wrap-reverse');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(60);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('row-reverse with an absolute child — only in-flow children flip', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(40);
+      root.setFlexDirection('row-reverse');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(30);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setWidth(25);
+      abs.setHeight(15);
+      abs.setPosition(Edge.Left, 10);
+      abs.setPosition(Edge.Top, 5);
+      root.insertChild(abs, 2);
+      return root;
+    };
+    expect(evaluateGrammar(make())).toEqual(evaluateImperative(make()));
+  });
+
+  it('nested reverse containers — matches imperative', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(100);
+      root.setFlexDirection('row-reverse');
+      for (let i = 0; i < 2; i++) {
+        const col = Node.create();
+        col.setWidth(80);
+        col.setHeight(80);
+        col.setFlexDirection('column-reverse');
+        for (let j = 0; j < 2; j++) {
+          const leaf = Node.create();
+          leaf.setWidth(40);
+          leaf.setHeight(30);
+          col.insertChild(leaf, j);
+        }
+        root.insertChild(col, i);
       }
       return root;
     };
