@@ -2321,6 +2321,216 @@ describe("buildFlexGrammar — 'auto' main-axis sizing (slice v13)", () => {
   });
 });
 
+describe("buildFlexGrammar — 'auto' cross axis + align-items stretch (slice v14)", () => {
+  const matches = (make: () => Node, available?: { width?: number; height?: number }): void => {
+    expect(evaluateGrammar(make(), available)).toEqual(evaluateImperative(make(), available));
+  };
+
+  it("an 'auto' cross size stretches to fill the parent's inner cross (column)", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      const c = Node.create();
+      c.setHeight(20); // width 'auto' → cross axis, stretches to 100
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("an 'auto' cross size stretches to fill the parent's inner cross (row)", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(80);
+      root.setFlexDirection('row');
+      const c = Node.create();
+      c.setWidth(20); // height 'auto' → cross axis, stretches to 80
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("align-items: flex-start leaves an 'auto' cross size at 0", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      root.setAlignItems('flex-start');
+      const c = Node.create();
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("align-self overrides a stretch parent — 'auto' cross stays 0", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      const c = Node.create();
+      c.setHeight(20);
+      c.setAlignSelf('center');
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('the stretch fill subtracts parent padding', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(100);
+      root.setPadding(Edge.Left, 15);
+      root.setPadding(Edge.Right, 25);
+      const c = Node.create();
+      c.setHeight(20);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("the stretch fill subtracts the child's own cross margins", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(120);
+      root.setHeight(100);
+      const c = Node.create();
+      c.setHeight(20);
+      c.setMargin(Edge.Left, 10);
+      c.setMargin(Edge.Right, 8);
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it('a stretched cross size is clamped to min / max', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(40);
+      root.setHeight(100);
+      const a = Node.create();
+      a.setHeight(20);
+      a.setMinWidth(70); // stretch fills 40, clamped up to 70
+      root.insertChild(a, 0);
+      const b = Node.create();
+      b.setHeight(20);
+      b.setMaxWidth(15); // stretch fills 40, clamped down to 15
+      root.insertChild(b, 1);
+      return root;
+    });
+  });
+
+  it("'auto' cross stretch composes with an 'auto' root from available", () => {
+    matches(
+      () => {
+        const root = Node.create(); // auto, from available
+        const c = Node.create();
+        c.setHeight(20);
+        root.insertChild(c, 0);
+        return root;
+      },
+      { width: 64, height: 64 },
+    );
+  });
+
+  it('both axes auto on a leaf — main resolves to 0, cross stretches', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(80);
+      root.setHeight(80);
+      root.setFlexDirection('row');
+      const c = Node.create(); // width 'auto' (main → 0), height 'auto' (cross → stretch)
+      root.insertChild(c, 0);
+      return root;
+    });
+  });
+
+  it("'auto' cross stretch in a single-line wrap container", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(60);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      for (let i = 0; i < 2; i++) {
+        const c = Node.create();
+        c.setWidth(40); // explicit main
+        // height 'auto' → cross, stretches to the single line's cross
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it("'auto' cross stretch in a multi-line wrap container", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      // 60-wide items: two per 150-wide line → two lines.
+      for (let i = 0; i < 4; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        if (i % 2 === 0) c.setHeight(30); // explicit — gives the line a height
+        // odd children: height 'auto' → stretch to their line's cross
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it("'auto' cross stretch picks up an align-content line boost", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(150);
+      root.setHeight(200);
+      root.setFlexDirection('row');
+      root.setFlexWrap('wrap');
+      root.setAlignContent('stretch');
+      for (let i = 0; i < 4; i++) {
+        const c = Node.create();
+        c.setWidth(60);
+        c.setHeight(20);
+        if (i % 2 === 1) c.setHeight('auto' as never); // stretches per line
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it("'auto' cross stretch composes with reverse direction", () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(100);
+      root.setFlexDirection('row-reverse');
+      const c = Node.create();
+      c.setWidth(30);
+      root.insertChild(c, 0); // height 'auto' → cross stretch
+      return root;
+    });
+  });
+
+  it('nested auto-cross containers each stretch to their parent', () => {
+    matches(() => {
+      const root = Node.create();
+      root.setWidth(90);
+      root.setHeight(90);
+      const mid = Node.create();
+      mid.setHeight(50); // width 'auto' → stretches to 90
+      const leaf = Node.create();
+      leaf.setHeight(20); // width 'auto' → stretches to mid's width
+      mid.insertChild(leaf, 0);
+      root.insertChild(mid, 0);
+      return root;
+    });
+  });
+});
+
 describe('buildFlexGrammar — absolute positioning (slice v8)', () => {
   describe('basic absolute layout', () => {
     it('absolute child with explicit size + top/left edges anchors to parent outer corner', () => {
