@@ -80,52 +80,33 @@ export function lastLayoutPath(root: Node): LayoutTrace['path'] | undefined {
   return lastPaths.get(root);
 }
 
-/**
- * True iff the Spineless grammar covers `node`'s whole subtree. One
- * feature it does not model yet, falling back to the imperative
- * algorithm: a measure function on an `'absolute'` node
- * (`emitAbsoluteRules` never consults a measurer). `display: 'none'`
- * is covered as of phase 10 v29 — a hidden node is emitted no rules
- * and skipped in its parent's flex flow.
- */
-function spinelessSupports(node: Node): boolean {
-  if (node.style.positionType === 'absolute' && node.getMeasureFunc() !== null) return false;
-  for (let i = 0; i < node.getChildCount(); i++) {
-    if (!spinelessSupports(node.getChild(i)!)) return false;
-  }
-  return true;
-}
-
 export function calculateLayout(
   root: Node,
   availableWidth: number | undefined,
   availableHeight: number | undefined,
 ): void {
   if (!DIFFERENTIAL) {
+    // The Spineless grammar covers every tree as of phase 10 (v29
+    // `display: 'none'`, v30 a measure function on an absolute node) —
+    // there is no longer a grammar-unsupported fallback. The
+    // imperative algorithm still serves a root's deliberate cold first
+    // layout (no grammar to amortise) and differential mode.
+    //
     // `driver` is non-null exactly when the Spineless engine served
-    // this call — its `lastTrace` is then the trace to report. Every
-    // other path (grammar-unsupported tree, or a root's cold first
-    // layout) ran the imperative algorithm.
+    // this call — its `lastTrace` is then the trace to report.
     let driver: SpinelessLayout | null = null;
-    if (!spinelessSupports(root)) {
-      // A tree the grammar does not cover always takes the imperative
-      // path.
+    // First layout of a root: the imperative path is faster cold — no
+    // grammar to build. A root laid out a SECOND time is probably
+    // long-lived, so from then on the validated Spineless incremental
+    // engine takes over — build once, relay incrementally.
+    const engine = layoutEngines.get(root);
+    if (engine === undefined) {
       calculateLayoutImpl(root, availableWidth, availableHeight);
+      layoutEngines.set(root, 'cold');
     } else {
-      // First layout of a root: the imperative path is faster cold —
-      // no grammar to build. A root laid out a SECOND time is probably
-      // long-lived, so from then on the validated Spineless
-      // incremental engine takes over — build once, relay
-      // incrementally.
-      const engine = layoutEngines.get(root);
-      if (engine === undefined) {
-        calculateLayoutImpl(root, availableWidth, availableHeight);
-        layoutEngines.set(root, 'cold');
-      } else {
-        driver = engine === 'cold' ? new SpinelessLayout(root) : engine;
-        if (engine === 'cold') layoutEngines.set(root, driver);
-        driver.layout(availableWidth, availableHeight);
-      }
+      driver = engine === 'cold' ? new SpinelessLayout(root) : engine;
+      if (engine === 'cold') layoutEngines.set(root, driver);
+      driver.layout(availableWidth, availableHeight);
     }
     // Record the path for `inspectLayout`. Reading `driver.lastTrace`
     // costs nothing (a field read); the imperative-trace OBJECT below
