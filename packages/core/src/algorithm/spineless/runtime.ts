@@ -436,11 +436,15 @@ export class SpinelessRuntime {
    * each field's rule. If the result differs from the cached value,
    * persists it and pushes every dependent so it gets re-run later in
    * this same pass.
+   *
+   * Returns every field whose value actually changed — the caller
+   * uses it to scope an incremental write-back to the moved nodes.
    */
-  recompute(): void {
+  recompute(): Array<Field<unknown>> {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] recompute called before init()');
     }
+    const changed: Array<Field<unknown>> = [];
     while (!this.pq.isEmpty()) {
       const f = this.pq.popMin()!;
       const rule = this.grammar.get(f)!;
@@ -448,6 +452,7 @@ export class SpinelessRuntime {
       const next = this.runCompute(f, rule);
       if (!Object.is(prev, next)) {
         this.values.set(f, next);
+        changed.push(f);
         const deps = this.dependents.get(f);
         if (deps !== undefined) {
           for (const d of deps) {
@@ -457,6 +462,7 @@ export class SpinelessRuntime {
         }
       }
     }
+    return changed;
   }
 
   private runCompute<T>(field: Field<T>, rule: FieldRule<T>): T {

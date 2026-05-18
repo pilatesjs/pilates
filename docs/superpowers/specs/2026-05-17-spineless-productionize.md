@@ -54,11 +54,12 @@ cells. So the write-back is: evaluate every node's
   diffing every input Field. v22 scopes it to the mutated region
   using the `Node` dirty flags (`isDirty()` / `_hasDirtyDescendant`),
   so a value relayout after a small mutation is O(dirty region).
-- **v23 — incremental output write-back.** With detection now
-  O(dirty), the remaining O(tree) cost is the *output* plumbing —
-  `writeBack` / `roundLayout` / `recordScrollSizes` re-process the
-  whole tree every call. v23 scopes those to the subtree whose
-  layout actually moved.
+- **v23 — incremental output write-back (landed).** With detection
+  now O(dirty), the remaining O(tree) cost was the *output* plumbing
+  — `writeBack` / `roundLayout` / `recordScrollSizes` re-processing
+  the whole tree. v23 makes `recompute()` report the fields it
+  changed, so write-back, re-rounding (`roundLayoutFrom`) and
+  scroll-extents touch only the subtrees whose layout actually moved.
 - **v24 — public wiring.** `calculateLayout` routes through
   `SpinelessLayout` (the imperative path for the first cold layout
   of a root; Spineless from the second), with an imperative
@@ -212,3 +213,39 @@ The existing 36 `spineless-layout.test.ts` cases (slices v19–v21) all
 pass unchanged — they already drive persistent drivers through value
 and structural mutation sequences, so they cover the new dirty-walk
 classifier and value path.
+
+## Slice v23 — incremental output write-back
+
+After v22 the change detection is O(dirty region), but `layout()`
+still ran three whole-tree output passes every call — `writeBack`
+(evaluate + store every node's `_layout`), `roundLayout`, and
+`recordScrollSizes`. A prototype wiring measured the residual at
+0.24 ms on `hotrelayoutboundary`.
+
+v23 scopes all three to the moved subtrees:
+
+- `SpinelessRuntime.recompute()` now returns the Fields whose value
+  actually changed. The driver maps the changed layout Fields
+  (via an `owner` index) to the nodes whose box moved, then keeps
+  the **maximal moved subtree roots** — a moved node with no moved
+  ancestor.
+- For each such root the driver writes back only that subtree,
+  re-rounds it with the new `roundLayoutFrom` (round.ts) — the
+  root's parent did not move, so its rounded corner is a stable
+  origin — and recomputes the subtree's scroll extents. A moved
+  root's parent then needs a single scroll recompute (one of its
+  children's box changed, but the parent itself did not move).
+- A build / graft still finishes whole-tree.
+
+A prototype wiring measured `hotrelayoutboundary` drop from 0.24 ms
+(post-v22) to **0.12 ms**, and `hotrelayouttext` now clears its
+budget. The public wiring (v24) can land as a non-regression.
+
+### Tests
+
+`spineless-layout.test.ts` gains a `slice v23` describe (7 tests): a
+depth-4 nested tree driven through deep-leaf mutations, a sibling
+shift, a mid-tree resize, scattered cross-subtree mutations, a long
+sequence, fractional flex-grow layout, and an `available` resize —
+each step mirrored on a parallel imperative tree and asserted
+byte-identical. The 36 v19–v21 cases pass unchanged.
