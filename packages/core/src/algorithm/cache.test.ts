@@ -13,6 +13,7 @@ import {
   snapshotTreeLayouts,
 } from './cache.js';
 import type { LayoutCacheValue } from './cache.js';
+import { calculateLayoutImperative } from './index.js';
 
 describe('MeasureCache', () => {
   const KEY_A = {
@@ -152,7 +153,7 @@ describe('snapshotTreeLayouts', () => {
     child.setWidth(40);
     child.setHeight(20);
     root.insertChild(child, 0);
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
 
     const snap = snapshotTreeLayouts(root);
     expect(snap).toHaveLength(2); // root + child
@@ -181,7 +182,7 @@ describe('clearAllCaches', () => {
     const leaf = Node.create();
     leaf.setMeasureFunc((w, _wm, h, _hm) => ({ width: w, height: h }));
     root.insertChild(leaf, 0);
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
     leaf._measureCache!.store(
       { availableWidth: 7, widthMode: 'at-most', availableHeight: 3, heightMode: 'at-most' },
       { width: 7, height: 3 },
@@ -214,7 +215,7 @@ describe('markDirtyDeep', () => {
     const grand = Node.create();
     root.insertChild(child, 0);
     child.insertChild(grand, 0);
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
 
     expect(root.isDirty()).toBe(false);
     expect(child.isDirty()).toBe(false);
@@ -384,7 +385,7 @@ describe('snapshotForCache', () => {
     b.setFlex(1);
     root.insertChild(a, 0);
     root.insertChild(b, 1);
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
 
     const snap = snapshotForCache(root);
     expect(snap.width).toBe(100);
@@ -552,7 +553,7 @@ describe('relayout boundary rounding correctness (regression: seed 1283320469)',
     grandchild.insertChild(ggc1, 1);
 
     // Prime the caches
-    root.calculateLayout(20, 10);
+    calculateLayoutImperative(root, 20, 10);
 
     // Mutation: add margin=2 to ggc0 (makes grandchild's flex distribution
     // produce a float ggc0.top that when anchored to the rounded grandchild.top
@@ -560,13 +561,13 @@ describe('relayout boundary rounding correctness (regression: seed 1283320469)',
     ggc0.setMargin(Edge.All, 2);
 
     // Cached path
-    root.calculateLayout(20, 10);
+    calculateLayoutImperative(root, 20, 10);
     const cachedSnap = snapshotTreeLayouts(root);
 
     // Cold path: force full recompute
     clearAllCaches(root);
     markDirtyDeep(root);
-    root.calculateLayout(20, 10);
+    calculateLayoutImperative(root, 20, 10);
     const coldSnap = snapshotTreeLayouts(root);
 
     const diff = diffLayouts(cachedSnap, coldSnap);

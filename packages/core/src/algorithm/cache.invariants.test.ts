@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Edge } from '../edge.js';
 import { Node } from '../node.js';
+import { calculateLayoutImperative } from './index.js';
 
 describe('cache invariants — open questions from spec', () => {
   it('parentDirection is implicit in availableWidth/Height (Yoga + Taffy assumption)', () => {
@@ -32,8 +33,8 @@ describe('cache invariants — open questions from spec', () => {
     }
     const row = makeRow();
     const col = makeCol();
-    row.calculateLayout(100, 50);
-    col.calculateLayout(100, 50);
+    calculateLayoutImperative(row, 100, 50);
+    calculateLayoutImperative(col, 100, 50);
     // Same explicit-sized child yields the same (width, height)
     // regardless of parent direction.
     expect(row.getChild(0)!.layout.width).toBe(40);
@@ -58,7 +59,7 @@ describe('cache invariants — open questions from spec', () => {
     root.insertChild(abs, 1);
 
     // First pass: cold layout.
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
     expect(abs.layout).toEqual({
       left: 10,
       top: 5,
@@ -70,7 +71,7 @@ describe('cache invariants — open questions from spec', () => {
 
     // Second pass with no mutation: should hit the layout cache and
     // produce the same result.
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
     expect(abs.layout).toEqual({
       left: 10,
       top: 5,
@@ -94,13 +95,13 @@ describe('cache invariants — open questions from spec', () => {
     child.setWidth(40);
     child.setHeight(20);
     root.insertChild(child, 0);
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
     expect(child.layout.left).toBe(0);
 
     // Add a left-margin to the child. markDirty propagates up to root;
     // cache is invalidated; re-layout reflects the new margin.
     child.setMargin(Edge.Left, 10);
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
     expect(child.layout.left).toBe(10);
   });
 });
@@ -121,7 +122,7 @@ describe('cache invariants — relayout boundaries', () => {
     root.insertChild(boundary, 0);
 
     // Prime the cache.
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
 
     // Mutate a leaf under the boundary.
     leaf.setFlexGrow(3);
@@ -129,7 +130,7 @@ describe('cache invariants — relayout boundaries', () => {
     const beforeHits =
       (root as unknown as { _layoutCache?: { hits: number } })._layoutCache?.hits ?? 0;
 
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
 
     const afterHits =
       (root as unknown as { _layoutCache?: { hits: number } })._layoutCache?.hits ?? 0;

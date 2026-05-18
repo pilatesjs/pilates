@@ -3,6 +3,7 @@ import { describe, it } from 'vitest';
 import { Edge } from '../edge.js';
 import { Node } from '../node.js';
 import { clearAllCaches, diffLayouts, markDirtyDeep, snapshotTreeLayouts } from './cache.js';
+import { calculateLayoutImperative } from './index.js';
 
 interface NodeSpec {
   width?: number;
@@ -160,19 +161,19 @@ describe('cache correctness fuzzer', () => {
         fc.integer({ min: 10, max: 80 }),
         (treeSpec, mutations, rootW, rootH) => {
           const root = buildTree(treeSpec);
-          root.calculateLayout(rootW, rootH); // primes caches
+          calculateLayoutImperative(root, rootW, rootH); // primes caches
 
           for (const m of mutations) {
             applyMutation(root, m);
 
             // Cached path
-            root.calculateLayout(rootW, rootH);
+            calculateLayoutImperative(root, rootW, rootH);
             const cachedSnap = snapshotTreeLayouts(root);
 
             // Cold path: clear all caches, mark every node dirty, relayout
             clearAllCaches(root);
             markDirtyDeep(root);
-            root.calculateLayout(rootW, rootH);
+            calculateLayoutImperative(root, rootW, rootH);
             const coldSnap = snapshotTreeLayouts(root);
 
             const diff = diffLayouts(cachedSnap, coldSnap);

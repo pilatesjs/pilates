@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 // causes extra measure calls that break the measure-cache hit counter test.
 const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
 import { LayoutCache, MeasureCache, clearAllCaches } from './algorithm/cache.js';
+import { calculateLayoutImperative } from './algorithm/index.js';
 import { Edge } from './edge.js';
 import { MeasureMode } from './measure-func.js';
 import { Node } from './node.js';
@@ -417,14 +418,14 @@ describe('Node — measure cache hit during calculateLayout', () => {
       });
       root.insertChild(leaf, 0);
 
-      root.calculateLayout(100, 50);
+      calculateLayoutImperative(root, 100, 50);
       const callsAfterFirst = measureCalls;
       expect(callsAfterFirst).toBeGreaterThan(0);
 
       // Force a re-layout by marking the root dirty (simulates a parent-only
       // change that doesn't touch the leaf's cache).
       root.setWidth(100);
-      root.calculateLayout(100, 50);
+      calculateLayoutImperative(root, 100, 50);
 
       // Pass-2 measureCalls should be 0 — the leaf wasn't dirtied; its
       // measure cache should hit on every input combination it saw on pass 1.

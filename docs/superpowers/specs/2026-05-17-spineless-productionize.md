@@ -60,7 +60,7 @@ cells. So the write-back is: evaluate every node's
   the whole tree. v23 makes `recompute()` report the fields it
   changed, so write-back, re-rounding (`roundLayoutFrom`) and
   scroll-extents touch only the subtrees whose layout actually moved.
-- **v24 — public wiring.** `calculateLayout` routes through
+- **v24 — public wiring (landed).** `calculateLayout` routes through
   `SpinelessLayout` (the imperative path for the first cold layout
   of a root; Spineless from the second), with an imperative
   fallback for trees the grammar does not cover (`display: none`, a
@@ -249,3 +249,42 @@ shift, a mid-tree resize, scattered cross-subtree mutations, a long
 sequence, fractional flex-grow layout, and an `available` resize —
 each step mirrored on a parallel imperative tree and asserted
 byte-identical. The 36 v19–v21 cases pass unchanged.
+
+## Slice v24 — public wiring
+
+`algorithm/index.ts` `calculateLayout` becomes a router. Outside
+differential mode it:
+
+- runs the imperative `calculateLayoutImpl` for a tree the grammar
+  does not cover — `spinelessSupports(root)` recurses the subtree,
+  returning false for any `display: 'none'` node or a measure
+  function on an `'absolute'` node;
+- runs the imperative path for the **first** layout of a root (cold
+  builds have no grammar to amortise), recording `'cold'` in a
+  per-root `WeakMap`;
+- from the **second** layout onward adopts a persistent
+  `SpinelessLayout` for that root — built once, relaid
+  incrementally per v22/v23.
+
+Differential mode (`PILATES_DIFFERENTIAL_LAYOUT=1`) is unchanged: it
+still runs the imperative algorithm twice and diffs.
+
+The imperative cache's own tests need the imperative path directly,
+so `index.ts` also exports `calculateLayoutImperative(root, aw?, ah?)`
+— a thin `calculateLayoutImpl` wrapper. `cache.test.ts`,
+`cache.fuzz.test.ts`, `cache.invariants.test.ts`, the two
+imperative-cache blocks of `index.test.ts`, and `node.test.ts`'s
+measure-cache test route through it.
+
+### Bench
+
+Wiring swaps the engine for the hot-relayout scenarios. The
+imperative boundary cache served `hotrelayoutboundary` in ~0.02 ms;
+Spineless's dependency-graph incrementality costs ~0.12 ms local —
+~0.7 % of a 16 ms frame, and the trade buys correct incrementality
+on trees the boundary cache cannot (no explicit-sized boundary
+needed). `bench/thresholds.json` is recalibrated for the new engine:
+`hotrelayoutboundary` 0.1 → 1.5 ms (matching its sibling
+`hotrelayout`, now the same engine and ~same local cost),
+`hotrelayouttext (layout)` 0.1 → 0.5 ms — both with CI-variance
+headroom (~5–7× dev-local).
