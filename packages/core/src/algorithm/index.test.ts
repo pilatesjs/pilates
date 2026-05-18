@@ -142,10 +142,11 @@ describe.skipIf(DIFFERENTIAL)('calculateLayout — setLayoutProfiler (phase 9)',
     expect(calls).toBe(1);
   });
 
-  it('a tree the grammar cannot cover always reports imperative', () => {
-    // A measure function on an absolute node is the one feature the
-    // grammar still does not model (`display: 'none'` is covered as
-    // of v29) — such a tree stays on the imperative path forever.
+  it('an absolute-measure tree adopts the Spineless engine on its second layout', () => {
+    // Before phase 10 a measure function on an absolute node forced
+    // this tree onto the imperative path forever (`spinelessSupports`
+    // rejected it). v30 closed that gap — the grammar models every
+    // tree now, so Spineless takes over on the second layout as usual.
     const root = Node.create();
     root.setWidth(100);
     root.setHeight(40);
@@ -157,7 +158,7 @@ describe.skipIf(DIFFERENTIAL)('calculateLayout — setLayoutProfiler (phase 9)',
     setLayoutProfiler((_r, t) => paths.push(t.path));
     root.calculateLayout(100, 40);
     root.calculateLayout(100, 40);
-    expect(paths).toEqual(['imperative', 'imperative']);
+    expect(paths).toEqual(['imperative', 'build']);
   });
 });
 

@@ -23,10 +23,9 @@
  * Coverage note: `display: 'none'` is generated as of phase 10 v29 —
  * a hidden node is emitted no rules and skipped in its parent's flow,
  * so the float-layout walks below skip hidden subtrees on both sides.
- * Still uncovered (deliberately not generated): a measure function on
- * an `'absolute'` node — the grammar's `emitAbsoluteRules` does not
- * consult the measurer, so that combination is excluded rather than
- * flagged.
+ * A measure function on an `'absolute'` node is generated as of v30 —
+ * `emitAbsoluteRules` now consults the measurer. The grammar covers
+ * the whole feature surface; nothing is deliberately excluded.
  */
 
 import fc from 'fast-check';
@@ -223,10 +222,10 @@ function buildTree(spec: NodeSpec): Node {
     n.insertChild(buildTree(spec.children[i]!), i);
   }
 
-  // A measurer is valid only on a childless node, and the grammar's
-  // `emitAbsoluteRules` does not consult one — so an absolute node is
-  // excluded (see the file header).
-  if (spec.children.length === 0 && spec.measure !== undefined && !spec.absolute) {
+  // A measurer is valid only on a childless node. As of v30 the
+  // grammar consults the measurer for an absolute leaf too, so an
+  // absolute node is no longer excluded.
+  if (spec.children.length === 0 && spec.measure !== undefined) {
     const { w, h } = spec.measure;
     n.setMeasureFunc((cw: number, cwm: MeasureMode, ch: number, chm: MeasureMode) => ({
       width: cwm === 'at-most' ? Math.min(cw, w) : w,

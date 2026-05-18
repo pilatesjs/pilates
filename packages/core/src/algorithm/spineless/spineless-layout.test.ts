@@ -983,3 +983,76 @@ describe('SpinelessLayout — display:none coverage (slice v29)', () => {
     }
   });
 });
+
+describe('SpinelessLayout — measure function on an absolute node (slice v30)', () => {
+  // A constant measurer with distinctive dimensions.
+  const measurer = () => ({ width: 33, height: 21 });
+
+  it('an unsized absolute leaf is sized by its measurer', () => {
+    sameLayout(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(100);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setMeasureFunc(measurer);
+      root.insertChild(abs, 0);
+      return root;
+    });
+  });
+
+  it('an absolute leaf with one pinned edge still measures the auto axis', () => {
+    sameLayout(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(100);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setHeight(40); // explicit height; width 'auto' → measured
+      abs.setMeasureFunc(measurer);
+      abs.setPosition(Edge.Left, 10);
+      root.insertChild(abs, 0);
+      return root;
+    });
+  });
+
+  it('opposing pinned edges win over the measurer', () => {
+    sameLayout(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(100);
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setMeasureFunc(measurer);
+      // Both edges pinned on each axis — size derives from the edges,
+      // the measurer is not consulted.
+      abs.setPosition(Edge.Left, 20);
+      abs.setPosition(Edge.Right, 30);
+      abs.setPosition(Edge.Top, 15);
+      abs.setPosition(Edge.Bottom, 25);
+      root.insertChild(abs, 0);
+      return root;
+    });
+  });
+
+  it('an absolute measure leaf nested inside an in-flow tree', () => {
+    sameLayout(() => {
+      const root = Node.create();
+      root.setWidth(220);
+      root.setHeight(120);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 2; i++) {
+        const col = Node.create();
+        col.setWidth(110);
+        col.setHeight(120);
+        root.insertChild(col, i);
+      }
+      const abs = Node.create();
+      abs.setPositionType('absolute');
+      abs.setMeasureFunc(measurer);
+      abs.setPosition(Edge.Top, 8);
+      root.getChild(0)!.insertChild(abs, 0);
+      return root;
+    });
+  });
+});

@@ -2236,6 +2236,26 @@ function emitAbsoluteRules(
           read(maxW),
         ),
     } satisfies FieldRule<number>);
+  } else if (isMeasureLeaf(child)) {
+    // `'auto'` width, no opposing edges: the measurer sizes it.
+    // Mirrors `layoutAbsoluteChild` — call the measurer with the
+    // parent's outer box `AtMost` on both axes and take `.width`.
+    const measure = child.getMeasureFunc()!;
+    grammar.set(width as Field<unknown>, {
+      deps: [
+        parentWField as Field<unknown>,
+        parentHField as Field<unknown>,
+        minW as Field<unknown>,
+        maxW as Field<unknown>,
+      ],
+      compute: (read) =>
+        clampMinMax(
+          measure(read(parentWField), MeasureMode.AtMost, read(parentHField), MeasureMode.AtMost)
+            .width,
+          read(minW),
+          read(maxW),
+        ),
+    } satisfies FieldRule<number>);
   } else {
     grammar.set(width as Field<unknown>, {
       deps: [minW as Field<unknown>, maxW as Field<unknown>],
@@ -2262,6 +2282,26 @@ function emitAbsoluteRules(
       compute: (read) =>
         clampMinMax(
           Math.max(0, read(parentHField) - posTop - posBottom - read(mTop) - read(mBottom)),
+          read(minH),
+          read(maxH),
+        ),
+    } satisfies FieldRule<number>);
+  } else if (isMeasureLeaf(child)) {
+    // `'auto'` height, no opposing edges: measure with the resolved
+    // width `Exactly` and the parent's outer height `AtMost` — the
+    // `layoutAbsoluteChild` height branch. The dep on `width` orders
+    // this rule after the width rule above.
+    const measure = child.getMeasureFunc()!;
+    grammar.set(height as Field<unknown>, {
+      deps: [
+        width as Field<unknown>,
+        parentHField as Field<unknown>,
+        minH as Field<unknown>,
+        maxH as Field<unknown>,
+      ],
+      compute: (read) =>
+        clampMinMax(
+          measure(read(width), MeasureMode.Exactly, read(parentHField), MeasureMode.AtMost).height,
           read(minH),
           read(maxH),
         ),
