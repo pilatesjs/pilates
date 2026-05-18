@@ -81,13 +81,14 @@ export function lastLayoutPath(root: Node): LayoutTrace['path'] | undefined {
 }
 
 /**
- * True iff the Spineless grammar covers `node`'s whole subtree. Two
- * features it does not model yet, falling back to the imperative
- * algorithm: `display: 'none'`, and a measure function on an
- * `'absolute'` node (`emitAbsoluteRules` never consults a measurer).
+ * True iff the Spineless grammar covers `node`'s whole subtree. One
+ * feature it does not model yet, falling back to the imperative
+ * algorithm: a measure function on an `'absolute'` node
+ * (`emitAbsoluteRules` never consults a measurer). `display: 'none'`
+ * is covered as of phase 10 v29 — a hidden node is emitted no rules
+ * and skipped in its parent's flex flow.
  */
 function spinelessSupports(node: Node): boolean {
-  if (node.style.display === 'none') return false;
   if (node.style.positionType === 'absolute' && node.getMeasureFunc() !== null) return false;
   for (let i = 0; i < node.getChildCount(); i++) {
     if (!spinelessSupports(node.getChild(i)!)) return false;

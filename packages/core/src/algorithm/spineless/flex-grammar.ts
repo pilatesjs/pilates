@@ -220,6 +220,18 @@ interface EmitContext {
 }
 
 /**
+ * True iff `node` participates in its parent's flex flow — neither
+ * out-of-flow (`positionType: 'absolute'`) nor hidden
+ * (`display: 'none'`). A `display: 'none'` node is emitted no rules
+ * at all and skipped everywhere an in-flow sibling is consulted,
+ * mirroring the imperative algorithm — which `continue`s it in
+ * `layoutChildren` and never writes its `_layout`.
+ */
+function isInFlow(node: Node): boolean {
+  return node.style.positionType !== 'absolute' && node.style.display !== 'none';
+}
+
+/**
  * Build the topological per-node emitter — the `visit` recursion and
  * the input-field helpers it closes over — bound to one
  * `EmitContext`. `buildFlexGrammar` and the subtree fragment builders
@@ -573,6 +585,10 @@ function makeEmitter(
       const childSiblings: Node[] = [];
       for (let i = 0; i < childCount; i++) {
         const child = node.getChild(i)!;
+        // A `display: 'none'` child is laid out by nothing — emit it
+        // no rules and do not recurse, mirroring the imperative
+        // `layoutChildren` `continue`.
+        if (child.style.display === 'none') continue;
         if (child.style.positionType === 'absolute') {
           visit(child, node, -1, []);
         } else {
@@ -729,7 +745,7 @@ function makeEmitter(
       let myIndex = -1;
       for (let i = 0; i < parent.getChildCount(); i++) {
         const sib = parent.getChild(i)!;
-        if (sib.style.positionType === 'absolute') continue;
+        if (!isInFlow(sib)) continue;
         if (sib === node) myIndex = wrapSibs.length;
         wrapSibs.push({
           node: sib,
@@ -845,6 +861,7 @@ function makeEmitter(
       const inFlowSiblings: Node[] = [];
       for (let i = 0; i < childCount; i++) {
         const child = node.getChild(i)!;
+        if (child.style.display === 'none') continue;
         if (child.style.positionType === 'absolute') {
           visit(child, node, -1, []);
         } else {
@@ -924,7 +941,7 @@ function makeEmitter(
       let myIndex = -1;
       for (let i = 0; i < parent.getChildCount(); i++) {
         const sib = parent.getChild(i)!;
-        if (sib.style.positionType === 'absolute') continue;
+        if (!isInFlow(sib)) continue;
         if (sib === node) myIndex = flexSibs.length;
         flexSibs.push({
           node: sib,
@@ -1156,6 +1173,7 @@ function makeEmitter(
     const inFlowSiblings: Node[] = [];
     for (let i = 0; i < childCount; i++) {
       const child = node.getChild(i)!;
+      if (child.style.display === 'none') continue;
       if (child.style.positionType === 'absolute') {
         visit(child, node, -1, []);
       } else {
@@ -1315,6 +1333,11 @@ export function buildAppendFragment(
   const count = parent.getChildCount();
   if (count === 0 || parent.getChild(count - 1) !== child) return null;
 
+  // A `display: 'none'` appended child has no fields to graft — let
+  // the rebuild path absorb it (a hidden node perturbs nothing, so
+  // the rebuild is the simple correct route, not a fast-path miss).
+  if (child.style.display === 'none') return null;
+
   // A reverse-direction parent is supported by the grammar (v11) but
   // not by this fast-path: the flip reflects every sibling, so fall
   // back to a full rebuild.
@@ -1345,7 +1368,7 @@ export function buildAppendFragment(
     const priors: Node[] = [];
     for (let i = 0; i < count - 1; i++) {
       const sib = parent.getChild(i)!;
-      if (sib.style.positionType !== 'absolute') priors.push(sib);
+      if (isInFlow(sib)) priors.push(sib);
     }
     makeEmitter(ctx)(child, parent, priors.length, priors);
 
@@ -1391,7 +1414,7 @@ export function buildAppendFragment(
   const rebinds: Array<[Field<unknown>, FieldRule<unknown>]> = [];
   for (let i = 0; i < parent.getChildCount(); i++) {
     const sib = parent.getChild(i)!;
-    if (sib === child || sib.style.positionType === 'absolute') continue;
+    if (sib === child || !isInFlow(sib)) continue;
     for (const name of ['width', 'height', 'left', 'top'] as const) {
       const f = field<number>(sib, name) as Field<unknown>;
       const rule = fresh.grammar.get(f);
@@ -1506,6 +1529,10 @@ export function buildRemoveFragment(
   }
   if (index === -1) return null;
 
+  // A `display: 'none'` child had no fields to begin with — there is
+  // nothing to detach; let the rebuild path absorb the removal.
+  if (child.style.display === 'none') return null;
+
   // A reverse-direction parent is supported by the grammar (v11) but
   // not by this fast-path: the flip reflects every sibling, so fall
   // back to a full rebuild.
@@ -1567,7 +1594,7 @@ export function buildRemoveFragment(
   const rebinds: Array<[Field<unknown>, FieldRule<unknown>]> = [];
   for (let i = 0; i < parent.getChildCount(); i++) {
     const sib = parent.getChild(i)!;
-    if (sib === child || sib.style.positionType === 'absolute') continue;
+    if (sib === child || !isInFlow(sib)) continue;
     for (const name of ['width', 'height', 'left', 'top'] as const) {
       const f = field<number>(sib, name) as Field<unknown>;
       const rule = fresh.grammar.get(f);
@@ -1795,12 +1822,12 @@ function emitJustifiedMainPos(
   padEndField: Field<number>,
   marginInput: (n: Node, edge: number) => Field<number>,
 ): void {
-  // In-flow siblings only — absolute children don't contribute to
-  // justify-content's leftover calculation.
+  // In-flow siblings only — absolute and `display: 'none'` children
+  // don't contribute to justify-content's leftover calculation.
   const inFlow: Node[] = [];
   for (let i = 0; i < parent.getChildCount(); i++) {
     const sib = parent.getChild(i)!;
-    if (sib.style.positionType === 'absolute') continue;
+    if (!isInFlow(sib)) continue;
     inFlow.push(sib);
   }
   const allSizes: Field<number>[] = inFlow.map((s) => field<number>(s, mainSizeName));
@@ -1929,7 +1956,7 @@ function parentNeedsFlexDistribution(parent: Node): boolean {
   const count = parent.getChildCount();
   for (let i = 0; i < count; i++) {
     const c = parent.getChild(i)!;
-    if (c.style.positionType === 'absolute') continue;
+    if (!isInFlow(c)) continue;
     const s = c.style;
     if (s.flexGrow > 0) return true;
     if (s.flexShrink > 0) return true;

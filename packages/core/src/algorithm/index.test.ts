@@ -143,12 +143,16 @@ describe.skipIf(DIFFERENTIAL)('calculateLayout — setLayoutProfiler (phase 9)',
   });
 
   it('a tree the grammar cannot cover always reports imperative', () => {
+    // A measure function on an absolute node is the one feature the
+    // grammar still does not model (`display: 'none'` is covered as
+    // of v29) — such a tree stays on the imperative path forever.
     const root = Node.create();
     root.setWidth(100);
     root.setHeight(40);
-    const hidden = Node.create();
-    hidden.setDisplay('none');
-    root.insertChild(hidden, 0);
+    const abs = Node.create();
+    abs.setPositionType('absolute');
+    abs.setMeasureFunc(() => ({ width: 10, height: 10 }));
+    root.insertChild(abs, 0);
     const paths: string[] = [];
     setLayoutProfiler((_r, t) => paths.push(t.path));
     root.calculateLayout(100, 40);
