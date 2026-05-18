@@ -27,8 +27,32 @@ import {
 } from './cache.js';
 import { layoutChildren, resolveRootAxisSize } from './main-axis.js';
 import { roundLayout } from './round.js';
+import { SpinelessLayout } from './spineless/layout.js';
 
 const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
+
+/**
+ * Per-root layout-engine state for the public `calculateLayout`.
+ * `'cold'` — laid out once, by the imperative path. A `SpinelessLayout`
+ * — adopted on the second call onward (see `calculateLayout`). Keyed
+ * weakly so a dropped root takes its state with it.
+ */
+const layoutEngines = new WeakMap<Node, 'cold' | SpinelessLayout>();
+
+/**
+ * True iff the Spineless grammar covers `node`'s whole subtree. Two
+ * features it does not model yet, falling back to the imperative
+ * algorithm: `display: 'none'`, and a measure function on an
+ * `'absolute'` node (`emitAbsoluteRules` never consults a measurer).
+ */
+function spinelessSupports(node: Node): boolean {
+  if (node.style.display === 'none') return false;
+  if (node.style.positionType === 'absolute' && node.getMeasureFunc() !== null) return false;
+  for (let i = 0; i < node.getChildCount(); i++) {
+    if (!spinelessSupports(node.getChild(i)!)) return false;
+  }
+  return true;
+}
 
 export function calculateLayout(
   root: Node,
@@ -36,7 +60,25 @@ export function calculateLayout(
   availableHeight: number | undefined,
 ): void {
   if (!DIFFERENTIAL) {
-    calculateLayoutImpl(root, availableWidth, availableHeight);
+    // A tree the grammar does not cover always takes the imperative
+    // path.
+    if (!spinelessSupports(root)) {
+      calculateLayoutImpl(root, availableWidth, availableHeight);
+      return;
+    }
+    // First layout of a root: the imperative path is faster cold — no
+    // grammar to build. A root laid out a SECOND time is probably
+    // long-lived, so from then on the validated Spineless incremental
+    // engine takes over — build once, relay incrementally.
+    const engine = layoutEngines.get(root);
+    if (engine === undefined) {
+      calculateLayoutImpl(root, availableWidth, availableHeight);
+      layoutEngines.set(root, 'cold');
+      return;
+    }
+    const driver = engine === 'cold' ? new SpinelessLayout(root) : engine;
+    if (engine === 'cold') layoutEngines.set(root, driver);
+    driver.layout(availableWidth, availableHeight);
     return;
   }
 
@@ -56,6 +98,22 @@ export function calculateLayout(
       `[pilates differential layout] cache produced different result than fresh recompute:\n  ${diff}`,
     );
   }
+}
+
+/**
+ * Run the imperative algorithm + its per-node layout cache directly,
+ * bypassing the Spineless default. The public `calculateLayout`
+ * routes through Spineless; this entry point lets the imperative
+ * cache's own tests exercise the imperative path.
+ *
+ * @internal
+ */
+export function calculateLayoutImperative(
+  root: Node,
+  availableWidth?: number,
+  availableHeight?: number,
+): void {
+  calculateLayoutImpl(root, availableWidth, availableHeight);
 }
 
 function calculateLayoutImpl(

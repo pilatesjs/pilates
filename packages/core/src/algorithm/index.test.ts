@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Node } from '../node.js';
+import { calculateLayoutImperative } from './index.js';
 
 describe('calculateLayout — layout cache hit', () => {
   it('second pass on unchanged tree hits the layout cache', () => {
@@ -14,12 +15,12 @@ describe('calculateLayout — layout cache hit', () => {
     root.insertChild(a, 0);
     root.insertChild(b, 1);
 
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
 
     const beforeHits =
       (root as unknown as { _layoutCache?: { hits: number } })._layoutCache?.hits ?? 0;
 
-    root.calculateLayout(100, 50);
+    calculateLayoutImperative(root, 100, 50);
 
     const afterHits =
       (root as unknown as { _layoutCache?: { hits: number } })._layoutCache?.hits ?? 0;
@@ -65,17 +66,17 @@ describe('calculateLayout — rounding correctness on cache hit + ancestor mutat
     const cached = buildTree();
     cached.root.setWidth(20);
     cached.root.setHeight(10);
-    cached.root.calculateLayout(20, 10);
+    calculateLayoutImperative(cached.root, 20, 10);
     cached.root.setWidth(1);
-    cached.root.calculateLayout(1, 10);
+    calculateLayoutImperative(cached.root, 1, 10);
 
     // Cold path: same sequence, but build a fresh tree (no cache).
     const cold = buildTree();
     cold.root.setWidth(20);
     cold.root.setHeight(10);
-    cold.root.calculateLayout(20, 10);
+    calculateLayoutImperative(cold.root, 20, 10);
     cold.root.setWidth(1);
-    cold.root.calculateLayout(1, 10);
+    calculateLayoutImperative(cold.root, 1, 10);
 
     expect(cached.leaf.layout.width).toBe(cold.leaf.layout.width);
     expect(cached.leaf.layout.height).toBe(cold.leaf.layout.height);
