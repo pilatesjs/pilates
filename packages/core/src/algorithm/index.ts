@@ -27,9 +27,31 @@ import {
 } from './cache.js';
 import { layoutChildren, resolveRootAxisSize } from './main-axis.js';
 import { roundLayout } from './round.js';
-import { SpinelessLayout } from './spineless/layout.js';
+import { type LayoutTrace, SpinelessLayout } from './spineless/layout.js';
+
+export type { LayoutTrace } from './spineless/layout.js';
 
 const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
+
+/**
+ * A profiler callback invoked after every public `calculateLayout`
+ * (outside differential mode) with the laid-out root and a
+ * `LayoutTrace` describing what the engine did. Register one with
+ * `setLayoutProfiler`.
+ */
+export type LayoutProfiler = (root: Node, trace: LayoutTrace) => void;
+
+/** The registered profiler, or `null` while layout tracing is off. */
+let profiler: LayoutProfiler | null = null;
+
+/**
+ * Register a profiler invoked after every `calculateLayout`, or pass
+ * `null` to disable. While no profiler is registered the layout path
+ * is unchanged — observability is strictly pay-for-what-you-use.
+ */
+export function setLayoutProfiler(listener: LayoutProfiler | null): void {
+  profiler = listener;
+}
 
 /**
  * Per-root layout-engine state for the public `calculateLayout`.
@@ -60,25 +82,39 @@ export function calculateLayout(
   availableHeight: number | undefined,
 ): void {
   if (!DIFFERENTIAL) {
-    // A tree the grammar does not cover always takes the imperative
-    // path.
+    // `driver` is non-null exactly when the Spineless engine served
+    // this call — its `lastTrace` is then the trace to report. Every
+    // other path (grammar-unsupported tree, or a root's cold first
+    // layout) ran the imperative algorithm.
+    let driver: SpinelessLayout | null = null;
     if (!spinelessSupports(root)) {
+      // A tree the grammar does not cover always takes the imperative
+      // path.
       calculateLayoutImpl(root, availableWidth, availableHeight);
-      return;
+    } else {
+      // First layout of a root: the imperative path is faster cold —
+      // no grammar to build. A root laid out a SECOND time is probably
+      // long-lived, so from then on the validated Spineless
+      // incremental engine takes over — build once, relay
+      // incrementally.
+      const engine = layoutEngines.get(root);
+      if (engine === undefined) {
+        calculateLayoutImpl(root, availableWidth, availableHeight);
+        layoutEngines.set(root, 'cold');
+      } else {
+        driver = engine === 'cold' ? new SpinelessLayout(root) : engine;
+        if (engine === 'cold') layoutEngines.set(root, driver);
+        driver.layout(availableWidth, availableHeight);
+      }
     }
-    // First layout of a root: the imperative path is faster cold — no
-    // grammar to build. A root laid out a SECOND time is probably
-    // long-lived, so from then on the validated Spineless incremental
-    // engine takes over — build once, relay incrementally.
-    const engine = layoutEngines.get(root);
-    if (engine === undefined) {
-      calculateLayoutImpl(root, availableWidth, availableHeight);
-      layoutEngines.set(root, 'cold');
-      return;
+    if (profiler !== null) {
+      profiler(
+        root,
+        driver !== null
+          ? driver.lastTrace!
+          : { path: 'imperative', dirtyNodes: 0, fieldsRecomputed: 0, fieldsChanged: 0, movedSubtrees: 0 },
+      );
     }
-    const driver = engine === 'cold' ? new SpinelessLayout(root) : engine;
-    if (engine === 'cold') layoutEngines.set(root, driver);
-    driver.layout(availableWidth, availableHeight);
     return;
   }
 

@@ -50,15 +50,19 @@ interface LayoutFields {
 }
 
 /**
- * A record of what one `SpinelessLayout.layout()` call did — the
- * observability surface phase 9 builds on. `path` names the engine
- * route; the counts quantify how incremental the call was.
- *
- * @internal
+ * A record of what one layout call did — the observability surface
+ * phase 9 builds on. `path` names the engine route; the counts
+ * quantify how incremental the call was. Surfaced to consumers via
+ * `setLayoutProfiler` (see `algorithm/index.ts`).
  */
 export interface LayoutTrace {
-  /** Engine path this `layout()` call took. */
-  path: 'build' | 'graft' | 'incremental';
+  /**
+   * Engine path the call took. `SpinelessLayout` sets `build` /
+   * `graft` / `incremental`; the public `calculateLayout` reports
+   * `imperative` for a call the Spineless engine did not serve (a
+   * grammar-unsupported tree, or a root's first / cold layout).
+   */
+  path: 'imperative' | 'build' | 'graft' | 'incremental';
   /** Nodes the dirty-flag walk classified as dirty (0 on a build). */
   dirtyNodes: number;
   /** Grammar Fields the runtime re-ran (0 on a pure build — a build

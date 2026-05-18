@@ -1,6 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Node } from '../node.js';
-import { calculateLayoutImperative } from './index.js';
+import { type LayoutTrace, calculateLayoutImperative, setLayoutProfiler } from './index.js';
+
+/**
+ * Differential mode runs the imperative algorithm twice and never
+ * adopts the Spineless engine, so it never invokes the profiler — the
+ * profiler tests below are meaningless there and skip.
+ */
+const DIFFERENTIAL = process.env.PILATES_DIFFERENTIAL_LAYOUT === '1';
 
 describe('calculateLayout — layout cache hit', () => {
   it('second pass on unchanged tree hits the layout cache', () => {
@@ -82,6 +89,71 @@ describe('calculateLayout — rounding correctness on cache hit + ancestor mutat
     expect(cached.leaf.layout.height).toBe(cold.leaf.layout.height);
     expect(cached.leaf.layout.left).toBe(cold.leaf.layout.left);
     expect(cached.leaf.layout.top).toBe(cold.leaf.layout.top);
+  });
+});
+
+describe.skipIf(DIFFERENTIAL)('calculateLayout — setLayoutProfiler (phase 9)', () => {
+  afterEach(() => setLayoutProfiler(null));
+
+  const fixedRow = (): Node => {
+    const root = Node.create();
+    root.setWidth(120);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    return root;
+  };
+
+  it('fires once per calculateLayout with the laid-out root', () => {
+    const root = fixedRow();
+    const traces: Array<{ root: Node; trace: LayoutTrace }> = [];
+    setLayoutProfiler((r, t) => traces.push({ root: r, trace: t }));
+    root.calculateLayout(120, 40);
+    expect(traces).toHaveLength(1);
+    expect(traces[0]!.root).toBe(root);
+  });
+
+  it('reports imperative for the cold first layout, then build, then incremental', () => {
+    const root = fixedRow();
+    const paths: string[] = [];
+    setLayoutProfiler((_r, t) => paths.push(t.path));
+    root.calculateLayout(120, 40); // cold — imperative path
+    root.calculateLayout(120, 40); // 2nd layout — Spineless adopts, builds
+    root.getChild(0)!.setWidth(50);
+    root.calculateLayout(120, 40); // value mutation — incremental
+    expect(paths).toEqual(['imperative', 'build', 'incremental']);
+  });
+
+  it('setLayoutProfiler(null) stops the callbacks', () => {
+    const root = fixedRow();
+    let calls = 0;
+    setLayoutProfiler(() => {
+      calls++;
+    });
+    root.calculateLayout(120, 40);
+    expect(calls).toBe(1);
+    setLayoutProfiler(null);
+    root.calculateLayout(120, 40);
+    expect(calls).toBe(1);
+  });
+
+  it('a tree the grammar cannot cover always reports imperative', () => {
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(40);
+    const hidden = Node.create();
+    hidden.setDisplay('none');
+    root.insertChild(hidden, 0);
+    const paths: string[] = [];
+    setLayoutProfiler((_r, t) => paths.push(t.path));
+    root.calculateLayout(100, 40);
+    root.calculateLayout(100, 40);
+    expect(paths).toEqual(['imperative', 'imperative']);
   });
 });
 
