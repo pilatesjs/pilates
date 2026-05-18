@@ -647,3 +647,137 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
     expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 2 });
   });
 });
+
+describe('SpinelessLayout — incremental output write-back (slice v23)', () => {
+  function checkSequence(make: () => Node, steps: Array<(root: Node) => void>): void {
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout();
+    impTree.calculateLayout();
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    for (const step of steps) {
+      step(slTree);
+      step(impTree);
+      sl.layout();
+      impTree.calculateLayout();
+      expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    }
+  }
+
+  // A depth-4 nested tree: root → col → row → cell.
+  const deepTree = (): Node => {
+    const root = Node.create();
+    root.setWidth(240);
+    root.setHeight(200);
+    root.setFlexDirection('column');
+    for (let c = 0; c < 2; c++) {
+      const col = Node.create();
+      col.setWidth(240);
+      col.setHeight(90);
+      col.setFlexDirection('column');
+      root.insertChild(col, c);
+      for (let r = 0; r < 2; r++) {
+        const row = Node.create();
+        row.setWidth(240);
+        row.setHeight(40);
+        row.setFlexDirection('row');
+        col.insertChild(row, r);
+        for (let i = 0; i < 3; i++) {
+          const cell = Node.create();
+          cell.setWidth(60);
+          cell.setHeight(30);
+          row.insertChild(cell, i);
+        }
+      }
+    }
+    return root;
+  };
+
+  const cell = (root: Node, c: number, r: number, i: number): Node =>
+    root.getChild(c)!.getChild(r)!.getChild(i)!;
+
+  it('a deep leaf width mutation re-rounds only its subtree', () => {
+    checkSequence(deepTree, [(root) => cell(root, 1, 0, 1)!.setHeight(12)]);
+  });
+
+  it('a deep leaf width mutation shifts its later siblings', () => {
+    checkSequence(deepTree, [(root) => cell(root, 0, 1, 0)!.setWidth(90)]);
+  });
+
+  it('resizing a mid-tree row re-rounds the row subtree', () => {
+    checkSequence(deepTree, [(root) => root.getChild(0)!.getChild(1)!.setHeight(64)]);
+  });
+
+  it('scattered mutations in different subtrees each relayout', () => {
+    checkSequence(deepTree, [
+      (root) => {
+        cell(root, 0, 0, 0)!.setWidth(20);
+        cell(root, 1, 1, 2)!.setHeight(10);
+      },
+    ]);
+  });
+
+  it('a long value-mutation sequence on a deep tree stays correct', () => {
+    checkSequence(deepTree, [
+      (root) => cell(root, 0, 0, 1)!.setWidth(30),
+      (root) => root.getChild(1)!.setHeight(70),
+      (root) => cell(root, 1, 0, 0)!.setHeight(8),
+      (root) => cell(root, 0, 1, 2)!.setWidth(100),
+      (root) => root.getChild(0)!.getChild(0)!.setHeight(36),
+    ]);
+  });
+
+  it('fractional flex-grow layout stays correct under incremental relayout', () => {
+    checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(100);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(0);
+        c.setHeight(30);
+        c.setFlexGrow(1); // 100 / 3 — fractional
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [
+      (root) => root.setWidth(160),
+      (root) => root.getChild(1)!.setFlexGrow(2),
+      (root) => root.setWidth(101),
+    ]);
+  });
+
+  it('an available resize re-rounds the whole tree', () => {
+    const slTree = (() => {
+      const root = Node.create(); // 'auto' root
+      root.setFlexDirection('column');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      return root;
+    })();
+    const sl = new SpinelessLayout(slTree);
+    const impTree = (() => {
+      const root = Node.create();
+      root.setFlexDirection('column');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(20);
+        root.insertChild(c, i);
+      }
+      return root;
+    })();
+    sl.layout(120, 90);
+    impTree.calculateLayout(120, 90);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    sl.layout(150, 70);
+    impTree.calculateLayout(150, 70);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+  });
+});

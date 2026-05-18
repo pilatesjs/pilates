@@ -70,6 +70,30 @@ export function roundLayoutSubtree(node: Node, parentAbsX: number, parentAbsY: n
   }
 }
 
+/**
+ * Round a subtree INCLUSIVE of `node`, given the float and rounded
+ * absolute positions of `node`'s parent. Used by the Spineless
+ * incremental relayout path: when only a subtree's float layout
+ * moved, its parent's rounding is unchanged, so the subtree can be
+ * re-rounded in isolation against the parent's stable corner.
+ *
+ * `node`'s `_layout` (and its descendants') must hold the FLOAT
+ * layout, exactly as after a `layoutChildren` pass.
+ *
+ * @internal
+ */
+export function roundLayoutFrom(
+  node: Node,
+  parentAbsX: number,
+  parentAbsY: number,
+  parentRoundedX: number,
+  parentRoundedY: number,
+): void {
+  const absolutes = new Map<Node, AbsCorner>();
+  collectAbsolutes(node, parentAbsX, parentAbsY, absolutes);
+  applyRounding(node, absolutes, parentRoundedX, parentRoundedY);
+}
+
 function collectAbsolutes(
   node: Node,
   parentX: number,
