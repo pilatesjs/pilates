@@ -343,7 +343,12 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
 
   it('a value mutation takes the incremental path', () => {
     const sl = checkSequence(fixedRow, [(r) => r.getChild(1)!.setWidth(70)]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 0 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 1,
+      graftRelayouts: 0,
+      detachRelayouts: 0,
+    });
   });
 
   it('a sequence of value mutations all stay incremental', () => {
@@ -353,7 +358,12 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       (r) => r.setWidth(260),
       (r) => r.getChild(1)!.setWidth(10),
     ]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 4, graftRelayouts: 0 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 4,
+      graftRelayouts: 0,
+      detachRelayouts: 0,
+    });
   });
 
   it('gap / padding / margin / min / max mutations stay incremental', () => {
@@ -364,7 +374,12 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       (r) => r.getChild(1)!.setMinWidth(80),
       (r) => r.getChild(2)!.setMaxWidth(15),
     ]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 5, graftRelayouts: 0 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 5,
+      graftRelayouts: 0,
+      detachRelayouts: 0,
+    });
   });
 
   it('a positive→positive flex-weight tweak stays incremental', () => {
@@ -382,7 +397,12 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       }
       return root;
     }, [(r) => r.getChild(0)!.setFlexGrow(3)]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 0 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 1,
+      graftRelayouts: 0,
+      detachRelayouts: 0,
+    });
   });
 
   it("an 'auto' root re-sized from a new available stays incremental", () => {
@@ -408,7 +428,12 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
     impTree.calculateLayout(140, 90);
     expect(snapshot(slTree)).toEqual(snapshot(impTree));
 
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 0 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 1,
+      graftRelayouts: 0,
+      detachRelayouts: 0,
+    });
   });
 
   it('an available presence change forces a rebuild', () => {
@@ -428,7 +453,12 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
 
   it('a flex-direction change forces a rebuild and stays correct', () => {
     const sl = checkSequence(fixedRow, [(r) => r.setFlexDirection('column')]);
-    expect(sl.stats).toEqual({ fullBuilds: 2, incrementalRelayouts: 0, graftRelayouts: 0 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 2,
+      incrementalRelayouts: 0,
+      graftRelayouts: 0,
+      detachRelayouts: 0,
+    });
   });
 
   it('a flex weight crossing zero forces a rebuild', () => {
@@ -441,9 +471,11 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
     expect(sl.stats.fullBuilds).toBe(2);
   });
 
-  it('removing a child forces a rebuild and stays correct', () => {
+  it('removing the last child takes the detach fast-path and stays correct', () => {
+    // v31 wired the detach fast-path — a removal no longer rebuilds.
     const sl = checkSequence(fixedRow, [(r) => r.removeChild(r.getChild(2)!)]);
-    expect(sl.stats.fullBuilds).toBe(2);
+    expect(sl.stats.fullBuilds).toBe(1);
+    expect(sl.stats.detachRelayouts).toBe(1);
   });
 
   it('an aspectRatio change forces a rebuild', () => {
@@ -517,7 +549,12 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
 
   it('appending a last child takes the graft fast-path', () => {
     const sl = checkSequence(fixedRow, [appendLeaf(50, 25)]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 0, graftRelayouts: 1 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 0,
+      graftRelayouts: 1,
+      detachRelayouts: 0,
+    });
   });
 
   it('several sequential appends each graft', () => {
@@ -526,7 +563,12 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
       appendLeaf(30, 24),
       appendLeaf(10, 18),
     ]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 0, graftRelayouts: 3 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 0,
+      graftRelayouts: 3,
+      detachRelayouts: 0,
+    });
   });
 
   it('appending a whole subtree grafts in one shot', () => {
@@ -633,10 +675,11 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
     expect(sl.stats.graftRelayouts).toBe(0);
   });
 
-  it('a remove is not a graft — full rebuild', () => {
+  it('a remove is not a graft — it takes the detach fast-path', () => {
     const sl = checkSequence(fixedRow, [(r) => r.removeChild(r.getChild(2)!)]);
-    expect(sl.stats.fullBuilds).toBe(2);
     expect(sl.stats.graftRelayouts).toBe(0);
+    expect(sl.stats.detachRelayouts).toBe(1);
+    expect(sl.stats.fullBuilds).toBe(1);
   });
 
   it('an append then a value relayout then another append', () => {
@@ -645,7 +688,12 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
       (r) => r.getChild(1)!.setWidth(55),
       appendLeaf(15, 18),
     ]);
-    expect(sl.stats).toEqual({ fullBuilds: 1, incrementalRelayouts: 1, graftRelayouts: 2 });
+    expect(sl.stats).toEqual({
+      fullBuilds: 1,
+      incrementalRelayouts: 1,
+      graftRelayouts: 2,
+      detachRelayouts: 0,
+    });
   });
 });
 
@@ -1054,5 +1102,132 @@ describe('SpinelessLayout — measure function on an absolute node (slice v30)',
       root.getChild(0)!.insertChild(abs, 0);
       return root;
     });
+  });
+});
+
+describe('SpinelessLayout — remove fast-path (slice v31)', () => {
+  // Each step is mirrored on a parallel imperative tree (via the
+  // direct `calculateLayoutImperative`, so the oracle never adopts
+  // Spineless itself) and the two layouts asserted byte-identical.
+  function checkSequence(make: () => Node, steps: Array<(r: Node) => void>): SpinelessLayout {
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout();
+    calculateLayoutImperative(impTree);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    for (const step of steps) {
+      step(slTree);
+      step(impTree);
+      sl.layout();
+      calculateLayoutImperative(impTree);
+      expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    }
+    return sl;
+  }
+
+  const fixedRow = (n: number): Node => {
+    const root = Node.create();
+    root.setWidth(300);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < n; i++) {
+      const c = Node.create();
+      c.setWidth(40);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    return root;
+  };
+
+  it('removing the last child takes the detach fast-path', () => {
+    const sl = checkSequence(() => fixedRow(3), [(r) => r.removeChild(r.getChild(2)!)]);
+    expect(sl.stats.detachRelayouts).toBe(1);
+    expect(sl.stats.fullBuilds).toBe(1);
+    expect(sl.lastTrace!.path).toBe('detach');
+  });
+
+  it('removing several last children in sequence each detaches', () => {
+    const sl = checkSequence(
+      () => fixedRow(4),
+      [
+        (r) => r.removeChild(r.getChild(3)!),
+        (r) => r.removeChild(r.getChild(2)!),
+        (r) => r.removeChild(r.getChild(1)!),
+      ],
+    );
+    expect(sl.stats.detachRelayouts).toBe(3);
+    expect(sl.stats.fullBuilds).toBe(1);
+  });
+
+  it('removing an interior child detaches (later siblings shift)', () => {
+    const sl = checkSequence(() => fixedRow(3), [(r) => r.removeChild(r.getChild(1)!)]);
+    expect(sl.stats.detachRelayouts).toBe(1);
+    expect(sl.lastTrace!.path).toBe('detach');
+  });
+
+  it('removing a whole last-child subtree detaches in one shot', () => {
+    const sl = checkSequence(() => {
+      const root = fixedRow(2);
+      const box = Node.create();
+      box.setWidth(60);
+      box.setHeight(36);
+      box.setFlexDirection('column');
+      for (let i = 0; i < 2; i++) {
+        const leaf = Node.create();
+        leaf.setWidth(60);
+        leaf.setHeight(15);
+        box.insertChild(leaf, i);
+      }
+      root.insertChild(box, root.getChildCount());
+      return root;
+    }, [(r) => r.removeChild(r.getChild(2)!)]);
+    expect(sl.stats.detachRelayouts).toBe(1);
+  });
+
+  it('removing a child from a flex-distributing parent detaches', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        c.setFlexGrow(1);
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [(r) => r.removeChild(r.getChild(2)!)]);
+    expect(sl.stats.detachRelayouts).toBe(1);
+  });
+
+  it('a removal from a reverse-direction parent falls back to a rebuild', () => {
+    const sl = checkSequence(() => {
+      const root = fixedRow(3);
+      root.setFlexDirection('row-reverse');
+      return root;
+    }, [(r) => r.removeChild(r.getChild(2)!)]);
+    expect(sl.stats.detachRelayouts).toBe(0);
+    expect(sl.stats.fullBuilds).toBe(2);
+  });
+
+  it('an append then a remove exercises both fast-paths', () => {
+    const sl = checkSequence(
+      () => fixedRow(2),
+      [
+        (r) => {
+          const c = Node.create();
+          c.setWidth(40);
+          c.setHeight(30);
+          r.insertChild(c, r.getChildCount());
+        },
+        (r) => r.removeChild(r.getChild(r.getChildCount() - 1)!),
+      ],
+    );
+    expect(sl.stats.graftRelayouts).toBe(1);
+    expect(sl.stats.detachRelayouts).toBe(1);
+    expect(sl.stats.fullBuilds).toBe(1);
   });
 });
