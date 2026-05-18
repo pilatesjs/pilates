@@ -781,3 +781,85 @@ describe('SpinelessLayout — incremental output write-back (slice v23)', () => 
     expect(snapshot(slTree)).toEqual(snapshot(impTree));
   });
 });
+
+describe('SpinelessLayout — per-call layout trace (slice v26)', () => {
+  const fixedRow = (): Node => {
+    const root = Node.create();
+    root.setWidth(240);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < 3; i++) {
+      const c = Node.create();
+      c.setWidth(40);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    return root;
+  };
+
+  it('lastTrace is null before the first layout()', () => {
+    const sl = new SpinelessLayout(fixedRow());
+    expect(sl.lastTrace).toBeNull();
+  });
+
+  it('the first layout() reports a build', () => {
+    const sl = new SpinelessLayout(fixedRow());
+    sl.layout();
+    expect(sl.lastTrace).toEqual({
+      path: 'build',
+      dirtyNodes: 0,
+      fieldsRecomputed: 0,
+      fieldsChanged: 0,
+      movedSubtrees: 0,
+    });
+  });
+
+  it('a value mutation reports an incremental relayout', () => {
+    const root = fixedRow();
+    const sl = new SpinelessLayout(root);
+    sl.layout();
+    root.getChild(0)!.setWidth(80);
+    sl.layout();
+    const t = sl.lastTrace!;
+    expect(t.path).toBe('incremental');
+    // `markDirty` on the setter path propagates `_dirty` up the
+    // ancestor chain, so the dirty region is the leaf + the root.
+    expect(t.dirtyNodes).toBe(2);
+    expect(t.fieldsChanged).toBeGreaterThanOrEqual(1);
+    expect(t.fieldsRecomputed).toBeGreaterThanOrEqual(t.fieldsChanged);
+    expect(t.movedSubtrees).toBeGreaterThanOrEqual(1); // the leaf + shifted siblings
+  });
+
+  it('a no-op mutation reports an incremental relayout that changes nothing', () => {
+    const root = fixedRow();
+    const sl = new SpinelessLayout(root);
+    sl.layout();
+    root.getChild(0)!.setWidth(40); // already 40 — nothing actually moves
+    sl.layout();
+    const t = sl.lastTrace!;
+    expect(t.path).toBe('incremental');
+    expect(t.fieldsChanged).toBe(0);
+    expect(t.movedSubtrees).toBe(0);
+  });
+
+  it('a child append reports a graft', () => {
+    const root = fixedRow();
+    const sl = new SpinelessLayout(root);
+    sl.layout();
+    const c = Node.create();
+    c.setWidth(40);
+    c.setHeight(30);
+    root.insertChild(c, root.getChildCount());
+    sl.layout();
+    expect(sl.lastTrace!.path).toBe('graft');
+  });
+
+  it('a flex-direction flip reports a rebuild', () => {
+    const root = fixedRow();
+    const sl = new SpinelessLayout(root);
+    sl.layout();
+    root.setFlexDirection('column');
+    sl.layout();
+    expect(sl.lastTrace!.path).toBe('build');
+  });
+});

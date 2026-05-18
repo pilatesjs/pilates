@@ -49,6 +49,28 @@ interface LayoutFields {
   top: Field<number>;
 }
 
+/**
+ * A record of what one `SpinelessLayout.layout()` call did — the
+ * observability surface phase 9 builds on. `path` names the engine
+ * route; the counts quantify how incremental the call was.
+ *
+ * @internal
+ */
+export interface LayoutTrace {
+  /** Engine path this `layout()` call took. */
+  path: 'build' | 'graft' | 'incremental';
+  /** Nodes the dirty-flag walk classified as dirty (0 on a build). */
+  dirtyNodes: number;
+  /** Grammar Fields the runtime re-ran (0 on a pure build — a build
+   *  computes every Field once during `init`, not via `recompute`). */
+  fieldsRecomputed: number;
+  /** Of those, Fields whose value actually changed. */
+  fieldsChanged: number;
+  /** Maximal moved-subtree roots written back. 0 on build / graft —
+   *  those finish whole-tree. */
+  movedSubtrees: number;
+}
+
 /** Every leaf input Field (`deps: []`) the runtime currently tracks. */
 function collectInputs(grammar: Grammar, runtime: SpinelessRuntime): Array<Field<unknown>> {
   const inputs: Array<Field<unknown>> = [];
@@ -214,8 +236,17 @@ export class SpinelessLayout {
   /** Build / relayout counters — for tests and diagnostics. */
   readonly stats = { fullBuilds: 0, incrementalRelayouts: 0, graftRelayouts: 0 };
 
+  /** What the most recent `layout()` call did (phase 9). */
+  private _lastTrace: LayoutTrace | null = null;
+
   constructor(root: Node) {
     this.root = root;
+  }
+
+  /** The `LayoutTrace` of the most recent `layout()` call, or `null`
+   *  if `layout()` has not run yet. */
+  get lastTrace(): LayoutTrace | null {
+    return this._lastTrace;
   }
 
   /**
@@ -259,12 +290,28 @@ export class SpinelessLayout {
     if (!structural) {
       const moved = this.relayoutValues(dirty, availableWidth, availableHeight);
       this.stats.incrementalRelayouts++;
+      const rs = this.built!.runtime.stats;
+      this._lastTrace = {
+        path: 'incremental',
+        dirtyNodes: dirty.length,
+        fieldsRecomputed: rs.recomputeVisited,
+        fieldsChanged: rs.recomputeChanged,
+        movedSubtrees: moved.length,
+      };
       this.finishIncremental(moved);
       clearDirtyRegion(this.root);
       return;
     }
     if (this.tryGraftAppend(availableWidth, availableHeight)) {
       this.stats.graftRelayouts++;
+      const rs = this.built!.runtime.stats;
+      this._lastTrace = {
+        path: 'graft',
+        dirtyNodes: dirty.length,
+        fieldsRecomputed: rs.recomputeVisited,
+        fieldsChanged: rs.recomputeChanged,
+        movedSubtrees: 0,
+      };
     } else {
       this.fullBuild(availableWidth, availableHeight);
       this.stats.fullBuilds++;
@@ -293,6 +340,17 @@ export class SpinelessLayout {
       inputs: collectInputs(output.grammar, runtime),
       snaps: captureSnaps(this.root),
       ...indexFields(output),
+    };
+
+    // A build computes every Field once during `init` (counted by
+    // `runtime.stats.initFields`) — it runs no `recompute()`, so the
+    // recompute-derived trace counts are all zero.
+    this._lastTrace = {
+      path: 'build',
+      dirtyNodes: 0,
+      fieldsRecomputed: 0,
+      fieldsChanged: 0,
+      movedSubtrees: 0,
     };
   }
 
