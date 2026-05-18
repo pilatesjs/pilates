@@ -112,7 +112,13 @@ export function calculateLayout(
         root,
         driver !== null
           ? driver.lastTrace!
-          : { path: 'imperative', dirtyNodes: 0, fieldsRecomputed: 0, fieldsChanged: 0, movedSubtrees: 0 },
+          : {
+              path: 'imperative',
+              dirtyNodes: 0,
+              fieldsRecomputed: 0,
+              fieldsChanged: 0,
+              movedSubtrees: 0,
+            },
       );
     }
     return;
