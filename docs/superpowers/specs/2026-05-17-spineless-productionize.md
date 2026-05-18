@@ -49,10 +49,25 @@ cells. So the write-back is: evaluate every node's
   the runtime in place — no whole-tree rebuild. Any other structural
   change (remove, mid-list insert, reverse-parent append,
   flex-direction, …) still rebuilds.
-- **v22 — public wiring.** `calculateLayout` routes through
-  `SpinelessLayout`, with an imperative fallback for trees the
-  grammar does not cover (`display: none`, a measure function on an
-  absolute node).
+- **v22 — dirty-flag-guided detection (landed).** `SpinelessLayout`'s
+  per-call change detection was O(tree) — `captureStructure` +
+  diffing every input Field. v22 scopes it to the mutated region
+  using the `Node` dirty flags (`isDirty()` / `_hasDirtyDescendant`),
+  so a value relayout after a small mutation is O(dirty region).
+- **v23 — incremental output write-back.** With detection now
+  O(dirty), the remaining O(tree) cost is the *output* plumbing —
+  `writeBack` / `roundLayout` / `recordScrollSizes` re-process the
+  whole tree every call. v23 scopes those to the subtree whose
+  layout actually moved.
+- **v24 — public wiring.** `calculateLayout` routes through
+  `SpinelessLayout` (the imperative path for the first cold layout
+  of a root; Spineless from the second), with an imperative
+  fallback for trees the grammar does not cover (`display: none`, a
+  measure function on an absolute node). Deferred to here because
+  wiring is only a non-regression once both detection (v22) and
+  output write-back (v23) are incremental — a prototype wiring
+  showed the O(tree) plumbing regressing the `hotrelayoutboundary`
+  bench.
 
 ## Slice v19 — single-shot Spineless layout + write-back
 
@@ -160,3 +175,40 @@ reverse-parent append and a child removal all fall back to a
 rebuild; each step is mirrored on a parallel imperative tree and the
 layouts asserted equal. The obsolete v20 "inserting a child forces a
 rebuild" test is removed (a last-child append now grafts).
+
+## Slice v22 — dirty-flag-guided detection
+
+v20/v21's `layout()` walked the whole tree every call: `captureStructure`
+built a signature for all N nodes, and `applyValueChanges` diffed all
+~N×15 input Fields. For a small mutation in a large tree that O(tree)
+detection swamps the O(affected) `recompute()` — a prototype wiring
+into `calculateLayout` showed `hotrelayoutboundary` at 0.96 ms (vs the
+imperative's 0.1 ms).
+
+v22 uses the `Node` dirty flags the imperative cache already relies on.
+After each `layout()` the driver clears them; a mutation re-sets
+`_dirty` on the touched node and `_hasDirtyDescendant` on its
+ancestors. The next `layout()`:
+
+- `collectDirty` walks only the dirty region (descending where
+  `isDirty() || _hasDirtyDescendant`).
+- Each dirty node is classified against a stored `NodeSnap`
+  (`{ sig, measure, children }`): an unchanged signature / measure /
+  child list → a pure value change; anything else → structural.
+- All value → re-`markDirty` just the dirty nodes' input Fields
+  (skipping any the runtime never tracked — a registered-but-unread
+  input like a flex-start container's main-end padding) and
+  `recompute()`. Structural → the v21 `tryGraftAppend` / rebuild.
+
+Detection is now O(dirty region). The same prototype wiring measured
+`hotrelayoutboundary` drop from 0.96 ms to 0.24 ms; the residual is
+the O(tree) output plumbing (`writeBack` / `roundLayout` /
+`recordScrollSizes`), which slice v23 addresses before the public
+wiring lands.
+
+### Tests
+
+The existing 36 `spineless-layout.test.ts` cases (slices v19–v21) all
+pass unchanged — they already drive persistent drivers through value
+and structural mutation sequences, so they cover the new dirty-walk
+classifier and value path.
