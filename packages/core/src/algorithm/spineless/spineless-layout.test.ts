@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest';
 import { Edge } from '../../edge.js';
 import { Node } from '../../node.js';
+import { calculateLayoutImperative } from '../index.js';
 import { SpinelessLayout } from './layout.js';
 
 interface Box {
@@ -861,5 +862,124 @@ describe('SpinelessLayout — per-call layout trace (slice v26)', () => {
     root.setFlexDirection('column');
     sl.layout();
     expect(sl.lastTrace!.path).toBe('build');
+  });
+});
+
+describe('SpinelessLayout — display:none coverage (slice v29)', () => {
+  it('a hidden middle child is skipped and its siblings close the gap', () => {
+    sameLayout(() => {
+      const root = Node.create();
+      root.setWidth(240);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(30);
+        if (i === 1) c.setDisplay('none');
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('a hidden subtree contributes nothing to its parent', () => {
+    sameLayout(() => {
+      const root = Node.create();
+      root.setWidth(200);
+      root.setHeight(100);
+      root.setFlexDirection('column');
+      const visible = Node.create();
+      visible.setWidth(200);
+      visible.setHeight(30);
+      root.insertChild(visible, 0);
+      const hidden = Node.create();
+      hidden.setWidth(200);
+      hidden.setHeight(40);
+      hidden.setDisplay('none');
+      hidden.setFlexDirection('row');
+      for (let i = 0; i < 2; i++) {
+        const leaf = Node.create();
+        leaf.setWidth(100);
+        leaf.setHeight(40);
+        hidden.insertChild(leaf, i);
+      }
+      root.insertChild(hidden, 1);
+      return root;
+    });
+  });
+
+  it('a hidden flex-growing child leaves the distribution', () => {
+    sameLayout(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(0);
+        c.setHeight(40);
+        c.setFlexGrow(1);
+        if (i === 1) c.setDisplay('none');
+        root.insertChild(c, i);
+      }
+      return root;
+    });
+  });
+
+  it('a hidden child is excluded from an auto parent content size', () => {
+    sameLayout(
+      () => {
+        const root = Node.create(); // 'auto' column root
+        root.setFlexDirection('column');
+        for (let i = 0; i < 3; i++) {
+          const c = Node.create();
+          c.setWidth(50);
+          c.setHeight(20);
+          if (i === 0) c.setDisplay('none');
+          root.insertChild(c, i);
+        }
+        return root;
+      },
+      120,
+      200,
+    );
+  });
+
+  it('toggling display rebuilds and stays correct against the imperative engine', () => {
+    const make = (): Node => {
+      const root = Node.create();
+      root.setWidth(240);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(40);
+        c.setHeight(30);
+        root.insertChild(c, i);
+      }
+      return root;
+    };
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout();
+    calculateLayoutImperative(impTree);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+
+    const steps: Array<(r: Node) => void> = [
+      (r) => r.getChild(1)!.setDisplay('none'),
+      (r) => r.getChild(1)!.setDisplay('flex'),
+      (r) => r.getChild(2)!.setDisplay('none'),
+    ];
+    for (const step of steps) {
+      step(slTree);
+      step(impTree);
+      sl.layout();
+      calculateLayoutImperative(impTree);
+      expect(snapshot(slTree)).toEqual(snapshot(impTree));
+      // A display toggle reshapes the parent's flex flow — structural.
+      expect(sl.lastTrace!.path).toBe('build');
+    }
   });
 });

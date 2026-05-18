@@ -20,10 +20,13 @@
  * divergence should be reproduced from its `fast-check` seed and
  * pinned as a deterministic regression test in `flex-grammar.test.ts`.
  *
- * Known uncovered (deliberately not generated): `display: none`,
- * and a measure function on an `'absolute'` node — the grammar's
- * `emitAbsoluteRules` does not consult the measurer (out of v16
- * scope), so that combination is excluded rather than flagged.
+ * Coverage note: `display: 'none'` is generated as of phase 10 v29 —
+ * a hidden node is emitted no rules and skipped in its parent's flow,
+ * so the float-layout walks below skip hidden subtrees on both sides.
+ * Still uncovered (deliberately not generated): a measure function on
+ * an `'absolute'` node — the grammar's `emitAbsoluteRules` does not
+ * consult the measurer, so that combination is excluded rather than
+ * flagged.
  */
 
 import fc from 'fast-check';
@@ -82,6 +85,7 @@ interface NodeSpec {
   alignContent: AlignContent;
   alignSelf: Align;
   absolute: boolean;
+  hidden: boolean;
   position?: [number | undefined, number | undefined, number | undefined, number | undefined];
   aspectRatio?: number;
   /** Constant-ish measurer; applied only to a non-absolute leaf. */
@@ -138,6 +142,8 @@ const baseProps = {
   alignSelf: fc.constantFrom<Align>('auto', 'flex-start', 'flex-end', 'center', 'stretch'),
   // Mostly in-flow; absolute roughly 1-in-5.
   absolute: fc.constantFrom(false, false, false, false, true),
+  // Mostly visible; `display: 'none'` roughly 1-in-6.
+  hidden: fc.constantFrom(false, false, false, false, false, true),
   position: fc.option(fc.tuple(optInt(0, 20), optInt(0, 20), optInt(0, 20), optInt(0, 20)), {
     nil: undefined,
   }),
@@ -203,6 +209,7 @@ function buildTree(spec: NodeSpec): Node {
   n.setAlignContent(spec.alignContent);
   n.setAlignSelf(spec.alignSelf);
   if (spec.absolute) n.setPositionType('absolute');
+  if (spec.hidden) n.setDisplay('none');
   if (spec.position !== undefined) {
     const [t, r, b, l] = spec.position;
     if (t !== undefined) n.setPosition(Edge.Top, t);
@@ -256,6 +263,9 @@ function grammarFloats(root: Node, available: { width?: number; height?: number 
   }
   const out: Box[] = [];
   function visit(n: Node): void {
+    // A `display: 'none'` subtree is emitted no fields — skip it on
+    // both sides so the two float walks stay shape-aligned.
+    if (n.style.display === 'none') return;
     out.push(byNode.get(n)!);
     for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
   }
@@ -275,6 +285,7 @@ function imperativeFloats(root: Node, available: { width?: number; height?: numb
   layoutChildren(root);
   const out: Box[] = [];
   function visit(n: Node): void {
+    if (n.style.display === 'none') return;
     out.push({
       left: n._layout.left,
       top: n._layout.top,
