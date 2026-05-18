@@ -110,6 +110,22 @@ export class SpinelessRuntime {
 
   private initDone = false;
 
+  /**
+   * Recompute counters — for observability (phase 9). Plain integer
+   * fields, bumped on the existing `integrate` / `recompute` loops,
+   * so they cost nothing measurable and need no enable flag.
+   */
+  readonly stats = {
+    /** Fields integrated so far — the `init` pass plus every `graft`. */
+    initFields: 0,
+    /** Fields popped from the PQ by the most recent `recompute()`. */
+    recomputeVisited: 0,
+    /** Of those, Fields whose value actually changed. */
+    recomputeChanged: 0,
+    /** Cumulative Fields visited across every `recompute()` since init. */
+    totalVisited: 0,
+  };
+
   constructor(
     grammar: Grammar,
     rootFields: ReadonlyArray<Field<unknown>>,
@@ -358,6 +374,7 @@ export class SpinelessRuntime {
       const omNode = this.lastOm === null ? this.om.init() : this.om.insertAfter(this.lastOm);
       this.lastOm = omNode;
       this.omNodes.set(f, omNode);
+      this.stats.initFields++;
 
       // Compute and cache.
       this.values.set(f, this.runCompute(f, rule));
@@ -445,13 +462,18 @@ export class SpinelessRuntime {
       throw new Error('[spineless-runtime] recompute called before init()');
     }
     const changed: Array<Field<unknown>> = [];
+    this.stats.recomputeVisited = 0;
+    this.stats.recomputeChanged = 0;
     while (!this.pq.isEmpty()) {
       const f = this.pq.popMin()!;
+      this.stats.recomputeVisited++;
+      this.stats.totalVisited++;
       const rule = this.grammar.get(f)!;
       const prev = this.values.get(f);
       const next = this.runCompute(f, rule);
       if (!Object.is(prev, next)) {
         this.values.set(f, next);
+        this.stats.recomputeChanged++;
         changed.push(f);
         const deps = this.dependents.get(f);
         if (deps !== undefined) {

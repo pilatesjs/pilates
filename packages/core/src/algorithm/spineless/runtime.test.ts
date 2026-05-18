@@ -252,6 +252,99 @@ describe('SpinelessRuntime', () => {
     });
   });
 
+  describe('stats counters (phase 9)', () => {
+    it('initFields equals the grammar size after init; recompute counters start at 0', () => {
+      const { grammar, fields } = buildToyGrammar();
+      const rt = new SpinelessRuntime(grammar, [fields.D]);
+      rt.init();
+      expect(rt.stats.initFields).toBe(4); // A, B, C, D
+      expect(rt.stats.recomputeVisited).toBe(0);
+      expect(rt.stats.recomputeChanged).toBe(0);
+      expect(rt.stats.totalVisited).toBe(0);
+    });
+
+    it('a propagating recompute visits and changes every transitive dependent', () => {
+      const { grammar, fields, toggleA } = buildToyGrammar();
+      const rt = new SpinelessRuntime(grammar, [fields.D]);
+      rt.init();
+
+      toggleA(5);
+      rt.markDirty(fields.A);
+      rt.recompute();
+
+      // A changed → B, C, D each re-run once and each change value.
+      expect(rt.stats.recomputeVisited).toBe(4);
+      expect(rt.stats.recomputeChanged).toBe(4);
+      expect(rt.stats.recomputeVisited).toBeGreaterThanOrEqual(rt.stats.recomputeChanged);
+    });
+
+    it('a no-op recompute visits the dirty field but changes nothing', () => {
+      const { grammar, fields } = buildToyGrammar();
+      const rt = new SpinelessRuntime(grammar, [fields.D]);
+      rt.init();
+
+      // A re-computes to its current value (toggleA never called) — so
+      // it visits 1 field and propagates to none.
+      rt.markDirty(fields.A);
+      rt.recompute();
+      expect(rt.stats.recomputeVisited).toBe(1);
+      expect(rt.stats.recomputeChanged).toBe(0);
+    });
+
+    it('recompute counters reflect only the most recent recompute()', () => {
+      const { grammar, fields, toggleA } = buildToyGrammar();
+      const rt = new SpinelessRuntime(grammar, [fields.D]);
+      rt.init();
+
+      toggleA(5);
+      rt.markDirty(fields.A);
+      rt.recompute();
+      expect(rt.stats.recomputeVisited).toBe(4);
+
+      // A second recompute that changes nothing resets the per-call
+      // counters — they are not cumulative.
+      rt.markDirty(fields.A);
+      rt.recompute();
+      expect(rt.stats.recomputeVisited).toBe(1);
+      expect(rt.stats.recomputeChanged).toBe(0);
+    });
+
+    it('totalVisited accumulates across recompute() calls', () => {
+      const { grammar, fields, toggleA } = buildToyGrammar();
+      const rt = new SpinelessRuntime(grammar, [fields.D]);
+      rt.init();
+
+      toggleA(5);
+      rt.markDirty(fields.A);
+      rt.recompute(); // visits 4
+      rt.markDirty(fields.A);
+      rt.recompute(); // visits 1 (no-op)
+      expect(rt.stats.totalVisited).toBe(5);
+    });
+
+    it('graft raises initFields by the number of new fields', () => {
+      const { grammar, fields } = buildToyGrammar();
+      const rt = new SpinelessRuntime(grammar, [fields.D]);
+      rt.init();
+      expect(rt.stats.initFields).toBe(4);
+
+      // Graft a pure tail field E = A + 100 (A is an existing boundary).
+      const node = Node.create();
+      node.setWidth(1);
+      node.setHeight(1);
+      const E = field<number>(node, 'E');
+      const additions: Grammar = new Map();
+      additions.set(E as Field<unknown>, {
+        deps: [fields.A as Field<unknown>],
+        compute: (read) => read(fields.A) + 100,
+      } satisfies FieldRule<number>);
+      rt.graft(additions, [E]);
+
+      expect(rt.stats.initFields).toBe(5);
+      expect(rt.evaluate(E)).toBe(101);
+    });
+  });
+
   describe('flex-grammar end-to-end', () => {
     it('runtime initial layout matches TopoInterpreter on a fixed-width row tree', () => {
       const root = Node.create();
