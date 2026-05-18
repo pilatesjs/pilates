@@ -28,6 +28,9 @@ export type { ComputedLayout } from './layout.js';
 // `calculateLayout` call (phase 9).
 export { setLayoutProfiler, type LayoutProfiler, type LayoutTrace } from './algorithm/index.js';
 
+// Layout inspection — a console dump of a computed-layout subtree.
+export { inspectLayout } from './inspect.js';
+
 // Text measurement (re-exported from the measure module so consumers can
 // build measure functions on top of our width tables).
 export { cellWidth, graphemes, stringWidth, stripAnsi, type Grapheme } from './measure/index.js';

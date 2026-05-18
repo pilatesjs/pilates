@@ -62,6 +62,25 @@ export function setLayoutProfiler(listener: LayoutProfiler | null): void {
 const layoutEngines = new WeakMap<Node, 'cold' | SpinelessLayout>();
 
 /**
+ * The engine path each root's most recent `calculateLayout` took —
+ * read by the `inspectLayout` devtools dump (phase 9). Stored
+ * unconditionally (a `WeakMap.set` is negligible beside the O(tree)
+ * `spinelessSupports` walk the call already does), so the path is
+ * known whether or not a profiler is registered.
+ */
+const lastPaths = new WeakMap<Node, LayoutTrace['path']>();
+
+/**
+ * The engine path `root`'s most recent `calculateLayout` took, or
+ * `undefined` if it has never been laid out. Powers `inspectLayout`.
+ *
+ * @internal
+ */
+export function lastLayoutPath(root: Node): LayoutTrace['path'] | undefined {
+  return lastPaths.get(root);
+}
+
+/**
  * True iff the Spineless grammar covers `node`'s whole subtree. Two
  * features it does not model yet, falling back to the imperative
  * algorithm: `display: 'none'`, and a measure function on an
@@ -107,6 +126,10 @@ export function calculateLayout(
         driver.layout(availableWidth, availableHeight);
       }
     }
+    // Record the path for `inspectLayout`. Reading `driver.lastTrace`
+    // costs nothing (a field read); the imperative-trace OBJECT below
+    // is built only when a profiler is registered.
+    lastPaths.set(root, driver !== null ? driver.lastTrace!.path : 'imperative');
     if (profiler !== null) {
       profiler(
         root,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { VERSION, setLayoutProfiler } from './index.js';
+import { VERSION, inspectLayout, setLayoutProfiler } from './index.js';
 import type { LayoutProfiler, LayoutTrace } from './index.js';
 
 describe('@pilates/core', () => {
@@ -13,5 +13,9 @@ describe('@pilates/core', () => {
     // public surface — a missing export would fail typecheck here.
     const noop: LayoutProfiler = (_root, trace: LayoutTrace) => void trace;
     expect(typeof noop).toBe('function');
+  });
+
+  it('exposes inspectLayout (phase 9)', () => {
+    expect(typeof inspectLayout).toBe('function');
   });
 });
