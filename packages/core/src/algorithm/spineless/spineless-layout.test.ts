@@ -1341,3 +1341,103 @@ describe('SpinelessLayout — mid-list insert fast-path (slice v32)', () => {
     expect(sl.stats.fullBuilds).toBe(2);
   });
 });
+
+describe('SpinelessLayout — fuzzer-found regressions (slice v33)', () => {
+  // Lay out by both engines, apply one mutation, lay out again — and
+  // assert byte-identical at both points. Each case is a divergence
+  // the phase-11 structural fuzzer surfaced.
+  function check(make: () => Node, mutate: (r: Node) => void): void {
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout();
+    calculateLayoutImperative(impTree);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    mutate(slTree);
+    mutate(impTree);
+    sl.layout();
+    calculateLayoutImperative(impTree);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+  }
+
+  it('an incremental relayout moving a subtree that contains a display:none node', () => {
+    // `finishIncremental` walked the moved subtree via the live tree,
+    // which includes the hidden node — but a hidden node has no
+    // grammar fields, so the write-back crashed on `fields.get(n)!`.
+    check(
+      () => {
+        const root = Node.create();
+        root.setWidth(120);
+        root.setHeight(40);
+        root.setFlexDirection('row');
+        const a = Node.create();
+        a.setWidth(20);
+        a.setHeight(30);
+        root.insertChild(a, 0);
+        const b = Node.create();
+        b.setWidth(40);
+        b.setHeight(30);
+        b.setFlexDirection('column');
+        const hidden = Node.create();
+        hidden.setWidth(10);
+        hidden.setHeight(10);
+        hidden.setDisplay('none');
+        b.insertChild(hidden, 0);
+        const vis = Node.create();
+        vis.setWidth(40);
+        vis.setHeight(20);
+        b.insertChild(vis, 1);
+        root.insertChild(b, 1);
+        return root;
+      },
+      (r) => r.getChild(0)!.setWidth(50), // shifts `b` — a moved subtree with a hidden node
+    );
+  });
+
+  it('removing a subtree that contains an in-flow measure leaf', () => {
+    // `buildRemoveFragment`'s `nodeFields` omitted `measure:main` /
+    // `measure:cross`, so `detach` left a dangling dependency on the
+    // removed measure leaf's `style:height`.
+    check(
+      () => {
+        const root = Node.create();
+        root.setWidth(200);
+        root.setHeight(40);
+        root.setFlexDirection('row');
+        const keep = Node.create();
+        keep.setWidth(40);
+        keep.setHeight(30);
+        root.insertChild(keep, 0);
+        const mLeaf = Node.create();
+        mLeaf.setHeight(26); // numeric cross; width 'auto' → measured
+        mLeaf.setMeasureFunc(() => ({ width: 33, height: 26 }));
+        root.insertChild(mLeaf, 1);
+        return root;
+      },
+      (r) => r.removeChild(r.getChild(1)!),
+    );
+  });
+
+  it('removing a subtree that contains an aspectRatio node', () => {
+    // Same dangling-dependency class — `nodeFields` omitted
+    // `aspect:width` / `aspect:height`.
+    check(
+      () => {
+        const root = Node.create();
+        root.setWidth(200);
+        root.setHeight(200);
+        root.setFlexDirection('column');
+        const keep = Node.create();
+        keep.setWidth(200);
+        keep.setHeight(30);
+        root.insertChild(keep, 0);
+        const aspectNode = Node.create();
+        aspectNode.setWidth(40);
+        aspectNode.setAspectRatio(2); // height 'auto' → derived
+        root.insertChild(aspectNode, 1);
+        return root;
+      },
+      (r) => r.removeChild(r.getChild(1)!),
+    );
+  });
+});
