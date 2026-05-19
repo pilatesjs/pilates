@@ -1472,14 +1472,32 @@ export interface RemoveFragment {
   next: FlexGrammarOutput;
 }
 
-/** Every grammar field belonging to `node` — its four layout fields
- *  plus its style input fields recorded in `styleInputs`. */
+/**
+ * Candidate grammar fields belonging to `node` — its four layout
+ * fields, its `measure:*` fields (a measure leaf's `'auto'`-axis
+ * measure inputs), and its style input fields recorded in
+ * `styleInputs`. The caller filters to those actually in the grammar.
+ *
+ * Every NON-leaf per-node field MUST be listed — the four layout
+ * fields, `measure:main` / `measure:cross` (a measure leaf's
+ * `'auto'`-axis inputs) and `aspect:width` / `aspect:height` (an
+ * `aspectRatio` node's derived sizes). Unlike a leaf style input,
+ * these carry dependencies, so `SpinelessRuntime.detach`'s orphan
+ * cleanup (which only drops dependency-free leaves) cannot reclaim
+ * them — they have to be in the removed set explicitly, or a removed
+ * style input they read dangles. Leaf style inputs not listed here
+ * are reclaimed by that orphan cleanup.
+ */
 function nodeFields(node: Node, styleInputs: Map<Node, StyleInputs>): Array<Field<unknown>> {
   const out: Array<Field<unknown>> = [
     field<number>(node, 'width') as Field<unknown>,
     field<number>(node, 'height') as Field<unknown>,
     field<number>(node, 'left') as Field<unknown>,
     field<number>(node, 'top') as Field<unknown>,
+    field<number>(node, 'measure:main') as Field<unknown>,
+    field<number>(node, 'measure:cross') as Field<unknown>,
+    field<number>(node, 'aspect:width') as Field<unknown>,
+    field<number>(node, 'aspect:height') as Field<unknown>,
   ];
   const si = styleInputs.get(node);
   if (si !== undefined) {

@@ -420,6 +420,11 @@ export class SpinelessLayout {
     if (child === null) return false;
     const parent = child.getParent();
     if (parent === null) return false;
+    // A change inside a `display: 'none'` subtree: the hidden region
+    // has no grammar fields to graft onto. A node with no entry in
+    // `fields` is hidden (or under a hidden ancestor) — fall back to
+    // a rebuild, which correctly skips the whole hidden subtree.
+    if (!built.fields.has(parent)) return false;
 
     const fragment = buildAppendFragment(built.output, this.root, parent, child);
     if (fragment === null) return false;
@@ -507,6 +512,10 @@ export class SpinelessLayout {
     if (child === null) return false;
     const parent = snapParent.get(child);
     if (parent === undefined || !curNodes.has(parent)) return false;
+    // A removal inside a `display: 'none'` subtree: the hidden region
+    // has no fields to `detach`. A node absent from `fields` is hidden
+    // (or under a hidden ancestor) — rebuild instead.
+    if (!built.fields.has(parent)) return false;
 
     // `removed` must be exactly `child`'s snapped subtree.
     let subtreeCount = 0;
@@ -641,7 +650,12 @@ export class SpinelessLayout {
       const stack: Node[] = [root];
       while (stack.length > 0) {
         const n = stack.pop()!;
-        writeNode(n, runtime, fields.get(n)!);
+        // A `display: 'none'` node has no grammar fields — the
+        // emitter skips it (v29). Skip it (and its subtree) here too,
+        // mirroring `finishWhole`, which writes only `allFields`.
+        const f = fields.get(n);
+        if (f === undefined) continue;
+        writeNode(n, runtime, f);
         for (let i = 0; i < n.getChildCount(); i++) stack.push(n.getChild(i)!);
       }
       const pos = ancestorPositions(root);
