@@ -225,8 +225,9 @@ function App() {
 `<LayoutDevtools>` is an absolutely-positioned overlay — it does not
 reflow your app. It shows the latest layout's engine path
 (`incremental` / `build` / `graft` / `detach` / `reorder` /
-`imperative`), recompute counts, a recent-cost sparkline, and
-cumulative per-path totals. Props: `placement`
+`imperative`), the per-call counts (fields recomputed / changed, dirty
+nodes, moved subtrees), a recent-cost sparkline, and cumulative
+per-path totals. Props: `placement`
 (`'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'`, default
 `'top-right'`) and `hideSparkline`.
 
