@@ -87,3 +87,7 @@ export { ScrollView } from './scroll-view.js';
 export type { ScrollViewProps, ScrollViewHandle, ScrollMeta } from './scroll-view.js';
 export { useScrollIntoFocus } from './scroll-context.js';
 export type { FocusedBounds, ScrollContextValue } from './scroll-context.js';
+
+// Layout devtools — consumer of the @pilates/core phase-9 profiler API.
+export { LayoutDevtools, sparkline, useLayoutProfiler } from './layout-devtools.js';
+export type { LayoutDevtoolsProps, LayoutProfile } from './layout-devtools.js';

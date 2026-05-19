@@ -204,6 +204,45 @@ key is unchanged, so a `useBoxMetrics` consumer doesn't loop.
 internal and the hook narrows for `<Box>` only — if you need text
 metrics, measure via `stringWidth` / `wrapText` from `@pilates/core`.
 
+## Layout devtools
+
+`useLayoutProfiler()` and `<LayoutDevtools>` surface what the Spineless
+incremental layout engine is doing, frame by frame.
+
+```tsx
+import { LayoutDevtools } from '@pilates/react';
+
+function App() {
+  return (
+    <Box width="auto" height="auto">
+      {/* your UI */}
+      <LayoutDevtools placement="top-right" />
+    </Box>
+  );
+}
+```
+
+`<LayoutDevtools>` is an absolutely-positioned overlay — it does not
+reflow your app. It shows the latest layout's engine path
+(`incremental` / `build` / `graft` / `detach` / `reorder` /
+`imperative`), recompute counts, a recent-cost sparkline, and
+cumulative per-path totals. Props: `placement`
+(`'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'`, default
+`'top-right'`) and `hideSparkline`.
+
+For custom UI, `useLayoutProfiler()` returns `{ last, history, totals }`
+directly — `last` is the most recent `LayoutTrace`, `history` a
+bounded ring buffer (60), `totals` cumulative per-path counts.
+
+**Caveat:** the panel is part of your render tree, so its own nodes
+are counted in the traces it reports — absolute counts run slightly
+high. The `path` classification (did this frame relayout
+incrementally, or rebuild?) is unaffected. The panel reflects the most
+recent *completed* layout, one frame behind.
+
+Use **one** `useLayoutProfiler` / `<LayoutDevtools>` per app —
+`@pilates/core`'s profiler is a single global slot.
+
 ## Theming
 
 Wrap a subtree in `<ThemeProvider>` to override the active palette of

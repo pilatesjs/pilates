@@ -7,8 +7,13 @@ release-candidate train.
 
 ## Unreleased
 
-Nothing pending. Next changes will accumulate here before the next
-package version cut.
+### Added — `@pilates/react`
+
+- `useLayoutProfiler()` hook and `<LayoutDevtools>` overlay panel — the
+  first consumer of `@pilates/core`'s layout-profiler API. The hook
+  returns the latest `LayoutTrace`, a bounded history, and cumulative
+  per-path totals; the panel renders them as an absolutely-positioned
+  in-TUI overlay. `sparkline` block-glyph helper exported alongside.
 
 ## [@pilates/core@1.0.0, @pilates/render@1.0.0, @pilates/diff@0.2.0] — 2026-05-09
 

@@ -25,3 +25,11 @@ describe('@pilates/react public surface — scrolling', () => {
     expect(typeof Pilates.useScrollIntoFocus).toBe('function');
   });
 });
+
+describe('@pilates/react public surface — layout devtools', () => {
+  it('re-exports useLayoutProfiler, LayoutDevtools, and sparkline', () => {
+    expect(typeof Pilates.useLayoutProfiler).toBe('function');
+    expect(typeof Pilates.LayoutDevtools).toBe('function');
+    expect(typeof Pilates.sparkline).toBe('function');
+  });
+});
