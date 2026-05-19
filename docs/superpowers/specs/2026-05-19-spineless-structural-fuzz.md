@@ -60,13 +60,20 @@ imperative` holds transitively.
   incremental `SpinelessLayout` vs cold `SpinelessLayout` checked
   after every step. Any divergence is reproduced from its
   `fast-check` seed and pinned as a deterministic regression test.
-- **v34 — reorder fast-path (contingent).** A child move
-  (same node set, new order) currently satisfies neither
-  `tryGraftAppend` (nothing added) nor `tryDetachRemove` (nothing
-  removed), so it falls to a full rebuild. If v33 shows reorders are
-  common enough to matter, add a `tryReorder` driver fast-path that
-  rebinds only the affected siblings' position rules. Specced
-  concretely once v33's fuzzer is in hand and its findings are known.
+- **v34 — reorder fast-path.** A child move (one parent's children
+  permuted — no node added or removed) satisfied neither
+  `tryGraftAppend` nor `tryDetachRemove`, so it fell to a full
+  rebuild. `tryReorder` + `buildReorderFragment` patch the runtime
+  instead: the grammar is rebuilt O(tree), then the reordered
+  parent's + its in-flow children's `width / height / left / top`
+  rules are rebound, with `graft` / `detach` for the input fields a
+  reorder makes newly read / unread (a node's main-end margin, once
+  it gains or loses a follower). The v33 fuzzer's `move` mutation
+  validates it — and immediately caught a bug shared with the
+  non-simple append / remove branches: they rebuilt the grammar with
+  an empty `available`, so an `'auto'` root's size rule lost its
+  clamp. All three fragment builders now thread the caller's
+  `available` into the rebuild.
 
 ## Slice v33 — structural differential fuzzer
 

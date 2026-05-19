@@ -33,6 +33,7 @@ import {
   buildAppendFragment,
   buildFlexGrammar,
   buildRemoveFragment,
+  buildReorderFragment,
 } from './flex-grammar.js';
 import type { Field, Grammar, ReadFn } from './grammar.js';
 import { SpinelessRuntime } from './runtime.js';
@@ -59,11 +60,11 @@ interface LayoutFields {
 export interface LayoutTrace {
   /**
    * Engine path the call took. `SpinelessLayout` sets `build` /
-   * `graft` / `detach` / `incremental`; the public `calculateLayout`
-   * reports `imperative` for a call the Spineless engine did not
-   * serve (a root's first / cold layout).
+   * `graft` / `detach` / `reorder` / `incremental`; the public
+   * `calculateLayout` reports `imperative` for a call the Spineless
+   * engine did not serve (a root's first / cold layout).
    */
-  path: 'imperative' | 'build' | 'graft' | 'detach' | 'incremental';
+  path: 'imperative' | 'build' | 'graft' | 'detach' | 'reorder' | 'incremental';
   /** Nodes the dirty-flag walk classified as dirty (0 on a build). */
   dirtyNodes: number;
   /** Grammar Fields the runtime re-ran (0 on a pure build — a build
@@ -244,6 +245,7 @@ export class SpinelessLayout {
     incrementalRelayouts: 0,
     graftRelayouts: 0,
     detachRelayouts: 0,
+    reorderRelayouts: 0,
   };
 
   /** What the most recent `layout()` call did (phase 9). */
@@ -327,6 +329,16 @@ export class SpinelessLayout {
       const rs = this.built!.runtime.stats;
       this._lastTrace = {
         path: 'detach',
+        dirtyNodes: dirty.length,
+        fieldsRecomputed: rs.recomputeVisited,
+        fieldsChanged: rs.recomputeChanged,
+        movedSubtrees: 0,
+      };
+    } else if (this.tryReorder(availableWidth, availableHeight)) {
+      this.stats.reorderRelayouts++;
+      const rs = this.built!.runtime.stats;
+      this._lastTrace = {
+        path: 'reorder',
         dirtyNodes: dirty.length,
         fieldsRecomputed: rs.recomputeVisited,
         fieldsChanged: rs.recomputeChanged,
@@ -426,7 +438,7 @@ export class SpinelessLayout {
     // a rebuild, which correctly skips the whole hidden subtree.
     if (!built.fields.has(parent)) return false;
 
-    const fragment = buildAppendFragment(built.output, this.root, parent, child);
+    const fragment = buildAppendFragment(built.output, this.root, parent, child, built.available);
     if (fragment === null) return false;
 
     built.runtime.graft(fragment.additions, fragment.newRoots);
@@ -539,7 +551,7 @@ export class SpinelessLayout {
 
     // Re-attach `child` for the fragment build, then detach it again.
     parent.insertChild(child, idx);
-    const fragment = buildRemoveFragment(built.output, this.root, parent, child);
+    const fragment = buildRemoveFragment(built.output, this.root, parent, child, built.available);
     parent.removeChild(child);
     if (fragment === null) return false;
 
@@ -547,6 +559,78 @@ export class SpinelessLayout {
     // fields), then `detach`, then adopt the next grammar.
     for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
     built.runtime.detach(fragment.removed);
+    built.output = fragment.next;
+    built.inputs = collectInputs(fragment.next.grammar, built.runtime);
+    built.snaps = captureSnaps(this.root);
+    const ix = indexFields(fragment.next);
+    built.fields = ix.fields;
+    built.owner = ix.owner;
+
+    // Pick up any value mutations in the same batch, then recompute.
+    this.applyAvailable(availableWidth, availableHeight);
+    for (const field of built.inputs) {
+      if (built.output.grammar.get(field)!.compute(NEVER_READ) !== built.runtime.evaluate(field)) {
+        built.runtime.markDirty(field);
+      }
+    }
+    built.runtime.recompute();
+    return true;
+  }
+
+  /**
+   * Fast-path a structural change that is exactly one parent's
+   * children being reordered (a permutation — no node added or
+   * removed): `buildReorderFragment` + `rebindRule`, no whole-tree
+   * rebuild. Returns `false` (changing nothing) when the change is
+   * not a clean single-parent reorder — the caller then rebuilds.
+   */
+  private tryReorder(availableWidth?: number, availableHeight?: number): boolean {
+    const built = this.built!;
+    const snaps = built.snaps;
+
+    // The node set must be unchanged — no addition, no removal.
+    const curNodes = new Set<Node>();
+    (function visit(n: Node): void {
+      curNodes.add(n);
+      for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
+    })(this.root);
+    if (curNodes.size !== snaps.size) return false;
+    for (const n of curNodes) {
+      if (!snaps.has(n)) return false;
+    }
+
+    // Every node's signature / measure must be unchanged, and exactly
+    // one node's child ORDER may differ — the reordered parent.
+    let reordered: Node | null = null;
+    for (const [n, snap] of snaps) {
+      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return false;
+      if (!childrenUnchanged(snap, n)) {
+        if (reordered !== null) return false; // two changed parents — not one reorder
+        reordered = n;
+      }
+    }
+    if (reordered === null) return false;
+
+    // `reordered`'s children must be a permutation of the snapped
+    // set (same count, same members) — otherwise it is an add/remove.
+    const before = snaps.get(reordered)!.children;
+    if (before.length !== reordered.getChildCount()) return false;
+    const beforeSet = new Set(before);
+    for (let i = 0; i < reordered.getChildCount(); i++) {
+      if (!beforeSet.has(reordered.getChild(i)!)) return false;
+    }
+
+    // A reorder inside a `display: 'none'` subtree touches no laid-out
+    // node — the hidden region has no fields. Rebuild instead.
+    if (!built.fields.has(reordered)) return false;
+
+    const fragment = buildReorderFragment(built.output, this.root, reordered, built.available);
+    // Order: integrate the newly-read inputs, rebind the rewritten
+    // rules (their new deps are now all present), then detach the
+    // inputs no rebound rule reads any more.
+    built.runtime.graft(fragment.additions, fragment.newRoots);
+    for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
+    if (fragment.removed.length > 0) built.runtime.detach(fragment.removed);
     built.output = fragment.next;
     built.inputs = collectInputs(fragment.next.grammar, built.runtime);
     built.snaps = captureSnaps(this.root);
