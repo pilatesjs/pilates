@@ -71,13 +71,20 @@ function useLayoutProfiler(): LayoutProfile;
 - The listener accumulates each `LayoutTrace` into a **bounded ring
   buffer** (`HISTORY_LIMIT = 60` — no unbounded growth) held in a
   `useRef`, and bumps the per-`path` totals.
-- The listener fires *inside* `calculateLayout`, during the
-  reconciler's commit. It must not trigger a synchronous React render
-  there. It follows the established `use-box-metrics.tsx` pattern: the
-  trace is written to the ref synchronously, and a re-render is
-  scheduled out-of-band (a post-commit `useEffect` bump), so the panel
-  reflects the latest trace one render later — imperceptible, and
-  re-entrancy-safe.
+- The listener fires *inside* `calculateLayout`, mid-commit, where a
+  React render must not be triggered. It writes the trace to a
+  `useRef`-held accumulator and nothing else. The hook does **not**
+  self-trigger re-renders: a profiler's state (`totals`, `history`)
+  changes on *every* layout, so a post-commit force — which
+  `useBoxMetrics` relies on, loop-broken by layout *stabilising* —
+  would never stabilise here and would loop forever. Instead the hook
+  returns the accumulated state on every render the consumer drives.
+  `<LayoutDevtools>` re-renders whenever its host subtree re-renders
+  (which is what produces the layouts being profiled), so in an
+  interactive app the panel is effectively live — showing the most
+  recent completed layout, one frame behind; an idle app produces no
+  layouts to miss. This one-frame lag is documented as the hook's
+  contract.
 
 ## `<LayoutDevtools>`
 
@@ -116,8 +123,9 @@ Merging the two would make a worse version of each.
   component (one file, one concern).
 - **New** `packages/react/src/layout-devtools.test.tsx`.
 - **Modified** `packages/react/src/index.ts` — export `useLayoutProfiler`,
-  `LayoutDevtools`, and the `LayoutProfile` / `LayoutDevtoolsProps`
-  types.
+  `LayoutDevtools`, `sparkline` (the small pure block-glyph helper the
+  panel uses — directly unit-testable and a reasonable standalone
+  utility), and the `LayoutProfile` / `LayoutDevtoolsProps` types.
 - **Modified** `packages/react/README.md` — a "Layout devtools"
   section, including the panel-inclusive-counts caveat.
 - **Modified** root `CHANGELOG.md` — under `## Unreleased`.
