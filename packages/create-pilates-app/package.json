@@ -1,0 +1,31 @@
+{
+  "name": "create-pilates-app",
+  "version": "0.1.0",
+  "description": "Scaffold a new Pilates terminal-UI app.",
+  "license": "MIT",
+  "author": "Zhijie Wang",
+  "type": "module",
+  "bin": {
+    "create-pilates-app": "./dist/index.js"
+  },
+  "files": ["dist", "template"],
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -p tsconfig.typecheck.json",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "tsc -b"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pilatesjs/pilates.git",
+    "directory": "packages/create-pilates-app"
+  },
+  "homepage": "https://github.com/pilatesjs/pilates#readme",
+  "bugs": {
+    "url": "https://github.com/pilatesjs/pilates/issues"
+  },
+  "keywords": ["terminal", "tui", "cli", "scaffold", "create", "pilates"],
+  "engines": {
+    "node": ">=20"
+  }
+}
