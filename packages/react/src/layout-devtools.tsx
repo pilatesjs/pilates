@@ -32,6 +32,16 @@ export function sparkline(values: readonly number[]): string {
 /** Max traces kept in the rolling history ring buffer. */
 const HISTORY_LIMIT = 60;
 
+/** Traces the panel's sparkline spans — a bounded recent window of
+ *  the hook's longer history. Keeps the overlay a sensible width. */
+const SPARK_WINDOW = 24;
+
+/** Fixed overlay width in cells — content is a known fixed shape, and
+ *  an absolutely-positioned node does not content-size. Holds the
+ *  `cost ` label + a `SPARK_WINDOW`-glyph sparkline (29) within the
+ *  border. */
+const PANEL_WIDTH = 32;
+
 /** Every engine path a `LayoutTrace` can report. */
 type LayoutPath = LayoutTrace['path'];
 
@@ -110,10 +120,6 @@ export interface LayoutDevtoolsProps {
   placement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
   /** Hide the recent-cost sparkline row. Default `false`. */
   hideSparkline?: boolean;
-  /** Panel width in columns. Default `20`. */
-  width?: number;
-  /** Panel height in rows. Defaults to fit content (11 with sparkline, 10 without). */
-  height?: number;
 }
 
 function anchorPosition(placement: NonNullable<LayoutDevtoolsProps['placement']>): {
@@ -140,32 +146,35 @@ function anchorPosition(placement: NonNullable<LayoutDevtoolsProps['placement']>
  * reflow the host app. Shows the latest `LayoutTrace`, a recent-cost
  * sparkline, and cumulative per-path totals.
  *
+ * The panel is a fixed `PANEL_WIDTH` columns wide and self-sizes its
+ * height from the content rows it renders.
+ *
  * Caveat: being in the host's render tree, the panel's own nodes are
  * counted in the traces it reports — absolute counts run slightly
  * high. The `path` classification is unaffected.
  */
 export function LayoutDevtools(props: LayoutDevtoolsProps): JSX.Element {
   const { placement = 'top-right', hideSparkline = false } = props;
-  const panelWidth = props.width ?? 20;
-  const panelHeight = props.height ?? (hideSparkline ? 10 : 11);
   const { last, history, totals } = useLayoutProfiler();
+
+  const panelHeight = 2 + 2 + (hideSparkline ? 0 : 1) + PATHS.length;
 
   return (
     <Box
       positionType="absolute"
       position={anchorPosition(placement)}
+      width={PANEL_WIDTH}
+      height={panelHeight}
       flexDirection="column"
       border="single"
       title="layout"
-      width={panelWidth}
-      height={panelHeight}
     >
       <Text>{last ? `last: ${last.path}` : 'last: —'}</Text>
       <Text>
         {last ? `recomp ${last.fieldsRecomputed} chg ${last.fieldsChanged}` : 'recomp — chg —'}
       </Text>
       {hideSparkline ? null : (
-        <Text>{`cost ${sparkline(history.map((t) => t.fieldsRecomputed))}`}</Text>
+        <Text>{`cost ${sparkline(history.slice(-SPARK_WINDOW).map((t) => t.fieldsRecomputed))}`}</Text>
       )}
       {PATHS.map((p) => (
         <Text key={p}>{`${p.padEnd(11)} ${totals[p]}`}</Text>
