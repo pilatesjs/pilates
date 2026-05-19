@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -53,6 +53,13 @@ describe('createApp', () => {
     for (const sym of ['Box', 'Text', 'render', 'useApp', 'useInput']) {
       expect(index).toContain(sym);
     }
+  });
+
+  it('succeeds when the target directory exists but is empty', () => {
+    const target = join(tmp, 'empty-dir');
+    mkdirSync(target);
+    expect(() => createApp({ targetDir: target, projectName: 'empty-dir' })).not.toThrow();
+    expect(existsSync(join(target, 'package.json'))).toBe(true);
   });
 
   it('throws when the target directory exists and is non-empty', () => {

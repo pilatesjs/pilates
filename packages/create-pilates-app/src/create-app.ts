@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 /**
  * The bundled template directory, resolved relative to this module.
  * `src/create-app.ts` (under Vitest) and `dist/create-app.js` (once
- * published) both sit one level below the package root, beside
- * `template/` — so `../template` is correct from either.
+ * published) are both one directory below the package root, so
+ * `../template` resolves to `<package-root>/template` in either case.
  */
 const TEMPLATE_DIR = fileURLToPath(new URL('../template', import.meta.url));
 
