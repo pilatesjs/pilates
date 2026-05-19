@@ -21,7 +21,7 @@ const SPARK_GLYPHS = '▁▂▃▄▅▆▇█';
  */
 export function sparkline(values: readonly number[]): string {
   if (values.length === 0) return '';
-  const max = Math.max(...values);
+  const max = values.reduce((m, v) => (v > m ? v : m), 0);
   if (max === 0) return SPARK_GLYPHS[0]!.repeat(values.length);
   const last = SPARK_GLYPHS.length - 1;
   return values

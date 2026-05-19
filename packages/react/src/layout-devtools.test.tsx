@@ -1,5 +1,6 @@
+import * as core from '@pilates/core';
 import { setLayoutProfiler, stripAnsi } from '@pilates/core';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Box, Text } from './components.js';
 import {
   LayoutDevtools,
@@ -82,6 +83,26 @@ describe('useLayoutProfiler', () => {
     for (let i = 1; i <= 70; i++) handle.setState(i);
     expect(captured!.history.length).toBeLessThanOrEqual(60);
     handle.unmount();
+  });
+
+  it('clears the global profiler on unmount', () => {
+    // vi.spyOn on a namespace import works in Vitest's esbuild transform mode:
+    // the spy replaces the property on the module namespace object, which the
+    // hook's compiled import binding reads through at call time.
+    const spy = vi.spyOn(core, 'setLayoutProfiler');
+    function App() {
+      useLayoutProfiler();
+      return (
+        <Box width={10} height={3}>
+          <Text>x</Text>
+        </Box>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, opts);
+    handle.unmount();
+    // The hook's useEffect cleanup must have called setLayoutProfiler(null).
+    expect(spy).toHaveBeenLastCalledWith(null);
+    spy.mockRestore();
   });
 });
 
