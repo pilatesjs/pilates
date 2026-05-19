@@ -15,6 +15,12 @@ release-candidate train.
   per-path totals; the panel renders them as an absolutely-positioned
   in-TUI overlay. `sparkline` block-glyph helper exported alongside.
 
+### Added — `create-pilates-app`
+
+- New scaffolder package: `npm create pilates-app my-app` generates a
+  runnable minimal `@pilates/react` starter project (an interactive
+  counter TUI) — the on-ramp for first-time CLI/TUI authors.
+
 ## [@pilates/core@1.0.0, @pilates/render@1.0.0, @pilates/diff@0.2.0] — 2026-05-09
 
 Promotion to 1.0 for `core` and `render` after the Phase 3 perf-hardening

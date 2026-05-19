@@ -243,6 +243,8 @@ importers:
 
   packages/core: {}
 
+  packages/create-pilates-app: {}
+
   packages/diff:
     dependencies:
       '@pilates/render':
