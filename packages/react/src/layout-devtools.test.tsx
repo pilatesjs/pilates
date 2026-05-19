@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { setLayoutProfiler } from '@pilates/core';
+import { afterEach, describe, expect, it } from 'vitest';
 import { Box, Text } from './components.js';
 import { type LayoutProfile, sparkline, useLayoutProfiler } from './layout-devtools.js';
 import { mountWithInput } from './test-utils.js';
+
+afterEach(() => {
+  setLayoutProfiler(null);
+});
 
 describe('sparkline', () => {
   it('returns an empty string for an empty series', () => {
@@ -41,8 +46,11 @@ describe('useLayoutProfiler', () => {
     expect(captured!.last).toBeNull();
     // Each setState commits, lays out, and fires the now-registered
     // profiler; the following render reads the accumulated ref.
+    // Three setState calls produce three layouts, but the hook's
+    // one-render lag means `captured` reflects N-1 = 2 of them.
     handle.setState(1);
     handle.setState(2);
+    handle.setState(3);
     expect(captured!.last).not.toBeNull();
     const total =
       captured!.totals.build +
@@ -51,7 +59,7 @@ describe('useLayoutProfiler', () => {
       captured!.totals.reorder +
       captured!.totals.incremental +
       captured!.totals.imperative;
-    expect(total).toBeGreaterThanOrEqual(1);
+    expect(total).toBeGreaterThanOrEqual(2);
     handle.unmount();
   });
 
