@@ -21,6 +21,10 @@
 > Headless flex layout engine for terminal UIs. Pure TypeScript, zero runtime
 > dependencies.
 
+<p align="center">
+  <a href="https://pilatesjs.github.io/pilates/"><strong>📖 API reference</strong></a>
+</p>
+
 **Pilates** is a flex layout engine designed for the terminal: integer cell
 coordinates, CJK / emoji / wide-char awareness, ANSI escape passthrough, and
 unbundled from any UI framework. Use it directly to compute layouts, or wrap
