@@ -47,9 +47,13 @@ API), `e2e`, `examples/*`, `bench`, `tools`.
   `name: "Pilates"`; `excludeInternal: true`; `readme` set to the repo
   root `README.md` so the site's landing page is the project
   overview (no extra landing file to maintain).
-- **A per-package `typedoc.json`** in each of the five packages,
-  declaring `entryPoints: ["src/index.ts"]` so the package is
-  documented from source.
+- The root config's **`packageOptions`** sets
+  `entryPoints: ["src/index.ts"]` for every package — so each package
+  is documented from its source `index.ts`, with no per-package
+  config files. (typedoc ≥ 0.26 supports `packageOptions`; should the
+  installed version not, the equivalent fallback is a per-package
+  `typedoc.json` carrying `entryPoints: ["src/index.ts"]` in each of
+  the five packages.)
 - `excludeInternal: true` drops every `@internal`-tagged symbol — the
   packages tag their internal surface heavily, and only the genuine
   public API belongs in the reference.
