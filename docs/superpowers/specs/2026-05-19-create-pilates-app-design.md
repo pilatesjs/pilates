@@ -86,8 +86,9 @@ projectName: string }): void` — the pure, unit-testable core, with no
    fine.
 2. Recursively copy `template/` (resolved relative to the package, so
    it works from `dist/` after build) into `targetDir`.
-3. **Rename** any file whose name begins with `_` by dropping the
-   underscore — so the template's `_gitignore` lands as `.gitignore`.
+3. **Rename** any file whose name begins with `_` by replacing that
+   leading `_` with a `.` — so the template's `_gitignore` lands as
+   `.gitignore`.
    (npm drops or renames a literal `.gitignore` when packing a
    published package; underscore-prefixing the template dotfile and
    un-prefixing on copy is the standard create-* workaround.)
