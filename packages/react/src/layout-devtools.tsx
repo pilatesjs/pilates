@@ -8,7 +8,8 @@
  */
 
 import { type LayoutTrace, setLayoutProfiler } from '@pilates/core';
-import { useEffect, useRef } from 'react';
+import { type JSX, useEffect, useRef } from 'react';
+import { Box, Text } from './components.js';
 
 /** Block glyphs, lowest to highest, for `sparkline`. */
 const SPARK_GLYPHS = '▁▂▃▄▅▆▇█';
@@ -91,4 +92,84 @@ export function useLayoutProfiler(): LayoutProfile {
   const s = stateRef.current;
   // Fresh copies so a consumer comparing by identity sees each render.
   return { last: s.last, history: [...s.history], totals: { ...s.totals } };
+}
+
+/** Engine paths in panel display order. */
+const PATHS: readonly LayoutPath[] = [
+  'build',
+  'graft',
+  'detach',
+  'reorder',
+  'incremental',
+  'imperative',
+];
+
+/** Props for `<LayoutDevtools>`. */
+export interface LayoutDevtoolsProps {
+  /** Corner the overlay anchors to. Default `'top-right'`. */
+  placement?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  /** Hide the recent-cost sparkline row. Default `false`. */
+  hideSparkline?: boolean;
+  /** Panel width in columns. Default `20`. */
+  width?: number;
+  /** Panel height in rows. Defaults to fit content (11 with sparkline, 10 without). */
+  height?: number;
+}
+
+function anchorPosition(placement: NonNullable<LayoutDevtoolsProps['placement']>): {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+} {
+  switch (placement) {
+    case 'top-left':
+      return { top: 0, left: 0 };
+    case 'top-right':
+      return { top: 0, right: 0 };
+    case 'bottom-left':
+      return { bottom: 0, left: 0 };
+    case 'bottom-right':
+      return { bottom: 0, right: 0 };
+  }
+}
+
+/**
+ * A live layout-profiler overlay panel. Renders as an
+ * absolutely-positioned `<Box>` anchored to a corner — it does not
+ * reflow the host app. Shows the latest `LayoutTrace`, a recent-cost
+ * sparkline, and cumulative per-path totals.
+ *
+ * Caveat: being in the host's render tree, the panel's own nodes are
+ * counted in the traces it reports — absolute counts run slightly
+ * high. The `path` classification is unaffected.
+ */
+export function LayoutDevtools(props: LayoutDevtoolsProps): JSX.Element {
+  const { placement = 'top-right', hideSparkline = false } = props;
+  const panelWidth = props.width ?? 20;
+  const panelHeight = props.height ?? (hideSparkline ? 10 : 11);
+  const { last, history, totals } = useLayoutProfiler();
+
+  return (
+    <Box
+      positionType="absolute"
+      position={anchorPosition(placement)}
+      flexDirection="column"
+      border="single"
+      title="layout"
+      width={panelWidth}
+      height={panelHeight}
+    >
+      <Text>{last ? `last: ${last.path}` : 'last: —'}</Text>
+      <Text>
+        {last ? `recomp ${last.fieldsRecomputed} chg ${last.fieldsChanged}` : 'recomp — chg —'}
+      </Text>
+      {hideSparkline ? null : (
+        <Text>{`cost ${sparkline(history.map((t) => t.fieldsRecomputed))}`}</Text>
+      )}
+      {PATHS.map((p) => (
+        <Text key={p}>{`${p.padEnd(11)} ${totals[p]}`}</Text>
+      ))}
+    </Box>
+  );
 }

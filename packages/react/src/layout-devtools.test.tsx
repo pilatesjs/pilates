@@ -1,7 +1,12 @@
-import { setLayoutProfiler } from '@pilates/core';
+import { setLayoutProfiler, stripAnsi } from '@pilates/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Box, Text } from './components.js';
-import { type LayoutProfile, sparkline, useLayoutProfiler } from './layout-devtools.js';
+import {
+  LayoutDevtools,
+  type LayoutProfile,
+  sparkline,
+  useLayoutProfiler,
+} from './layout-devtools.js';
 import { mountWithInput } from './test-utils.js';
 
 afterEach(() => {
@@ -76,6 +81,61 @@ describe('useLayoutProfiler', () => {
     const handle = mountWithInput(0, () => <App />, opts);
     for (let i = 1; i <= 70; i++) handle.setState(i);
     expect(captured!.history.length).toBeLessThanOrEqual(60);
+    handle.unmount();
+  });
+});
+
+const panelOpts = { width: 40, height: 14 };
+
+describe('LayoutDevtools', () => {
+  it('renders an overlay panel showing the latest engine path', () => {
+    function App() {
+      return (
+        <Box width={40} height={14}>
+          <Text>app body</Text>
+          <LayoutDevtools />
+        </Box>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, panelOpts);
+    handle.setState(1);
+    handle.setState(2);
+    const out = stripAnsi(handle.allWrites());
+    expect(out).toContain('last:');
+    expect(out).toMatch(/incremental|build|imperative/);
+    handle.unmount();
+  });
+
+  it('hideSparkline drops the cost row', () => {
+    function App({ hide }: { hide: boolean }) {
+      return (
+        <Box width={40} height={14}>
+          <LayoutDevtools hideSparkline={hide} />
+        </Box>
+      );
+    }
+    const shown = mountWithInput(0, () => <App hide={false} />, panelOpts);
+    shown.setState(1);
+    expect(stripAnsi(shown.allWrites())).toContain('cost');
+    shown.unmount();
+
+    const hidden = mountWithInput(0, () => <App hide={true} />, panelOpts);
+    hidden.setState(1);
+    expect(stripAnsi(hidden.allWrites())).not.toContain('cost');
+    hidden.unmount();
+  });
+
+  it('renders for a non-default placement', () => {
+    function App() {
+      return (
+        <Box width={40} height={14}>
+          <LayoutDevtools placement="bottom-left" />
+        </Box>
+      );
+    }
+    const handle = mountWithInput(0, () => <App />, panelOpts);
+    handle.setState(1);
+    expect(stripAnsi(handle.allWrites())).toContain('last:');
     handle.unmount();
   });
 });
