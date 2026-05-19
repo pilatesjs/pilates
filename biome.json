@@ -10,6 +10,7 @@
       "dist",
       "node_modules",
       "coverage",
+      "docs/api",
       "**/__snapshots__/**",
       "packages/core/src/measure/tables.ts"
     ]
