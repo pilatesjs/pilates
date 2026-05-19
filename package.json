@@ -22,7 +22,7 @@
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck",
-    "docs": "typedoc",
+    "docs:build": "typedoc",
     "gen:unicode": "tsx tools/generate-unicode-tables.ts",
     "bench": "pnpm build && tsx bench/index.ts",
     "bench:budgets": "tsx bench/check-budgets.ts",
