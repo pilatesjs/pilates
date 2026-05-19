@@ -32,6 +32,7 @@ import {
   type StyleInputs,
   buildAppendFragment,
   buildFlexGrammar,
+  buildRemoveFragment,
 } from './flex-grammar.js';
 import type { Field, Grammar, ReadFn } from './grammar.js';
 import { SpinelessRuntime } from './runtime.js';
@@ -58,11 +59,11 @@ interface LayoutFields {
 export interface LayoutTrace {
   /**
    * Engine path the call took. `SpinelessLayout` sets `build` /
-   * `graft` / `incremental`; the public `calculateLayout` reports
-   * `imperative` for a call the Spineless engine did not serve (a
-   * grammar-unsupported tree, or a root's first / cold layout).
+   * `graft` / `detach` / `incremental`; the public `calculateLayout`
+   * reports `imperative` for a call the Spineless engine did not
+   * serve (a root's first / cold layout).
    */
-  path: 'imperative' | 'build' | 'graft' | 'incremental';
+  path: 'imperative' | 'build' | 'graft' | 'detach' | 'incremental';
   /** Nodes the dirty-flag walk classified as dirty (0 on a build). */
   dirtyNodes: number;
   /** Grammar Fields the runtime re-ran (0 on a pure build — a build
@@ -238,7 +239,12 @@ export class SpinelessLayout {
   private built: Built | null = null;
 
   /** Build / relayout counters — for tests and diagnostics. */
-  readonly stats = { fullBuilds: 0, incrementalRelayouts: 0, graftRelayouts: 0 };
+  readonly stats = {
+    fullBuilds: 0,
+    incrementalRelayouts: 0,
+    graftRelayouts: 0,
+    detachRelayouts: 0,
+  };
 
   /** What the most recent `layout()` call did (phase 9). */
   private _lastTrace: LayoutTrace | null = null;
@@ -311,6 +317,16 @@ export class SpinelessLayout {
       const rs = this.built!.runtime.stats;
       this._lastTrace = {
         path: 'graft',
+        dirtyNodes: dirty.length,
+        fieldsRecomputed: rs.recomputeVisited,
+        fieldsChanged: rs.recomputeChanged,
+        movedSubtrees: 0,
+      };
+    } else if (this.tryDetachRemove(availableWidth, availableHeight)) {
+      this.stats.detachRelayouts++;
+      const rs = this.built!.runtime.stats;
+      this._lastTrace = {
+        path: 'detach',
         dirtyNodes: dirty.length,
         fieldsRecomputed: rs.recomputeVisited,
         fieldsChanged: rs.recomputeChanged,
@@ -419,6 +435,117 @@ export class SpinelessLayout {
 
     // Pick up any value mutations in the same gap, then recompute
     // (covering the grafted / rebound fields too).
+    this.applyAvailable(availableWidth, availableHeight);
+    for (const field of built.inputs) {
+      if (built.output.grammar.get(field)!.compute(NEVER_READ) !== built.runtime.evaluate(field)) {
+        built.runtime.markDirty(field);
+      }
+    }
+    built.runtime.recompute();
+    return true;
+  }
+
+  /**
+   * Fast-path a structural change that is exactly a single subtree
+   * removal: `buildRemoveFragment` + `rebindRule` / `detach`, no
+   * whole-tree rebuild. Returns `false` (changing nothing) when the
+   * change is not a clean removal — the caller then rebuilds.
+   *
+   * `buildRemoveFragment` must see the removed `child` still attached
+   * (its regime check reads the parent's live child list and it walks
+   * the subtree for the fields to detach), but by the time `layout()`
+   * runs the caller has already detached it — so the removed subtree
+   * is briefly re-inserted at its old index for the fragment build,
+   * then detached again.
+   */
+  private tryDetachRemove(availableWidth?: number, availableHeight?: number): boolean {
+    const built = this.built!;
+    const snaps = built.snaps;
+
+    // Walk the current tree. No previously-snapshotted node may be new
+    // (an addition is not a removal); at least one must be gone.
+    const curNodes = new Set<Node>();
+    (function visit(n: Node): void {
+      curNodes.add(n);
+      for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
+    })(this.root);
+    for (const n of curNodes) {
+      if (!snaps.has(n)) return false;
+    }
+    const removed: Node[] = [];
+    for (const n of snaps.keys()) {
+      if (!curNodes.has(n)) removed.push(n);
+    }
+    if (removed.length === 0) return false;
+
+    // No surviving node's signature / measure may have changed —
+    // `detach` patches only the removal.
+    for (const [n, snap] of snaps) {
+      if (!curNodes.has(n)) continue;
+      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return false;
+    }
+
+    // The snapped child -> parent map — the live tree no longer holds
+    // the removed nodes' edges.
+    const snapParent = new Map<Node, Node>();
+    for (const [n, snap] of snaps) {
+      for (const c of snap.children) snapParent.set(c, n);
+    }
+
+    // The removed nodes must form exactly one subtree — its root is
+    // the unique removed node whose snapped parent is not itself
+    // removed; that parent must survive.
+    const removedSet = new Set(removed);
+    let child: Node | null = null;
+    for (const n of removed) {
+      const p = snapParent.get(n);
+      if (p === undefined || !removedSet.has(p)) {
+        if (child !== null) return false; // two separate removals
+        child = n;
+      }
+    }
+    if (child === null) return false;
+    const parent = snapParent.get(child);
+    if (parent === undefined || !curNodes.has(parent)) return false;
+
+    // `removed` must be exactly `child`'s snapped subtree.
+    let subtreeCount = 0;
+    (function count(n: Node): void {
+      subtreeCount++;
+      for (const c of snaps.get(n)!.children) count(c);
+    })(child);
+    if (subtreeCount !== removed.length) return false;
+
+    // `parent`'s current children must be its snapped children with
+    // `child` spliced out — so re-inserting `child` at `idx` restores
+    // the exact pre-removal tree for `buildRemoveFragment`.
+    const snapChildren = snaps.get(parent)!.children;
+    const idx = snapChildren.indexOf(child);
+    if (idx === -1 || parent.getChildCount() !== snapChildren.length - 1) return false;
+    for (let i = 0, j = 0; i < snapChildren.length; i++) {
+      if (snapChildren[i] === child) continue;
+      if (parent.getChild(j) !== snapChildren[i]) return false;
+      j++;
+    }
+
+    // Re-attach `child` for the fragment build, then detach it again.
+    parent.insertChild(child, idx);
+    const fragment = buildRemoveFragment(built.output, this.root, parent, child);
+    parent.removeChild(child);
+    if (fragment === null) return false;
+
+    // Apply: rebind survivors FIRST (so they stop reading the removed
+    // fields), then `detach`, then adopt the next grammar.
+    for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
+    built.runtime.detach(fragment.removed);
+    built.output = fragment.next;
+    built.inputs = collectInputs(fragment.next.grammar, built.runtime);
+    built.snaps = captureSnaps(this.root);
+    const ix = indexFields(fragment.next);
+    built.fields = ix.fields;
+    built.owner = ix.owner;
+
+    // Pick up any value mutations in the same batch, then recompute.
     this.applyAvailable(availableWidth, availableHeight);
     for (const field of built.inputs) {
       if (built.output.grammar.get(field)!.compute(NEVER_READ) !== built.runtime.evaluate(field)) {
