@@ -157,7 +157,8 @@ export function LayoutDevtools(props: LayoutDevtoolsProps): JSX.Element {
   const { placement = 'top-right', hideSparkline = false } = props;
   const { last, history, totals } = useLayoutProfiler();
 
-  const panelHeight = 2 + 2 + (hideSparkline ? 0 : 1) + PATHS.length;
+  // border (2) + fixed text rows (3) + optional sparkline (1) + per-path rows
+  const panelHeight = 2 + 3 + (hideSparkline ? 0 : 1) + PATHS.length;
 
   return (
     <Box
@@ -172,6 +173,9 @@ export function LayoutDevtools(props: LayoutDevtoolsProps): JSX.Element {
       <Text>{last ? `last: ${last.path}` : 'last: —'}</Text>
       <Text>
         {last ? `recomp ${last.fieldsRecomputed} chg ${last.fieldsChanged}` : 'recomp — chg —'}
+      </Text>
+      <Text>
+        {last ? `dirty ${last.dirtyNodes} moved ${last.movedSubtrees}` : 'dirty — moved —'}
       </Text>
       {hideSparkline ? null : (
         <Text>{`cost ${sparkline(history.slice(-SPARK_WINDOW).map((t) => t.fieldsRecomputed))}`}</Text>

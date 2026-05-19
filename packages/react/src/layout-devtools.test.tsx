@@ -103,6 +103,8 @@ describe('LayoutDevtools', () => {
     const out = stripAnsi(handle.allWrites());
     expect(out).toContain('last:');
     expect(out).toMatch(/incremental|build|imperative/);
+    expect(out).toContain('dirty');
+    expect(out).toContain('moved');
     handle.unmount();
   });
 
