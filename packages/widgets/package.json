@@ -25,13 +25,13 @@
     "@pilates/core": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^19.0.0",
+    "react": "^19.2.6",
     "@pilates/react": "^0.3.0"
   },
   "devDependencies": {
     "@pilates/react": "workspace:*",
     "@types/react": "^19.0.0",
-    "react": "^19.0.0"
+    "react": "^19.2.6"
   },
   "repository": {
     "type": "git",
