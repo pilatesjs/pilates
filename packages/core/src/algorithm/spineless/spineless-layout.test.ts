@@ -348,6 +348,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       incrementalRelayouts: 1,
       graftRelayouts: 0,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -363,6 +364,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       incrementalRelayouts: 4,
       graftRelayouts: 0,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -379,6 +381,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       incrementalRelayouts: 5,
       graftRelayouts: 0,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -402,6 +405,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       incrementalRelayouts: 1,
       graftRelayouts: 0,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -433,6 +437,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       incrementalRelayouts: 1,
       graftRelayouts: 0,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -458,6 +463,7 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
       incrementalRelayouts: 0,
       graftRelayouts: 0,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -554,6 +560,7 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
       incrementalRelayouts: 0,
       graftRelayouts: 1,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -568,6 +575,7 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
       incrementalRelayouts: 0,
       graftRelayouts: 3,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 
@@ -693,6 +701,7 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
       incrementalRelayouts: 1,
       graftRelayouts: 2,
       detachRelayouts: 0,
+      reorderRelayouts: 0,
     });
   });
 });
@@ -1439,5 +1448,142 @@ describe('SpinelessLayout — fuzzer-found regressions (slice v33)', () => {
       },
       (r) => r.removeChild(r.getChild(1)!),
     );
+  });
+});
+
+describe('SpinelessLayout — reorder fast-path (slice v34)', () => {
+  // Each step is mirrored on a parallel imperative tree and asserted
+  // byte-identical. `aw` / `ah` size an `'auto'` root.
+  function checkSequence(
+    make: () => Node,
+    steps: Array<(r: Node) => void>,
+    aw?: number,
+    ah?: number,
+  ): SpinelessLayout {
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout(aw, ah);
+    calculateLayoutImperative(impTree, aw, ah);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    for (const step of steps) {
+      step(slTree);
+      step(impTree);
+      sl.layout(aw, ah);
+      calculateLayoutImperative(impTree, aw, ah);
+      expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    }
+    return sl;
+  }
+
+  // Move the root's child at `from` to index `to`.
+  const move = (from: number, to: number) => (r: Node) => {
+    const c = r.getChild(from)!;
+    r.removeChild(c);
+    r.insertChild(c, Math.min(to, r.getChildCount()));
+  };
+
+  const row = (n: number): Node => {
+    const root = Node.create();
+    root.setWidth(320);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < n; i++) {
+      const c = Node.create();
+      c.setWidth(20 + i * 10);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    return root;
+  };
+
+  it('a child move takes the reorder fast-path', () => {
+    const sl = checkSequence(() => row(3), [move(0, 2)]);
+    expect(sl.stats.reorderRelayouts).toBe(1);
+    expect(sl.stats.fullBuilds).toBe(1);
+    expect(sl.lastTrace!.path).toBe('reorder');
+  });
+
+  it('several reorders in sequence each take the fast-path', () => {
+    const sl = checkSequence(() => row(4), [move(0, 3), move(1, 0), move(2, 1)]);
+    expect(sl.stats.reorderRelayouts).toBe(3);
+    expect(sl.stats.fullBuilds).toBe(1);
+  });
+
+  it('a reorder in a flex-distributing parent', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = Node.create();
+        c.setWidth(20);
+        c.setHeight(30);
+        c.setFlexGrow(i + 1);
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [move(0, 2)]);
+    expect(sl.stats.reorderRelayouts).toBe(1);
+  });
+
+  it('a reorder in a wrap container changes line composition', () => {
+    const sl = checkSequence(
+      () => {
+        const root = Node.create();
+        root.setWidth(100);
+        root.setHeight(120);
+        root.setFlexDirection('row');
+        root.setFlexWrap('wrap');
+        for (const w of [30, 80, 30]) {
+          const c = Node.create();
+          c.setWidth(w);
+          c.setHeight(20);
+          root.insertChild(c, root.getChildCount());
+        }
+        return root;
+      },
+      [move(1, 0)], // [30,80,30] -> [80,30,30] repacks the lines
+    );
+    expect(sl.stats.reorderRelayouts).toBe(1);
+  });
+
+  it('a reorder under an auto root with maxWidth stays clamped (regression)', () => {
+    // The phase-11 fuzzer found `buildReorderFragment` rebuilt the
+    // grammar with an empty `available`, so the `'auto'` root's size
+    // rule came out unclamped (bare-zero shape) and lost its maxWidth.
+    const sl = checkSequence(
+      () => {
+        const root = Node.create(); // 'auto' width
+        root.setHeight(20);
+        root.setMaxWidth(60);
+        root.setFlexDirection('row');
+        for (let i = 0; i < 3; i++) {
+          const c = Node.create();
+          c.setWidth(15);
+          c.setHeight(15);
+          root.insertChild(c, i);
+        }
+        return root;
+      },
+      [move(0, 2)],
+      200, // available 200 — the root must still clamp to maxWidth 60
+      100,
+    );
+    expect(sl.stats.reorderRelayouts).toBe(1);
+  });
+
+  it('a reorder composed with a value mutation in one step', () => {
+    const sl = checkSequence(
+      () => row(3),
+      [
+        (r) => {
+          move(0, 2)(r);
+          r.getChild(0)!.setWidth(55);
+        },
+      ],
+    );
+    expect(sl.stats.reorderRelayouts).toBe(1);
   });
 });

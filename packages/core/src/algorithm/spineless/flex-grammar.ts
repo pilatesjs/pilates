@@ -1329,6 +1329,7 @@ export function buildAppendFragment(
   root: Node,
   parent: Node,
   child: Node,
+  available: AvailableSize = {},
 ): AppendFragment | null {
   // `child` must be a child of `parent`. Its index decides the path,
   // not whether the fragment is built: a last in-flow child can take
@@ -1409,8 +1410,10 @@ export function buildAppendFragment(
   // Non-simple: appending rewrites every surviving sibling's rules.
   // Rebuild the grammar O(tree) and diff it against `prev` for the
   // new fields; Field identity is stable across builds, so a key
-  // absent from `prev.grammar` belongs to a newly-added node.
-  const fresh = buildFlexGrammar(root);
+  // absent from `prev.grammar` belongs to a newly-added node. The
+  // rebuild needs the caller's `available` — the root's `'auto'`
+  // size rule shape depends on it (`rootAxisIsBareZero`).
+  const fresh = buildFlexGrammar(root, available);
   const additions: Grammar = new Map();
   for (const [f, rule] of fresh.grammar) {
     if (!prev.grammar.has(f)) additions.set(f, rule);
@@ -1547,6 +1550,7 @@ export function buildRemoveFragment(
   root: Node,
   parent: Node,
   child: Node,
+  available: AvailableSize = {},
 ): RemoveFragment | null {
   // `child` must be a child of `parent`.
   let index = -1;
@@ -1612,8 +1616,9 @@ export function buildRemoveFragment(
   // Non-simple: the removal rewrites every surviving sibling's rules.
   // Rebuild the grammar O(tree) — detach `child` around the build,
   // then restore the tree — and diff `prev \ fresh` for `removed`.
+  // The rebuild needs the caller's `available` (root size rule shape).
   parent.removeChild(child);
-  const fresh = buildFlexGrammar(root);
+  const fresh = buildFlexGrammar(root, available);
   parent.insertChild(child, index);
 
   const removed: Array<Field<unknown>> = [];
@@ -1638,6 +1643,105 @@ export function buildRemoveFragment(
     availableInputs: fresh.availableInputs,
   };
   return { removed, rebinds, next };
+}
+
+/**
+ * The patch inputs for a fast-pathed child reorder — see
+ * `buildReorderFragment`.
+ *
+ * @internal
+ */
+export interface ReorderFragment {
+  /**
+   * Input fields the reorder newly needs — for `SpinelessRuntime.graft`.
+   * A reorder adds no node, but it can give a node a follower (or
+   * take one away), and a node's main-END margin is read only when it
+   * has a follower. So a node that gained a follower contributes a
+   * newly-read margin input.
+   */
+  additions: Grammar;
+  /** The new fields to start `graft`'s DFS from (every addition). */
+  newRoots: Array<Field<unknown>>;
+  /**
+   * Input fields the reorder no longer needs — for
+   * `SpinelessRuntime.detach`. The mirror of `additions`: a node that
+   * lost its follower (became the last child) no longer has its
+   * main-end margin read.
+   */
+  removed: Array<Field<unknown>>;
+  /**
+   * Existing fields whose rule the reorder rewrote, paired with the
+   * new rule — for `SpinelessRuntime.rebindRule`.
+   */
+  rebinds: Array<[Field<unknown>, FieldRule<unknown>]>;
+  /** A fresh full `FlexGrammarOutput` for the reordered tree. */
+  next: FlexGrammarOutput;
+}
+
+/**
+ * Fast-path a child REORDER for the Spineless runtime — `parent`'s
+ * children are a permutation of their former order (no node added or
+ * removed). The grammar is rebuilt O(tree) and the patch applied to
+ * the existing runtime without a fresh `init`.
+ *
+ * Reordering `parent`'s children can only change the rules of
+ * `parent` itself (its `'auto'` / wrap content size now packs the
+ * children in a new order) and of its in-flow children (their main
+ * positions, and — under wrap — their line-dependent sizes), so the
+ * rebind set is `parent` + its in-flow children's
+ * `width / height / left / top`. Descendants and ancestors recompute
+ * from the changed VALUES; their rules are untouched.
+ *
+ * A reorder also shifts the "has a follower" boundary, so a node's
+ * main-end margin input can become newly read (`additions`) or
+ * newly unread (`removed`) — the same diff `buildAppendFragment`'s
+ * non-simple branch takes. The caller applies `graft` then
+ * `rebindRule` then `detach`.
+ *
+ * `next.grammar` is `prev.grammar` — the runtime's own Map, patched
+ * in place.
+ *
+ * @internal
+ */
+export function buildReorderFragment(
+  prev: FlexGrammarOutput,
+  root: Node,
+  parent: Node,
+  available: AvailableSize = {},
+): ReorderFragment {
+  const fresh = buildFlexGrammar(root, available);
+
+  const additions: Grammar = new Map();
+  for (const [f, rule] of fresh.grammar) {
+    if (!prev.grammar.has(f)) additions.set(f, rule);
+  }
+  const removed: Array<Field<unknown>> = [];
+  for (const f of prev.grammar.keys()) {
+    if (!fresh.grammar.has(f)) removed.push(f);
+  }
+
+  const rebinds: Array<[Field<unknown>, FieldRule<unknown>]> = [];
+  const touched: Node[] = [parent];
+  for (let i = 0; i < parent.getChildCount(); i++) {
+    const c = parent.getChild(i)!;
+    if (isInFlow(c)) touched.push(c);
+  }
+  for (const n of touched) {
+    for (const name of ['width', 'height', 'left', 'top'] as const) {
+      const f = field<number>(n, name) as Field<unknown>;
+      const rule = fresh.grammar.get(f);
+      if (rule !== undefined) rebinds.push([f, rule]);
+    }
+  }
+
+  const next: FlexGrammarOutput = {
+    grammar: prev.grammar,
+    rootFields: prev.rootFields,
+    allFields: fresh.allFields,
+    styleInputs: fresh.styleInputs,
+    availableInputs: fresh.availableInputs,
+  };
+  return { additions, newRoots: [...additions.keys()], removed, rebinds, next };
 }
 
 /**
