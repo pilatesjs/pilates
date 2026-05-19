@@ -102,10 +102,11 @@ projectName: string }): void` — the pure, unit-testable core, with no
 - **`_gitignore`** → copied as `.gitignore`. Contents: `node_modules`.
 - **`package.json`** — `"name": "__PROJECT_NAME__"`, `"private": true`,
   `"type": "module"`, `"scripts": { "dev": "tsx index.tsx" }`;
-  dependencies `@pilates/react` (`^0.4.0` — a **published** version;
-  the minimal API the starter uses — `Box` / `Text` / `render` /
-  `useApp` / `useInput` — is all present in 0.4.0) and `react`
-  (`^19.0.0`); devDependencies `@types/react`, `tsx`, `typescript`.
+  dependencies `@pilates/react` (`^0.3.0` — the current **published**
+  version; the minimal API the starter uses — `Box` / `Text` /
+  `render` / `useApp` / `useInput` — is all present in 0.3.0) and
+  `react` (`^19.0.0`); devDependencies `@types/react`, `tsx`,
+  `typescript`.
 - **`tsconfig.json`** — minimal, mirroring
   `examples/react-counter/tsconfig.json` (`jsx: react-jsx`, ESM
   module resolution, `strict`).
@@ -118,6 +119,9 @@ projectName: string }): void` — the pure, unit-testable core, with no
   cannot rot silently.
 - **`README.md`** — short: `# __PROJECT_NAME__`, `npm install`,
   `npm run dev`, a link to the Pilates docs/repo.
+
+The template's `index.tsx` `useInput` handler receives a `KeyEvent`
+(its `.ch` field is the printable character) — not a bare string.
 
 The template depends on the **published** `@pilates/react`, so
 `template/` is correctly NOT a workspace member — the monorepo never

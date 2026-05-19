@@ -134,7 +134,7 @@ node_modules
     "dev": "tsx index.tsx"
   },
   "dependencies": {
-    "@pilates/react": "^0.4.0",
+    "@pilates/react": "^0.3.0",
     "react": "^19.0.0"
   },
   "devDependencies": {
@@ -177,10 +177,10 @@ function App() {
   const [count, setCount] = useState(0);
   const { exit } = useApp();
 
-  useInput((input) => {
-    if (input === '+') setCount((n) => n + 1);
-    if (input === '-') setCount((n) => n - 1);
-    if (input === 'q') exit();
+  useInput((event) => {
+    if (event.ch === '+') setCount((n) => n + 1);
+    if (event.ch === '-') setCount((n) => n - 1);
+    if (event.ch === 'q') exit();
   });
 
   return (
@@ -547,7 +547,7 @@ EOF
 - Package layout (`package.json` bin + `files:[dist,template]`, `tsconfig.json`, `tsconfig.typecheck.json`, `src/`, `template/`) — Tasks 1–3. ✓
 - CLI: argv first positional → target dir, prompt via `node:readline/promises` when absent, `--help`, call `createApp`, print next steps, catch errors → non-zero exit — Task 3. ✓
 - `createApp({ targetDir, projectName })`: resolve, reject non-empty dir, copy `template/`, rename leading `_`→`.`, substitute `__PROJECT_NAME__` in `package.json`/`README.md` — Task 2. ✓
-- Template files (`_gitignore`, `package.json` with pinned `@pilates/react ^0.4.0`, `tsconfig.json`, `index.tsx` minimal interactive app, `README.md`) — Task 1. ✓
+- Template files (`_gitignore`, `package.json` with pinned `@pilates/react ^0.3.0`, `tsconfig.json`, `index.tsx` minimal interactive app, `README.md`) — Task 1. ✓
 - `TEMPLATE_DIR` resolves correctly from `src/` (Vitest) and `dist/` (published) — `../template` from either — Task 2 (documented in code). ✓
 - Tests: all expected files, `_gitignore`→`.gitignore`, name substitution in both files, `index.tsx` API imports, non-empty-dir rejection — Task 2. ✓
 - CHANGELOG `## Unreleased` entry — Task 4. ✓
