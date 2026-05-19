@@ -644,17 +644,17 @@ describe('SpinelessLayout — graft fast-path for child append (slice v21)', () 
     expect(sl.stats.graftRelayouts).toBe(1);
   });
 
-  it('a mid-list insert is not a graft — full rebuild', () => {
+  it('a mid-list insert takes the graft fast-path (v32)', () => {
     const sl = checkSequence(fixedRow, [
       (r) => {
         const c = Node.create();
         c.setWidth(25);
         c.setHeight(30);
-        r.insertChild(c, 0); // not the last child
+        r.insertChild(c, 0); // not the last child — still a graft as of v32
       },
     ]);
-    expect(sl.stats.fullBuilds).toBe(2);
-    expect(sl.stats.graftRelayouts).toBe(0);
+    expect(sl.stats.graftRelayouts).toBe(1);
+    expect(sl.stats.fullBuilds).toBe(1);
   });
 
   it('appending to a reverse-direction parent falls back to a rebuild', () => {
@@ -1229,5 +1229,115 @@ describe('SpinelessLayout — remove fast-path (slice v31)', () => {
     expect(sl.stats.graftRelayouts).toBe(1);
     expect(sl.stats.detachRelayouts).toBe(1);
     expect(sl.stats.fullBuilds).toBe(1);
+  });
+});
+
+describe('SpinelessLayout — mid-list insert fast-path (slice v32)', () => {
+  function checkSequence(make: () => Node, steps: Array<(r: Node) => void>): SpinelessLayout {
+    const slTree = make();
+    const impTree = make();
+    const sl = new SpinelessLayout(slTree);
+    sl.layout();
+    calculateLayoutImperative(impTree);
+    expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    for (const step of steps) {
+      step(slTree);
+      step(impTree);
+      sl.layout();
+      calculateLayoutImperative(impTree);
+      expect(snapshot(slTree)).toEqual(snapshot(impTree));
+    }
+    return sl;
+  }
+
+  const cell = (w: number, h: number): Node => {
+    const c = Node.create();
+    c.setWidth(w);
+    c.setHeight(h);
+    return c;
+  };
+
+  const row = (n: number): Node => {
+    const root = Node.create();
+    root.setWidth(320);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+    for (let i = 0; i < n; i++) root.insertChild(cell(40, 30), i);
+    return root;
+  };
+
+  it('inserting a child at the head takes the graft fast-path', () => {
+    const sl = checkSequence(() => row(3), [(r) => r.insertChild(cell(25, 30), 0)]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+    expect(sl.stats.fullBuilds).toBe(1);
+    expect(sl.lastTrace!.path).toBe('graft');
+  });
+
+  it('inserting a child in the middle takes the graft fast-path', () => {
+    const sl = checkSequence(() => row(3), [(r) => r.insertChild(cell(25, 30), 1)]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+    expect(sl.stats.fullBuilds).toBe(1);
+  });
+
+  it('inserting at the tail still grafts (regression)', () => {
+    const sl = checkSequence(() => row(3), [(r) => r.insertChild(cell(25, 30), r.getChildCount())]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+  });
+
+  it('a mid-list insert into a flex-distributing parent grafts', () => {
+    const sl = checkSequence(() => {
+      const root = Node.create();
+      root.setWidth(300);
+      root.setHeight(40);
+      root.setFlexDirection('row');
+      for (let i = 0; i < 3; i++) {
+        const c = cell(20, 30);
+        c.setFlexGrow(1);
+        root.insertChild(c, i);
+      }
+      return root;
+    }, [
+      (r) => {
+        const c = cell(20, 30);
+        c.setFlexGrow(1);
+        r.insertChild(c, 1);
+      },
+    ]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+  });
+
+  it('a mid-list insert into a space-between parent grafts', () => {
+    const sl = checkSequence(() => {
+      const root = row(3);
+      root.setJustifyContent('space-between');
+      return root;
+    }, [(r) => r.insertChild(cell(25, 30), 1)]);
+    expect(sl.stats.graftRelayouts).toBe(1);
+  });
+
+  it('a sequence of mixed-index inserts and removes stays correct', () => {
+    const sl = checkSequence(
+      () => row(3),
+      [
+        (r) => r.insertChild(cell(30, 30), 0), // head insert
+        (r) => r.insertChild(cell(20, 30), 2), // mid insert
+        (r) => r.removeChild(r.getChild(1)!), // mid remove
+        (r) => r.insertChild(cell(35, 30), r.getChildCount()), // tail insert
+        (r) => r.removeChild(r.getChild(0)!), // head remove
+      ],
+    );
+    expect(sl.stats.graftRelayouts).toBe(3);
+    expect(sl.stats.detachRelayouts).toBe(2);
+    expect(sl.stats.fullBuilds).toBe(1);
+  });
+
+  it('an insert into a reverse-direction parent falls back to a rebuild', () => {
+    const sl = checkSequence(() => {
+      const root = row(3);
+      root.setFlexDirection('row-reverse');
+      return root;
+    }, [(r) => r.insertChild(cell(25, 30), 1)]);
+    expect(sl.stats.graftRelayouts).toBe(0);
+    expect(sl.stats.fullBuilds).toBe(2);
   });
 });

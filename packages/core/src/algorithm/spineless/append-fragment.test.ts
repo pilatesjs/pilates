@@ -341,16 +341,37 @@ describe('buildAppendFragment — regime-aware appends graft + rebind cleanly', 
   });
 });
 
-describe('buildAppendFragment — returns null when a rebuild is required', () => {
-  it('null when the child is not the last child', () => {
+describe('buildAppendFragment — mid-list insert (v32)', () => {
+  it('a mid-list insert produces a fragment that lays out correctly', () => {
+    const root = Node.create();
+    root.setWidth(150);
+    root.setHeight(30);
+    root.setFlexDirection('row');
+    root.insertChild(fixedCell(20, 20), 0);
+    root.insertChild(fixedCell(25, 20), 1);
+    const { rt, prev } = makeRuntime(root);
+
+    const c = fixedCell(30, 20);
+    root.insertChild(c, 1); // inserted between the two existing cells
+    const frag = buildAppendFragment(prev, root, root, c);
+    expect(frag).not.toBeNull();
+    // The later sibling shifts — a mid-list insert always rebinds.
+    expect(frag!.rebinds.length).toBeGreaterThan(0);
+    rt.graft(frag!.additions, frag!.newRoots);
+    for (const [f, rule] of frag!.rebinds) rt.rebindRule(f, rule);
+    rt.recompute();
+
+    expect(readLayout(rt, frag!.next.allFields)).toEqual(freshLayout(root));
+  });
+
+  it('null when the node is not a child of the parent', () => {
     const root = Node.create();
     root.setWidth(150);
     root.setHeight(30);
     root.setFlexDirection('row');
     root.insertChild(fixedCell(20, 20), 0);
     const prev = buildFlexGrammar(root);
-    const c = fixedCell(20, 20);
-    root.insertChild(c, 0); // inserted before the existing child
-    expect(buildAppendFragment(prev, root, root, c)).toBeNull();
+    const stranger = fixedCell(20, 20);
+    expect(buildAppendFragment(prev, root, root, stranger)).toBeNull();
   });
 });

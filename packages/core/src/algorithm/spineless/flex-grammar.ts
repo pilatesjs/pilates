@@ -1296,25 +1296,27 @@ function mergeStyleInputsMap(
 }
 
 /**
- * Fast-path a child APPEND for the Spineless runtime. If appending
- * `child` as `parent`'s last child can be absorbed without a fresh
- * runtime, return the patch inputs; return `null` when a full
- * rebuild is required — `child` is not the last child, or `parent`
- * uses a reverse `flex-direction` (supported by the grammar since
- * v11, but not yet by this structural fast-path — reflecting every
- * sibling's position is a whole-subtree rewrite).
+ * Fast-path a child INSERT for the Spineless runtime. If adding
+ * `child` under `parent` can be absorbed without a fresh runtime,
+ * return the patch inputs; return `null` when a full rebuild is
+ * required — `child` is not a child of `parent`, or `parent` uses a
+ * reverse `flex-direction` (supported by the grammar since v11, but
+ * not by this structural fast-path — reflecting every sibling's
+ * position is a whole-subtree rewrite).
  *
- * The new subtree's fields are always a pure topological-tail
- * addition handled by `graft` (`additions` / `newRoots`). When
- * `parent` is in the "simple" regime (no flex distribution, default
- * `flex-start` justify, no wrap — or `child` is absolute) that is
- * the whole patch and `rebinds` is empty, and the fragment is built
- * in **O(subtree)** — `makeEmitter` emits just the appended subtree
- * against the runtime's grammar as a boundary, no whole-tree
- * rebuild. Otherwise appending also grows every existing in-flow
- * sibling's dependency set (flex distribution / justify leftover /
- * wrap packing all read every sibling), so the grammar is rebuilt
- * O(tree) and `rebinds` carries those siblings' rewritten rules.
+ * The new subtree's fields are always topological-tail additions
+ * handled by `graft` (`additions` / `newRoots`). When `parent` is in
+ * the "simple" regime (no flex distribution, default `flex-start`
+ * justify, no wrap) AND `child` is its LAST child — or `child` is
+ * absolute — that is the whole patch and `rebinds` is empty, and the
+ * fragment is built in **O(subtree)**: `makeEmitter` emits just the
+ * appended subtree against the runtime's grammar as a boundary, no
+ * whole-tree rebuild. Otherwise the insert also rewrites existing
+ * in-flow siblings' rules — a flex-distributing / justified /
+ * wrapping parent reads every sibling, and a MID-LIST insert (v32)
+ * shifts every later in-flow sibling's main position — so the
+ * grammar is rebuilt O(tree) and `rebinds` carries those siblings'
+ * rewritten rules.
  *
  * `next.grammar` is always `prev.grammar` — the runtime's own Map,
  * which `graft` / `rebindRule` patch in place; `next.allFields` /
@@ -1328,10 +1330,20 @@ export function buildAppendFragment(
   parent: Node,
   child: Node,
 ): AppendFragment | null {
-  // `child` must be the parent's last child — a mid-list insert
-  // shifts later siblings, which is not a topological-tail graft.
+  // `child` must be a child of `parent`. Its index decides the path,
+  // not whether the fragment is built: a last in-flow child can take
+  // the O(subtree) graft; a mid-list in-flow insert shifts the later
+  // siblings, so it takes the rebuild + rebind path below (v32).
   const count = parent.getChildCount();
-  if (count === 0 || parent.getChild(count - 1) !== child) return null;
+  let childIndex = -1;
+  for (let i = 0; i < count; i++) {
+    if (parent.getChild(i) === child) {
+      childIndex = i;
+      break;
+    }
+  }
+  if (childIndex === -1) return null;
+  const isLast = childIndex === count - 1;
 
   // A `display: 'none'` appended child has no fields to graft — let
   // the rebuild path absorb it (a hidden node perturbs nothing, so
@@ -1344,11 +1356,14 @@ export function buildAppendFragment(
   const dir = parent.style.flexDirection;
   if (dir !== 'row' && dir !== 'column') return null;
 
-  // An absolute child never perturbs in-flow siblings; otherwise the
-  // parent's regime decides whether existing siblings are rewritten.
+  // An absolute child never perturbs in-flow siblings, so it is
+  // always a pure tail graft. An in-flow child stays one only when it
+  // is the LAST child of a simple-regime parent — a mid-list in-flow
+  // insert shifts the later siblings and so takes the rebuild path.
   const simple =
     child.style.positionType === 'absolute' ||
-    (parent.style.flexWrap === 'nowrap' &&
+    (isLast &&
+      parent.style.flexWrap === 'nowrap' &&
       parent.style.justifyContent === 'flex-start' &&
       !parentNeedsFlexDistribution(parent));
 
@@ -1366,7 +1381,7 @@ export function buildAppendFragment(
       availableInputs: {},
     };
     const priors: Node[] = [];
-    for (let i = 0; i < count - 1; i++) {
+    for (let i = 0; i < childIndex; i++) {
       const sib = parent.getChild(i)!;
       if (isInFlow(sib)) priors.push(sib);
     }
@@ -1400,17 +1415,13 @@ export function buildAppendFragment(
   for (const [f, rule] of fresh.grammar) {
     if (!prev.grammar.has(f)) additions.set(f, rule);
   }
-  const newRoots: Array<Field<unknown>> = [];
-  for (const e of fresh.allFields) {
-    if (!prev.grammar.has(e.width as Field<unknown>)) {
-      newRoots.push(
-        e.width as Field<unknown>,
-        e.height as Field<unknown>,
-        e.left as Field<unknown>,
-        e.top as Field<unknown>,
-      );
-    }
-  }
+  // `graft` integrates the DFS-closure of `newRoots`. A new node's
+  // own layout fields don't reach every new field: a mid-list insert
+  // leaves the inserted node's main-END margin read only by its
+  // follower's (rebound, existing) rule — never by the node itself.
+  // Starting the DFS from EVERY new field covers those orphans; the
+  // DFS dedups, so the extra roots cost nothing.
+  const newRoots: Array<Field<unknown>> = [...additions.keys()];
   const rebinds: Array<[Field<unknown>, FieldRule<unknown>]> = [];
   for (let i = 0; i < parent.getChildCount(); i++) {
     const sib = parent.getChild(i)!;
