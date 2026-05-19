@@ -5,10 +5,10 @@ function App() {
   const [count, setCount] = useState(0);
   const { exit } = useApp();
 
-  useInput((input) => {
-    if (input === '+') setCount((n) => n + 1);
-    if (input === '-') setCount((n) => n - 1);
-    if (input === 'q') exit();
+  useInput((event) => {
+    if (event.ch === '+') setCount((n) => n + 1);
+    if (event.ch === '-') setCount((n) => n - 1);
+    if (event.ch === 'q') exit();
   });
 
   return (

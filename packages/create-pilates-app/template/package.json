@@ -7,7 +7,7 @@
     "dev": "tsx index.tsx"
   },
   "dependencies": {
-    "@pilates/react": "^0.4.0",
+    "@pilates/react": "^0.3.0",
     "react": "^19.0.0"
   },
   "devDependencies": {
