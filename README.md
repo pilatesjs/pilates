@@ -182,35 +182,47 @@ input handling, animations, scroll containers, style inheritance.
 ## Performance
 
 <p align="center">
-  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 7-10× faster across every workload, including the hot-relayout pattern Yoga used to win" width="100%">
+  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 3-9× faster across every flex-layout workload, including every hot-relayout shape" width="100%">
 </p>
 
 Pure-TypeScript layout, validated cell-for-cell against WASM Yoga,
-faster than WASM Yoga on every benchmarked workload. Numbers are mean
-latency from `pnpm bench` (Node 26, darwin/arm64; relative positions
-are the interesting signal):
+**faster than WASM Yoga on every flex-layout workload — including
+every hot-relayout shape, with or without explicit-sized container
+boundaries.** Numbers are mean latency from `pnpm bench` (Node 26,
+darwin/arm64; relative positions are the interesting signal):
 
 | Scenario | Pilates core | yoga-layout (WASM) | Pilates speedup |
 |---|---:|---:|---:|
-| tiny (10 nodes) | 1.5µs | 15.1µs | **10× faster** |
-| realistic (~100) | 29µs | 263µs | **9× faster** |
-| stress (~1000) | 171µs | 1.52ms | **9× faster** |
-| big (~5000) | 0.94ms | 7.26ms | **8× faster** |
-| huge (~10000) | 2.16ms | 14.6ms | **7× faster** |
-| hot-relayout (1k persistent, mutate one leaf/frame) | 129µs | 56µs | Yoga wins ~2× |
-| **hot-relayout + boundaries** (same + explicit-sized rows) | **7.1µs** | **51µs** | **7× faster** |
+| tiny (10 nodes) | 2.9µs | 15.4µs | **5× faster** |
+| realistic (~100) | 32µs | 268µs | **8× faster** |
+| stress (~1000) | 181µs | 1.56ms | **9× faster** |
+| big (~5000) | 1.05ms | 7.39ms | **7× faster** |
+| huge (~10000) | 2.40ms | 15.3ms | **6× faster** |
+| **hot-relayout** (1k persistent, mutate one leaf/frame) | **19.1µs** | **57.9µs** | **3× faster** |
+| **hot-relayout + boundaries** (same + explicit-sized rows) | **18.5µs** | **51.5µs** | **3× faster** |
+| **hot-relayout (text mutation, fixed-size table)** | **20.1µs** | **47.0µs** | **2.3× faster** |
 
-The hot-relayout scenario was the only workload Yoga had been winning
-on — long-lived trees with hot per-frame mutations. With Phase 3's
-relayout boundaries, any container with `width: N, height: M` (the
-idiomatic TUI pattern) acts as a barrier that stops dirty propagation,
-so descendant mutations don't invalidate ancestor caches. Pilates is
-now strictly faster than WASM Yoga across every benchmarked workload
-when consumers structure trees with explicit-sized containers.
+The hot-relayout pattern — building a tree once and mutating-and-
+relaying out per frame — was the workload Yoga's WASM compute
+advantage traditionally won on. The **Spineless incremental layout
+engine** (an attribute-grammar dependency graph + priority-queue
+recomputation, finalized in phase 12) flips that: a single leaf
+mutation re-evaluates only the fields actually downstream of the
+change, in O(N) total work for the affected row — Pilates now wins
+every hot-relayout shape, with or without explicit-sized containers.
 
-WASM Yoga's compute kernel is genuinely faster than pure-TS Pilates,
-but every `setProperty` / `Node.create` crosses the JS↔WASM boundary
-and that marshalling cost dominates at TUI tree sizes (10–10k nodes).
+For trees of pure fixed-size cells (e.g. a data table with one cell's
+text length changing per frame), the direct `@pilates/core (spineless)`
+runtime mutation goes through in **~0.2µs** — 200× faster than the
+Yoga round-trip. That path is `@internal` for now; the public
+`calculateLayout` ships the engine and is what every other Pilates
+consumer uses.
+
+WASM Yoga's compute kernel is genuinely fast in isolation, but every
+`setProperty` / `Node.create` crosses the JS↔WASM boundary; that
+marshalling cost dominates at TUI tree sizes (10–10k nodes), and the
+Spineless engine's incremental recompute then beats WASM's per-frame
+full layout. Pure-TS Pilates pays no marshalling cost.
 
 Reproduce with `pnpm bench`. Full numbers + scenario shapes in
 [`bench/RESULTS.md`](./bench/RESULTS.md).
@@ -250,8 +262,10 @@ flexbox implementation:
 `@pilates/core@1.0.0` and `@pilates/render@1.0.0` are released.
 Core algorithm + flex pipeline are feature-complete, validated
 cell-for-cell against WASM Yoga, and faster than Yoga on every
-benchmarked workload (see Performance above). The React layer ships
-mouse, scroll, focus management, and typed errors.
+flex-layout workload (see Performance above) including every
+hot-relayout shape — powered by the Spineless incremental engine.
+The React layer ships mouse, scroll, focus management, typed errors,
+and layout devtools.
 
 ## Contributing
 
