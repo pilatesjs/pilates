@@ -1059,10 +1059,22 @@ function makeEmitter(
           compute: () => 0,
         } satisfies FieldRule<number>);
       } else if (justify === 'flex-start') {
-        grammar.set(mainPosField, {
-          deps: [padMainStartF as Field<unknown>, myMarginMainStartF as Field<unknown>],
-          compute: (read) => read(padMainStartF!) + read(myMarginMainStartF!),
-        } satisfies FieldRule<number>);
+        // Phase 12: read directly from the parent's mainDistribution if
+        // it was emitted (parent flex-distributes + single-line).
+        // Fallback to today's padding+margin rule when parent didn't qualify.
+        const parentMainDistPos = mainDistributionByParent.get(parent);
+        if (parentMainDistPos !== undefined) {
+          const myIndexCapture = priorSiblings.length; // in-flow index
+          grammar.set(mainPosField, {
+            deps: [parentMainDistPos as Field<unknown>],
+            compute: (read) => read(parentMainDistPos).positions[myIndexCapture]!,
+          } satisfies FieldRule<number>);
+        } else {
+          grammar.set(mainPosField, {
+            deps: [padMainStartF as Field<unknown>, myMarginMainStartF as Field<unknown>],
+            compute: (read) => read(padMainStartF!) + read(myMarginMainStartF!),
+          } satisfies FieldRule<number>);
+        }
       } else {
         // First child but parent uses non-default justify. Leading
         // offset still depends on leftover, which depends on every
@@ -1082,33 +1094,42 @@ function makeEmitter(
         );
       }
     } else if (justify === 'flex-start') {
-      // Default main-axis flow: this child's position is an offset
-      // (padding + own leading margin + prior gaps + each prior
-      // sibling's main-axis margins) plus the sum of prior siblings'
-      // main sizes — all declared deps so a size / spacing mutation
-      // on any prior sibling propagates here.
-      const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
-      const priorMargins = priorSiblings.map((s) => ({
-        start: marginInput(s, mainStartEdge(parentDirection!)),
-        end: marginInput(s, mainEndEdge(parentDirection!)),
-      }));
-      const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
-      grammar.set(mainPosField, {
-        deps: [
-          mainGapInput as Field<unknown>,
-          padMainStartF as Field<unknown>,
-          myMarginMainStartF as Field<unknown>,
-          ...(priorMainSizes as Field<unknown>[]),
-          ...priorMargins.flatMap((m) => [m.start, m.end] as Field<unknown>[]),
-        ],
-        compute: (read) => {
-          let sum =
-            read(padMainStartF!) + read(myMarginMainStartF!) + indexInParent * read(mainGapInput);
-          for (const m of priorMargins) sum += read(m.start) + read(m.end);
-          for (const m of priorMainSizes) sum += read(m);
-          return sum;
-        },
-      } satisfies FieldRule<number>);
+      // Phase 12: read directly from the parent's mainDistribution if it
+      // was emitted (parent flex-distributes + single-line). Fallback to
+      // today's prior-siblings rule when the parent didn't qualify.
+      const parentMainDistPos = mainDistributionByParent.get(parent);
+      if (parentMainDistPos !== undefined) {
+        const myIndexCapture = priorSiblings.length; // in-flow index
+        grammar.set(mainPosField, {
+          deps: [parentMainDistPos as Field<unknown>],
+          compute: (read) => read(parentMainDistPos).positions[myIndexCapture]!,
+        } satisfies FieldRule<number>);
+      } else {
+        // Non-qualifying regime (wrap): keep today's prior-siblings-sum
+        // rule — size / spacing mutation on any prior sibling propagates here.
+        const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
+        const priorMargins = priorSiblings.map((s) => ({
+          start: marginInput(s, mainStartEdge(parentDirection!)),
+          end: marginInput(s, mainEndEdge(parentDirection!)),
+        }));
+        const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
+        grammar.set(mainPosField, {
+          deps: [
+            mainGapInput as Field<unknown>,
+            padMainStartF as Field<unknown>,
+            myMarginMainStartF as Field<unknown>,
+            ...(priorMainSizes as Field<unknown>[]),
+            ...priorMargins.flatMap((m) => [m.start, m.end] as Field<unknown>[]),
+          ],
+          compute: (read) => {
+            let sum =
+              read(padMainStartF!) + read(myMarginMainStartF!) + indexInParent * read(mainGapInput);
+            for (const m of priorMargins) sum += read(m.start) + read(m.end);
+            for (const m of priorMainSizes) sum += read(m);
+            return sum;
+          },
+        } satisfies FieldRule<number>);
+      }
     } else {
       emitJustifiedMainPos(
         grammar,
