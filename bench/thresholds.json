@@ -9,5 +9,6 @@
   "hotrelayouttext": {
     "@pilates/core (layout)": { "maxMeanMs": 0.5 },
     "@pilates/core (spineless)": { "maxMeanMs": 0.1 }
-  }
+  },
+  "hotstructural": { "@pilates/core (layout)": { "maxMeanMs": 1.0 } }
 }
