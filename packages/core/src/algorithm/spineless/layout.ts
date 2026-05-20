@@ -35,7 +35,7 @@ import {
   buildRemoveFragment,
   buildReorderFragment,
 } from './flex-grammar.js';
-import type { Field, Grammar, ReadFn } from './grammar.js';
+import { type Field, type Grammar, type ReadFn, field } from './grammar.js';
 import { SpinelessRuntime } from './runtime.js';
 
 /** An input field's `compute` never calls `read` — guard against it. */
@@ -81,8 +81,8 @@ export interface LayoutTrace {
 /** Every leaf input Field (`deps: []`) the runtime currently tracks. */
 function collectInputs(grammar: Grammar, runtime: SpinelessRuntime): Array<Field<unknown>> {
   const inputs: Array<Field<unknown>> = [];
-  for (const [field, rule] of grammar) {
-    if (rule.deps.length === 0 && runtime.isTracked(field)) inputs.push(field);
+  for (const [f, rule] of grammar) {
+    if (rule.deps.length === 0 && runtime.isTracked(f)) inputs.push(f);
   }
   return inputs;
 }
@@ -156,14 +156,25 @@ function nodeSig(node: Node): string {
 
 function captureSnaps(root: Node): Map<Node, NodeSnap> {
   const snaps = new Map<Node, NodeSnap>();
-  function visit(n: Node): void {
-    const children: Node[] = [];
-    for (let i = 0; i < n.getChildCount(); i++) children.push(n.getChild(i)!);
-    snaps.set(n, { sig: nodeSig(n), measure: n.getMeasureFunc(), children });
-    for (const c of children) visit(c);
-  }
-  visit(root);
+  captureSnapsInto(root, snaps);
   return snaps;
+}
+
+/** Write `node`'s subtree snaps into `target` (used by the
+ *  fast-path graft to extend the snap map by the appended region
+ *  without rewalking the whole tree). */
+function captureSnapsInto(node: Node, target: Map<Node, NodeSnap>): void {
+  const children: Node[] = [];
+  for (let i = 0; i < node.getChildCount(); i++) children.push(node.getChild(i)!);
+  target.set(node, { sig: nodeSig(node), measure: node.getMeasureFunc(), children });
+  for (const c of children) captureSnapsInto(c, target);
+}
+
+/** A fresh `NodeSnap` for `node` against its current children. */
+function freshSnap(node: Node): NodeSnap {
+  const children: Node[] = [];
+  for (let i = 0; i < node.getChildCount(); i++) children.push(node.getChild(i)!);
+  return { sig: nodeSig(node), measure: node.getMeasureFunc(), children };
 }
 
 /** True iff `node`'s current child list still matches `snap.children`. */
@@ -281,26 +292,44 @@ export class SpinelessLayout {
       return;
     }
 
-    // Classify the dirty region: any structural change forces the
-    // graft / rebuild paths; otherwise it is a pure value relayout.
+    // Classify the dirty region. The classifier collects PIVOTS —
+    // dirty nodes whose CHILDREN LIST changed since the last layout —
+    // and short-circuits to a full rebuild when any snapped node's
+    // sig / measure changed (those need a fresh grammar). A dirty
+    // node WITHOUT a snap is a freshly-introduced node (part of an
+    // appended subtree); the graft validator handles it, so the
+    // classifier just skips it.
+    //
+    // Dispatch:
+    //   - sig / measure change         → fullBuild
+    //   - pivots.length === 0          → value relayout
+    //   - pivots.length === 1          → graft / detach / reorder
+    //   - pivots.length > 1            → fullBuild (multi-parent
+    //                                     structural change; no
+    //                                     fast-path handles it)
     const dirty: Node[] = [];
     collectDirty(this.root, dirty);
     const snaps = this.built!.snaps;
-    let structural = false;
+    const pivots: Node[] = [];
+    let needsRebuild = false;
     for (const n of dirty) {
       const snap = snaps.get(n);
-      if (
-        snap === undefined ||
-        snap.sig !== nodeSig(n) ||
-        snap.measure !== n.getMeasureFunc() ||
-        !childrenUnchanged(snap, n)
-      ) {
-        structural = true;
+      if (snap === undefined) {
+        // Freshly-introduced node — has no pre-layout snap. The graft
+        // validator below verifies the new region forms one subtree
+        // rooted under a single pivot; don't treat as a rebuild trigger.
+        continue;
+      }
+      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) {
+        needsRebuild = true;
         break;
+      }
+      if (!childrenUnchanged(snap, n)) {
+        pivots.push(n);
       }
     }
 
-    if (!structural) {
+    if (!needsRebuild && pivots.length === 0) {
       const moved = this.relayoutValues(dirty, availableWidth, availableHeight);
       this.stats.incrementalRelayouts++;
       const rs = this.built!.runtime.stats;
@@ -316,64 +345,67 @@ export class SpinelessLayout {
       return;
     }
 
-    const graft = this.tryGraftAppend(availableWidth, availableHeight);
-    if (graft !== null) {
-      this.stats.graftRelayouts++;
-      const rs = this.built!.runtime.stats;
-      const survivorRoots = this.movedSubtreeRoots(graft.changed);
-      // CRITICAL: include graft.child explicitly. Its fields were
-      // computed via integrate() at graft time, not via recompute(),
-      // so they don't appear in `changed`. Without this, a simple-
-      // regime append (changed is empty) writes back NOTHING and
-      // the appended subtree ships with _layout = 0. The structural-
-      // differential fuzzer catches this.
-      const roots = [graft.child, ...survivorRoots.filter((r) => !isInSubtree(r, graft.child))];
-      this._lastTrace = {
-        path: 'graft',
-        dirtyNodes: dirty.length,
-        fieldsRecomputed: rs.recomputeVisited,
-        fieldsChanged: rs.recomputeChanged,
-        movedSubtrees: roots.length,
-      };
-      this.finishMoved(roots, []);
-      clearDirtyRegion(this.root);
-      return;
-    }
+    if (!needsRebuild && pivots.length === 1) {
+      const pivot = pivots[0]!;
+      const graft = this.tryGraftAppend(pivot, availableWidth, availableHeight);
+      if (graft !== null) {
+        this.stats.graftRelayouts++;
+        const rs = this.built!.runtime.stats;
+        const survivorRoots = this.movedSubtreeRoots(graft.changed);
+        // CRITICAL: include graft.child explicitly. Its fields were
+        // computed via integrate() at graft time, not via recompute(),
+        // so they don't appear in `changed`. Without this, a simple-
+        // regime append (changed is empty) writes back NOTHING and
+        // the appended subtree ships with _layout = 0. The structural-
+        // differential fuzzer catches this.
+        const roots = [graft.child, ...survivorRoots.filter((r) => !isInSubtree(r, graft.child))];
+        this._lastTrace = {
+          path: 'graft',
+          dirtyNodes: dirty.length,
+          fieldsRecomputed: rs.recomputeVisited,
+          fieldsChanged: rs.recomputeChanged,
+          movedSubtrees: roots.length,
+        };
+        this.finishMoved(roots, []);
+        clearDirtyRegion(this.root);
+        return;
+      }
 
-    const detach = this.tryDetachRemove(availableWidth, availableHeight);
-    if (detach !== null) {
-      this.stats.detachRelayouts++;
-      const rs = this.built!.runtime.stats;
-      const survivorRoots = this.movedSubtreeRoots(detach.changed);
-      this._lastTrace = {
-        path: 'detach',
-        dirtyNodes: dirty.length,
-        fieldsRecomputed: rs.recomputeVisited,
-        fieldsChanged: rs.recomputeChanged,
-        movedSubtrees: survivorRoots.length,
-      };
-      // Survivors may be empty for simple-regime removes; explicitly
-      // include detach.parent so its scroll extent is recomputed.
-      this.finishMoved(survivorRoots, [detach.parent]);
-      clearDirtyRegion(this.root);
-      return;
-    }
+      const detach = this.tryDetachRemove(pivot, availableWidth, availableHeight);
+      if (detach !== null) {
+        this.stats.detachRelayouts++;
+        const rs = this.built!.runtime.stats;
+        const survivorRoots = this.movedSubtreeRoots(detach.changed);
+        this._lastTrace = {
+          path: 'detach',
+          dirtyNodes: dirty.length,
+          fieldsRecomputed: rs.recomputeVisited,
+          fieldsChanged: rs.recomputeChanged,
+          movedSubtrees: survivorRoots.length,
+        };
+        // Survivors may be empty for simple-regime removes; explicitly
+        // include detach.parent so its scroll extent is recomputed.
+        this.finishMoved(survivorRoots, [detach.parent]);
+        clearDirtyRegion(this.root);
+        return;
+      }
 
-    const reorder = this.tryReorder(availableWidth, availableHeight);
-    if (reorder !== null) {
-      this.stats.reorderRelayouts++;
-      const rs = this.built!.runtime.stats;
-      const movedRoots = this.movedSubtreeRoots(reorder.changed);
-      this._lastTrace = {
-        path: 'reorder',
-        dirtyNodes: dirty.length,
-        fieldsRecomputed: rs.recomputeVisited,
-        fieldsChanged: rs.recomputeChanged,
-        movedSubtrees: movedRoots.length,
-      };
-      this.finishMoved(movedRoots, [reorder.reordered]);
-      clearDirtyRegion(this.root);
-      return;
+      const reorder = this.tryReorder(pivot, availableWidth, availableHeight);
+      if (reorder !== null) {
+        this.stats.reorderRelayouts++;
+        const rs = this.built!.runtime.stats;
+        const movedRoots = this.movedSubtreeRoots(reorder.changed);
+        this._lastTrace = {
+          path: 'reorder',
+          dirtyNodes: dirty.length,
+          fieldsRecomputed: rs.recomputeVisited,
+          fieldsChanged: rs.recomputeChanged,
+          movedSubtrees: movedRoots.length,
+        };
+        this.finishMoved(movedRoots, [reorder.reordered]);
+        clearDirtyRegion(this.root);
+        return;
+      }
     }
 
     this.fullBuild(availableWidth, availableHeight);
@@ -418,77 +450,131 @@ export class SpinelessLayout {
 
   /**
    * Fast-path a structural change that is exactly a single child
-   * append: `buildAppendFragment` + `graft`, no whole-tree rebuild.
-   * Returns `null` (and changes nothing) when the change is not a
-   * clean append the fast-path covers — the caller then rebuilds.
+   * append at `pivot`: `buildAppendFragment` + `graft`, no whole-tree
+   * rebuild. Returns `null` (and changes nothing) when the change is
+   * not a clean append the fast-path covers — the caller then tries
+   * the next fast-path / rebuilds.
+   *
+   * The classifier supplies `pivot` — a dirty node whose snapshot
+   * exists (so sig / measure are unchanged) and whose children list
+   * differs from its snap's. The validator inspects ONLY pivot's
+   * children, not the whole tree.
    */
   private tryGraftAppend(
+    pivot: Node,
     availableWidth?: number,
     availableHeight?: number,
   ): { child: Node; changed: Array<Field<unknown>> } | null {
     const built = this.built!;
     const snaps = built.snaps;
+    const snap = snaps.get(pivot)!;
 
-    // Walk the current tree; no previously-snapshotted node may be
-    // gone (a removal is not an append), and at least one must be new.
-    const curNodes = new Set<Node>();
-    (function visit(n: Node): void {
-      curNodes.add(n);
-      for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
-    })(this.root);
-    for (const n of snaps.keys()) {
-      if (!curNodes.has(n)) return null;
-    }
-    const added: Node[] = [];
-    for (const n of curNodes) {
-      if (!snaps.has(n)) added.push(n);
-    }
-    if (added.length === 0) return null;
-
-    // No surviving node's signature / measure may have changed —
-    // `graft` patches only the append.
-    for (const [n, snap] of snaps) {
-      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return null;
-    }
-
-    // The added nodes must form exactly one subtree — its root is the
-    // unique added node whose parent is not itself added.
-    const addedSet = new Set(added);
-    let child: Node | null = null;
-    for (const n of added) {
-      const p = n.getParent();
-      if (p === null || !addedSet.has(p)) {
-        if (child !== null) return null; // two separate appends
-        child = n;
+    // Pivot's live children must be its snapped children with exactly
+    // ONE inserted child (anywhere — last for simple regime, mid-list
+    // for non-simple). Walk pivot's children positionally —
+    // O(pivot's children), not O(tree).
+    const live = pivot.getChildCount();
+    const snapped = snap.children.length;
+    if (live !== snapped + 1) return null;
+    // Find the insertion index: the first position where pivot's live
+    // child diverges from snap. After the new child, the tail must
+    // match the rest of the snap.
+    let insertAt = snapped; // default: appended at the end
+    for (let i = 0; i < snapped; i++) {
+      if (pivot.getChild(i) !== snap.children[i]) {
+        insertAt = i;
+        break;
       }
     }
-    if (child === null) return null;
-    const parent = child.getParent();
-    if (parent === null) return null;
+    // Verify the tail past the insertion matches.
+    for (let i = insertAt; i < snapped; i++) {
+      if (pivot.getChild(i + 1) !== snap.children[i]) return null;
+    }
+    const child = pivot.getChild(insertAt)!;
     // A change inside a `display: 'none'` subtree: the hidden region
     // has no grammar fields to graft onto. A node with no entry in
     // `fields` is hidden (or under a hidden ancestor) — fall back to
     // a rebuild, which correctly skips the whole hidden subtree.
-    if (!built.fields.has(parent)) return null;
+    if (!built.fields.has(pivot)) return null;
 
-    const fragment = buildAppendFragment(built.output, this.root, parent, child, built.available);
+    // Every other dirty-with-no-snap node must be a descendant of
+    // `child` (i.e. the appended subtree). The classifier already
+    // collected them; if any escaped this subtree, it would be an
+    // independent append elsewhere — handled by the multi-pivot
+    // fullBuild fallback, but a single-pivot append must be tight.
+    //
+    // Verifying this requires walking just the appended subtree:
+    // O(added subtree).
+    const subtreeMembers = new Set<Node>();
+    {
+      const stack: Node[] = [child];
+      while (stack.length > 0) {
+        const n = stack.pop()!;
+        subtreeMembers.add(n);
+        for (let i = 0; i < n.getChildCount(); i++) stack.push(n.getChild(i)!);
+      }
+    }
+
+    const fragment = buildAppendFragment(built.output, this.root, pivot, child, built.available);
     if (fragment === null) return null;
 
     built.runtime.graft(fragment.additions, fragment.newRoots);
-    for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
+    for (const [rf, rule] of fragment.rebinds) built.runtime.rebindRule(rf, rule);
     built.output = fragment.next;
-    built.inputs = collectInputs(fragment.next.grammar, built.runtime);
-    built.snaps = captureSnaps(this.root);
-    const idx = indexFields(fragment.next);
-    built.fields = idx.fields;
-    built.owner = idx.owner;
+
+    // Incremental bookkeeping (Part C):
+    //
+    // `built.snaps` — update pivot's snap (children list changed) and
+    // add a fresh snap for every node in the appended subtree.
+    built.snaps.set(pivot, freshSnap(pivot));
+    captureSnapsInto(child, built.snaps);
+
+    // `built.fields` / `built.owner` — every new layout field belongs
+    // to a node in the appended subtree. Walk the subtree and gather
+    // each node's four layout fields from `fragment.additions`. A
+    // `display: 'none'` descendant has no fields (it isn't in
+    // additions for its layout-field keys); skip it.
+    for (const n of subtreeMembers) {
+      if (n.style.display === 'none') continue;
+      const w = field<number>(n, 'width');
+      const h = field<number>(n, 'height');
+      const l = field<number>(n, 'left');
+      const t = field<number>(n, 'top');
+      if (!fragment.next.grammar.has(w as Field<unknown>)) continue;
+      built.fields.set(n, { width: w, height: h, left: l, top: t });
+      built.owner.set(w as Field<unknown>, n);
+      built.owner.set(h as Field<unknown>, n);
+      built.owner.set(l as Field<unknown>, n);
+      built.owner.set(t as Field<unknown>, n);
+    }
+
+    // `built.inputs` — add new leaf input fields from additions. For
+    // simple regime nothing existing changes tracking, so this is
+    // additive. For non-simple regime, existing inputs may have just
+    // become tracked (e.g. the previous last child's main-END
+    // margin); the runtime's tracking is post-graft, so filter the
+    // OLD list to only tracked + add new tracked leaves.
+    if (fragment.rebinds.length === 0) {
+      // Simple regime: no existing input changed tracking — just
+      // append the new tracked leaves.
+      for (const [f, rule] of fragment.additions) {
+        if (rule.deps.length === 0 && built.runtime.isTracked(f)) {
+          built.inputs.push(f);
+        }
+      }
+    } else {
+      // Non-simple regime: existing inputs may have gained or lost
+      // tracking. The cheapest correct update is a full recompute
+      // (same cost as the fragment builder's O(tree) rebuild).
+      built.inputs = collectInputs(fragment.next.grammar, built.runtime);
+    }
 
     // Pick up any value mutations in the same gap, then recompute
     // (covering the grafted / rebound fields too).
     this.applyAvailable(availableWidth, availableHeight);
-    for (const field of built.inputs) {
-      if (built.output.grammar.get(field)!.compute(NEVER_READ) !== built.runtime.evaluate(field)) {
-        built.runtime.markDirty(field);
+    for (const f of built.inputs) {
+      if (built.output.grammar.get(f)!.compute(NEVER_READ) !== built.runtime.evaluate(f)) {
+        built.runtime.markDirty(f);
       }
     }
     const changed = built.runtime.recompute();
@@ -497,9 +583,10 @@ export class SpinelessLayout {
 
   /**
    * Fast-path a structural change that is exactly a single subtree
-   * removal: `buildRemoveFragment` + `rebindRule` / `detach`, no
-   * whole-tree rebuild. Returns `false` (changing nothing) when the
-   * change is not a clean removal — the caller then rebuilds.
+   * removal at `pivot`: `buildRemoveFragment` + `rebindRule` /
+   * `detach`, no whole-tree rebuild. Returns `null` (changing nothing)
+   * when the change is not a clean removal — the caller then tries
+   * the next fast-path / rebuilds.
    *
    * `buildRemoveFragment` must see the removed `child` still attached
    * (its regime check reads the parent's live child list and it walks
@@ -507,185 +594,192 @@ export class SpinelessLayout {
    * runs the caller has already detached it — so the removed subtree
    * is briefly re-inserted at its old index for the fragment build,
    * then detached again.
+   *
+   * The classifier supplies `pivot` — the parent whose children list
+   * differs from its snap's. The validator inspects ONLY pivot's
+   * children, not the whole tree.
    */
   private tryDetachRemove(
+    pivot: Node,
     availableWidth?: number,
     availableHeight?: number,
   ): { parent: Node; changed: Array<Field<unknown>> } | null {
     const built = this.built!;
     const snaps = built.snaps;
+    const snap = snaps.get(pivot)!;
+    const snapChildren = snap.children;
 
-    // Walk the current tree. No previously-snapshotted node may be new
-    // (an addition is not a removal); at least one must be gone.
-    const curNodes = new Set<Node>();
-    (function visit(n: Node): void {
-      curNodes.add(n);
-      for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
-    })(this.root);
-    for (const n of curNodes) {
-      if (!snaps.has(n)) return null;
+    // Pivot's live children must be its snapped children with exactly
+    // one contiguous removal. Walk pivot's children positionally —
+    // O(pivot's children), not O(tree).
+    const liveCount = pivot.getChildCount();
+    const snappedCount = snapChildren.length;
+    if (liveCount >= snappedCount) return null;
+    // Find the index where they diverge; this is the start of the
+    // removed run.
+    let removedStart = 0;
+    while (
+      removedStart < liveCount &&
+      pivot.getChild(removedStart) === snapChildren[removedStart]
+    ) {
+      removedStart++;
     }
-    const removed: Node[] = [];
-    for (const n of snaps.keys()) {
-      if (!curNodes.has(n)) removed.push(n);
+    const removedCount = snappedCount - liveCount;
+    // Verify the snapped tail past the removed run still matches the
+    // live tail.
+    for (let i = removedStart; i < liveCount; i++) {
+      if (pivot.getChild(i) !== snapChildren[i + removedCount]) return null;
     }
-    if (removed.length === 0) return null;
-
-    // No surviving node's signature / measure may have changed —
-    // `detach` patches only the removal.
-    for (const [n, snap] of snaps) {
-      if (!curNodes.has(n)) continue;
-      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return null;
-    }
-
-    // The snapped child -> parent map — the live tree no longer holds
-    // the removed nodes' edges.
-    const snapParent = new Map<Node, Node>();
-    for (const [n, snap] of snaps) {
-      for (const c of snap.children) snapParent.set(c, n);
-    }
-
-    // The removed nodes must form exactly one subtree — its root is
-    // the unique removed node whose snapped parent is not itself
-    // removed; that parent must survive.
-    const removedSet = new Set(removed);
-    let child: Node | null = null;
-    for (const n of removed) {
-      const p = snapParent.get(n);
-      if (p === undefined || !removedSet.has(p)) {
-        if (child !== null) return null; // two separate removals
-        child = n;
-      }
-    }
-    if (child === null) return null;
-    const parent = snapParent.get(child);
-    if (parent === undefined || !curNodes.has(parent)) return null;
+    // Single-child removal: simple-regime requirement. (A wider
+    // contiguous removal would still be a valid fragment for
+    // non-simple regime, but the fragment builder is single-`child`
+    // only, so split-merge runs fall through to fullBuild.)
+    if (removedCount !== 1) return null;
+    const child = snapChildren[removedStart]!;
     // A removal inside a `display: 'none'` subtree: the hidden region
     // has no fields to `detach`. A node absent from `fields` is hidden
     // (or under a hidden ancestor) — rebuild instead.
-    if (!built.fields.has(parent)) return null;
+    if (!built.fields.has(pivot)) return null;
 
-    // `removed` must be exactly `child`'s snapped subtree.
-    let subtreeCount = 0;
-    (function count(n: Node): void {
-      subtreeCount++;
-      for (const c of snaps.get(n)!.children) count(c);
-    })(child);
-    if (subtreeCount !== removed.length) return null;
-
-    // `parent`'s current children must be its snapped children with
-    // `child` spliced out — so re-inserting `child` at `idx` restores
-    // the exact pre-removal tree for `buildRemoveFragment`.
-    const snapChildren = snaps.get(parent)!.children;
-    const idx = snapChildren.indexOf(child);
-    if (idx === -1 || parent.getChildCount() !== snapChildren.length - 1) return null;
-    for (let i = 0, j = 0; i < snapChildren.length; i++) {
-      if (snapChildren[i] === child) continue;
-      if (parent.getChild(j) !== snapChildren[i]) return null;
-      j++;
+    // The removed subtree's nodes must still be reachable from
+    // `child` through SNAP edges (the live tree no longer has them).
+    // Collect them via DFS over snaps.
+    const removedNodes = new Set<Node>();
+    {
+      const stack: Node[] = [child];
+      while (stack.length > 0) {
+        const n = stack.pop()!;
+        removedNodes.add(n);
+        const cs = snaps.get(n);
+        if (cs !== undefined) for (const c of cs.children) stack.push(c);
+      }
     }
 
     // Re-attach `child` for the fragment build, then detach it again.
-    parent.insertChild(child, idx);
-    const fragment = buildRemoveFragment(built.output, this.root, parent, child, built.available);
-    parent.removeChild(child);
+    pivot.insertChild(child, removedStart);
+    const fragment = buildRemoveFragment(built.output, this.root, pivot, child, built.available);
+    pivot.removeChild(child);
     if (fragment === null) return null;
 
     // Apply: rebind survivors FIRST (so they stop reading the removed
     // fields), then `detach`, then adopt the next grammar.
-    for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
+    for (const [f, rule] of fragment.rebinds) built.runtime.rebindRule(f, rule);
     built.runtime.detach(fragment.removed);
     built.output = fragment.next;
-    built.inputs = collectInputs(fragment.next.grammar, built.runtime);
-    built.snaps = captureSnaps(this.root);
-    const ix = indexFields(fragment.next);
-    built.fields = ix.fields;
-    built.owner = ix.owner;
+
+    // Incremental bookkeeping (Part C):
+    //
+    // `built.snaps` — update pivot's snap (children list changed) and
+    // drop the removed subtree's snaps.
+    built.snaps.set(pivot, freshSnap(pivot));
+    for (const n of removedNodes) built.snaps.delete(n);
+
+    // `built.fields` / `built.owner` — drop the removed subtree's
+    // entries. Each removed node may have had `display: 'none'` (no
+    // entry) or normal layout fields — `built.fields.delete` on a
+    // missing key is harmless; `built.owner.delete` likewise.
+    for (const n of removedNodes) {
+      const lf = built.fields.get(n);
+      if (lf !== undefined) {
+        built.owner.delete(lf.width as Field<unknown>);
+        built.owner.delete(lf.height as Field<unknown>);
+        built.owner.delete(lf.left as Field<unknown>);
+        built.owner.delete(lf.top as Field<unknown>);
+        built.fields.delete(n);
+      }
+    }
+
+    // `built.inputs` — drop inputs whose owning field is no longer
+    // tracked. `runtime.detach` also auto-cleans orphan leaf inputs
+    // (e.g. a survivor's now-unread main-end margin), so a Set-based
+    // filter over `fragment.removed` alone would miss those; ask the
+    // runtime directly via `isTracked`. O(|built.inputs|).
+    built.inputs = built.inputs.filter((f) => built.runtime.isTracked(f));
 
     // Pick up any value mutations in the same batch, then recompute.
     this.applyAvailable(availableWidth, availableHeight);
-    for (const field of built.inputs) {
-      if (built.output.grammar.get(field)!.compute(NEVER_READ) !== built.runtime.evaluate(field)) {
-        built.runtime.markDirty(field);
+    for (const f of built.inputs) {
+      if (built.output.grammar.get(f)!.compute(NEVER_READ) !== built.runtime.evaluate(f)) {
+        built.runtime.markDirty(f);
       }
     }
     const changed = built.runtime.recompute();
-    return { parent, changed };
+    return { parent: pivot, changed };
   }
 
   /**
-   * Fast-path a structural change that is exactly one parent's
-   * children being reordered (a permutation — no node added or
-   * removed): `buildReorderFragment` + `rebindRule`, no whole-tree
-   * rebuild. Returns `null` (changing nothing) when the change is
-   * not a clean single-parent reorder — the caller then rebuilds.
+   * Fast-path a structural change that is exactly `pivot`'s children
+   * being reordered (a permutation — no node added or removed):
+   * `buildReorderFragment` + `rebindRule`, no whole-tree rebuild.
+   * Returns `null` (changing nothing) when the change is not a clean
+   * single-parent reorder — the caller then rebuilds.
+   *
+   * The classifier supplies `pivot` — the single node whose children
+   * list differs from its snap's. The validator inspects ONLY pivot's
+   * children, not the whole tree.
    */
   private tryReorder(
+    pivot: Node,
     availableWidth?: number,
     availableHeight?: number,
   ): { reordered: Node; changed: Array<Field<unknown>> } | null {
     const built = this.built!;
-    const snaps = built.snaps;
+    const snap = built.snaps.get(pivot)!;
 
-    // The node set must be unchanged — no addition, no removal.
-    const curNodes = new Set<Node>();
-    (function visit(n: Node): void {
-      curNodes.add(n);
-      for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
-    })(this.root);
-    if (curNodes.size !== snaps.size) return null;
-    for (const n of curNodes) {
-      if (!snaps.has(n)) return null;
-    }
-
-    // Every node's signature / measure must be unchanged, and exactly
-    // one node's child ORDER may differ — the reordered parent.
-    let reordered: Node | null = null;
-    for (const [n, snap] of snaps) {
-      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return null;
-      if (!childrenUnchanged(snap, n)) {
-        if (reordered !== null) return null; // two changed parents — not one reorder
-        reordered = n;
-      }
-    }
-    if (reordered === null) return null;
-
-    // `reordered`'s children must be a permutation of the snapped
-    // set (same count, same members) — otherwise it is an add/remove.
-    const before = snaps.get(reordered)!.children;
-    if (before.length !== reordered.getChildCount()) return null;
+    // Pivot's children must be a permutation of the snapped set
+    // (same count, same members). Otherwise it is an add/remove —
+    // tryGraftAppend / tryDetachRemove would have caught it.
+    const before = snap.children;
+    if (before.length !== pivot.getChildCount()) return null;
     const beforeSet = new Set(before);
-    for (let i = 0; i < reordered.getChildCount(); i++) {
-      if (!beforeSet.has(reordered.getChild(i)!)) return null;
+    for (let i = 0; i < pivot.getChildCount(); i++) {
+      if (!beforeSet.has(pivot.getChild(i)!)) return null;
     }
 
     // A reorder inside a `display: 'none'` subtree touches no laid-out
     // node — the hidden region has no fields. Rebuild instead.
-    if (!built.fields.has(reordered)) return null;
+    if (!built.fields.has(pivot)) return null;
 
-    const fragment = buildReorderFragment(built.output, this.root, reordered, built.available);
+    const fragment = buildReorderFragment(built.output, this.root, pivot, built.available);
     // Order: integrate the newly-read inputs, rebind the rewritten
     // rules (their new deps are now all present), then detach the
     // inputs no rebound rule reads any more.
     built.runtime.graft(fragment.additions, fragment.newRoots);
-    for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
+    for (const [f, rule] of fragment.rebinds) built.runtime.rebindRule(f, rule);
     if (fragment.removed.length > 0) built.runtime.detach(fragment.removed);
     built.output = fragment.next;
-    built.inputs = collectInputs(fragment.next.grammar, built.runtime);
-    built.snaps = captureSnaps(this.root);
-    const ix = indexFields(fragment.next);
-    built.fields = ix.fields;
-    built.owner = ix.owner;
+
+    // Incremental bookkeeping (Part C):
+    //
+    // `built.snaps` — pivot's children list changed; everything else
+    // stayed put. Update just pivot's snap.
+    built.snaps.set(pivot, freshSnap(pivot));
+    // `built.fields` / `built.owner` — the same nodes own the same
+    // four layout fields they did before; no entry adds or drops.
+    // (Field identity is stable across grammar rebuilds.)
+    //
+    // `built.inputs` — a reorder can newly-track or newly-untrack
+    // sibling main-end margins (`additions` / `removed`). Update
+    // incrementally.
+    if (fragment.removed.length > 0) {
+      const removedFields = new Set<Field<unknown>>(fragment.removed);
+      built.inputs = built.inputs.filter((f) => !removedFields.has(f));
+    }
+    for (const [f, rule] of fragment.additions) {
+      if (rule.deps.length === 0 && built.runtime.isTracked(f)) {
+        built.inputs.push(f);
+      }
+    }
 
     // Pick up any value mutations in the same batch, then recompute.
     this.applyAvailable(availableWidth, availableHeight);
-    for (const field of built.inputs) {
-      if (built.output.grammar.get(field)!.compute(NEVER_READ) !== built.runtime.evaluate(field)) {
-        built.runtime.markDirty(field);
+    for (const f of built.inputs) {
+      if (built.output.grammar.get(f)!.compute(NEVER_READ) !== built.runtime.evaluate(f)) {
+        built.runtime.markDirty(f);
       }
     }
     const changed = built.runtime.recompute();
-    return { reordered, changed };
+    return { reordered: pivot, changed };
   }
 
   /**
@@ -708,13 +802,13 @@ export class SpinelessLayout {
     for (const n of dirty) inputFieldsOf(built.output.styleInputs.get(n), fields);
 
     const { runtime, output } = built;
-    for (const field of fields) {
+    for (const f of fields) {
       // `styleInputs` can hold an input Field no rule reads (e.g. a
       // flex-start container's main-END padding) — untracked, and a
       // change to it cannot move any layout field. Skip it.
-      if (!runtime.isTracked(field)) continue;
-      const live = output.grammar.get(field)!.compute(NEVER_READ);
-      if (live !== runtime.evaluate(field)) runtime.markDirty(field);
+      if (!runtime.isTracked(f)) continue;
+      const live = output.grammar.get(f)!.compute(NEVER_READ);
+      if (live !== runtime.evaluate(f)) runtime.markDirty(f);
     }
 
     return this.movedSubtreeRoots(runtime.recompute());
