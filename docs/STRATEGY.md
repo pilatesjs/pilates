@@ -56,8 +56,8 @@ language ecosystems entirely.
 
 **Pilates' positioning is the unbundled, faster alternative to Ink in
 the JS/TS niche.** Faster matters: Pilates is faster than WASM Yoga on
-every benchmarked workload (see `bench/RESULTS.md` and the Performance
-section of the root README), including the hot-relayout pattern Yoga
+every flex-layout workload (see `bench/RESULTS.md` and the Performance
+section of the root README), including every hot-relayout shape Yoga
 historically won on.
 
 ## What Pilates actually offers vs. Ink / Yoga / OpenTUI
@@ -71,12 +71,15 @@ The wedge is *decoupling + speed + scope*, not "better DX yet":
 
 2. **Faster than WASM Yoga at TUI tree sizes.** Pure-TS layout
    engine, no `WebAssembly.compile` startup cost, no JS↔WASM
-   marshalling on every layout pass. Three perf phases shipped in
-   2026-05 (measure-cache, layout-cache, relayout-boundaries) bring
-   Pilates 7–10× faster than Yoga on tree-build-then-layout AND
-   ~7× faster on the hot-relayout pattern (long-lived tree, mutate
-   one leaf per frame) that Yoga had previously won. Validated
-   cell-for-cell against Yoga across 33 oracle fixtures plus a
+   marshalling on every layout pass. The May 2026 perf-hardening
+   work (measure-cache, layout-cache, relayout-boundaries) plus the
+   Spineless incremental engine (phases 8–12) bring Pilates **5–9×
+   faster than Yoga on tree-build-then-layout AND ~3× faster on
+   every hot-relayout shape** — fully fluid trees, explicit-sized
+   container boundaries, and fixed-size text-mutation tables alike.
+   Yoga had won the hot-relayout pattern for years; phase 12 was the
+   refactor that flipped it. Validated cell-for-cell against Yoga
+   across 33 oracle fixtures plus a
    500-runs/CI property-based fuzzer that compares cached vs.
    cold layouts on randomly-generated trees.
 
@@ -154,13 +157,25 @@ Ordered roughly by ship date. All on npm; no public API breakages.
   competitive numbers on identical-input replays but didn't help
   hot-relayout (root dirties on every mutation; layout cache only
   reads on root cache hits).
+- **Spineless incremental engine — phases 8–12 (2026-05).** A
+  full attribute-grammar + Order-Maintenance + priority-queue rewrite
+  of the layout core, wired into the public `calculateLayout` as the
+  hot-relayout path. Phase 8 swapped the engine and broke the
+  imperative-cache boundary win temporarily; phase 12 refactored the
+  flex-distribution grammar (O(N²) → O(N) per row) and recovered the
+  hot-relayout headline — this time across **every** hot-relayout
+  shape, not just boundary trees. Validated by structural and value
+  differential fuzzers (no behavior change vs imperative path). New
+  public API: `setLayoutProfiler`, `LayoutProfiler`, `LayoutTrace`,
+  `inspectLayout`, `calculateLayoutImperative`.
 - **Perf hardening Phase 3 (2026-05-09).** Flutter-style relayout
   boundaries: a node with explicit `width` AND `height` AND default
   flex grow/shrink stops the upward `markDirty` propagation;
   `_hasDirtyDescendant` flag turns the root cache-hit path from
-  O(N) to O(dirty subtree). **Pilates is now ~7× faster than WASM Yoga
-  on hot-relayout** when consumers structure trees with explicit-sized
-  containers (the idiomatic TUI pattern). Public API unchanged.
+  O(N) to O(dirty subtree). At the time, this brought hot-relayout
+  from a Yoga win to a Pilates ~7× win, conditional on explicit-sized
+  containers. The Spineless engine (phases 8–12 above) later generalised
+  the win to every hot-relayout shape. Public API unchanged.
 - **`@pilates/core` 1.0.0, `@pilates/render` 1.0.0, `@pilates/diff`
   0.2.0 promoted to GA (2026-05-09).** Three perf phases on top of
   rc.2 with no public API change cleared the API-stability bar. Live

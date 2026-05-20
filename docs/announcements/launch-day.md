@@ -46,24 +46,28 @@ oracle fixtures plus a 500-runs-per-CI property fuzzer.
 
 Bench numbers (mean per-pass on darwin/arm64, Node 26, lower is better):
 
-  10 nodes:           1.5µs   vs Yoga 15.1µs  (10×)
-  100 nodes:          29µs    vs Yoga 263µs   (9×)
-  1k nodes:           0.17ms  vs Yoga 1.52ms  (9×)
-  10k nodes:          2.16ms  vs Yoga 14.6ms  (7×)
-  1k, mutate 1/frame: 129µs   vs Yoga 56µs    (Yoga wins ~2.3×)
-  Same + boundaries:  7.1µs   vs Yoga 51µs    (7×)
+  10 nodes:                2.9µs    vs Yoga 15.4µs  (5×)
+  100 nodes:               32µs     vs Yoga 268µs   (8×)
+  1k nodes:                0.18ms   vs Yoga 1.56ms  (9×)
+  10k nodes:               2.40ms   vs Yoga 15.3ms  (6×)
+  1k, mutate 1/frame:      19.1µs   vs Yoga 57.9µs  (3×)
+  Same + boundaries:       18.5µs   vs Yoga 51.5µs  (3×)
+  Same + fixed-size cells: 20.1µs   vs Yoga 47.0µs  (2.3×)
 
-The last row is this week's headline: a node with explicit width AND height
-(common TUI pattern — fixed-height rows, sidebars) acts as a Flutter-style
-relayout boundary, stopping dirty propagation. Combined with subtree
-dirty-tracking, the cache-hit path is O(dirty), not O(N). Closes the one
-workload Yoga used to win.
+The bottom three rows are the headline. Pilates ships an incremental
+layout engine ("Spineless"): a flex grammar where each layout field
+declares its dependencies on others, plus a runtime that on a mutation
+re-evaluates only the fields actually downstream. Per-row flex work
+drops from O(N²) to O(N). Pilates now wins every hot-relayout shape —
+fully fluid trees, explicit-sized rows, and fixed-size text-mutation
+tables alike. The "workload Yoga used to win" caveat is gone.
 
 Reproduce: git clone github.com/pilatesjs/pilates && pnpm install && pnpm bench
 
-Happy to answer questions about the cache-correctness work — three subtle
-bugs surfaced during Phase 2/3 that careful reasoning got wrong, and the
-differential-mode fuzzer caught all of them.
+Happy to answer questions about the validation work — the structural
+fuzzer found four real bugs careful design review missed, and a known
+regression in phase 8 (the engine swap) required phase 12's targeted
+grammar refactor to recover the headline win across the entire matrix.
 ```
 
 ---
@@ -75,9 +79,9 @@ Four tweets, each a reply to the previous one.
 ### Tweet 1
 
 ```
-Pilates 1.0 is out. Pure-TS terminal-UI flex layout engine, validated cell-for-cell against WASM Yoga across 33 fixtures + a 500-run-per-CI property fuzzer.
+Pilates 1.1 is out. Pure-TS terminal-UI flex layout engine, validated cell-for-cell against WASM Yoga across 33 fixtures + structural-and-value differential fuzzers.
 
-Phase 3 just landed: relayout boundaries. Pilates now beats Yoga 7× on the hot-relayout pattern Yoga used to win on.
+Spineless incremental engine landed. Pilates now beats Yoga ~3× on every hot-relayout shape — the workloads Yoga used to win.
 
 github.com/pilatesjs/pilates
 ```
@@ -87,27 +91,27 @@ github.com/pilatesjs/pilates
 ```
 Pure-TS layout engine vs WASM Yoga, mean latency (darwin/arm64):
 
-· 10 nodes: 1.5µs vs 15µs (10×)
-· 100 nodes: 29µs vs 263µs (9×)
-· 1k nodes: 0.17ms vs 1.52ms (9×)
-· 10k nodes: 2.16ms vs 14.6ms (7×)
-· hot-relayout w/ boundaries: 7.1µs vs 51µs (7×)
+· 10 nodes: 2.9µs vs 15.4µs (5×)
+· 100 nodes: 32µs vs 268µs (8×)
+· 1k nodes: 0.18ms vs 1.56ms (9×)
+· 10k nodes: 2.40ms vs 15.3ms (6×)
+· hot-relayout (1k persistent, mutate one leaf/frame): 19.1µs vs 57.9µs (3×)
 
-JS↔WASM call overhead dominates Yoga's compute advantage at TUI sizes.
+JS↔WASM call overhead + incremental field propagation beat WASM compute at TUI sizes.
 ```
 
 ### Tweet 3 (reply to #2)
 
 ```
-Tip from a week of cache work: when your property-based fuzzer disagrees with your theoretical analysis, the fuzzer wins. Three subtle correctness bugs surfaced during the Pilates layout-cache work. Differential testing (cached vs cold paths byte-identical) caught all three.
+Tip from a year of engine work: when your property-based fuzzer disagrees with your theoretical analysis, the fuzzer wins. The structural fuzzer found 4 real bugs careful design review missed. Differential testing (incremental vs cold byte-identical) caught them all.
 ```
 
 ### Tweet 4 (reply to #3)
 
 ```
-If you write CLI tools or interactive terminals in JavaScript and have ever wished the layout engine wasn't WASM, Pilates is for you. 0 deps, pure TS, faster than Yoga.
+If you write CLI tools or interactive terminals in JavaScript and have ever wished the layout engine wasn't WASM, Pilates is for you. 0 deps, pure TS, faster than Yoga on every flex-layout workload.
 
-npm i @pilates/core (1.0 live), npm i @pilates/react for the React layer.
+npm i @pilates/core, npm i @pilates/react, or npm create pilates-app for a starter.
 
 github.com/pilatesjs/pilates
 ```
@@ -145,12 +149,13 @@ Take just the engine if you want to drive a non-React runtime (Vue, Solid, vanil
 
 | Scenario | Pilates | yoga-layout (WASM) | Speedup |
 |---|---:|---:|---:|
-| 10 nodes | 1.5µs | 15.1µs | 10× |
-| 100 nodes | 29µs | 263µs | 9× |
-| 1k nodes | 0.17ms | 1.52ms | 9× |
-| 10k nodes | 2.16ms | 14.6ms | 7× |
-| 1k tree, mutate 1 leaf/frame | 129µs | 56µs | Yoga wins ~2.3× |
-| Same + explicit-sized boundaries | 7.1µs | 51µs | 7× |
+| 10 nodes | 2.9µs | 15.4µs | 5× |
+| 100 nodes | 32µs | 268µs | 8× |
+| 1k nodes | 0.18ms | 1.56ms | 9× |
+| 10k nodes | 2.40ms | 15.3ms | 6× |
+| 1k tree, mutate 1 leaf/frame | 19.1µs | 57.9µs | 3× |
+| Same + explicit-sized boundaries | 18.5µs | 51.5µs | 3× |
+| Same + fixed-size cells (text mutation) | 20.1µs | 47.0µs | 2.3× |
 
 The last row is this week's headline: explicit-sized container nodes act as Flutter-style relayout boundaries, stopping dirty propagation. Closes the one workload Yoga used to win.
 
@@ -193,7 +198,7 @@ The split is the product. You can:
 
 (Or `pnpm --filter @pilates-examples/react-build-dashboard dev` from a clone.)
 
-**Why pure TS:** Most JS TUI libraries (Ink, OpenTUI) layer on top of WASM Yoga for layout. That's fast compute but every property setter crosses the JS↔WASM boundary, and at terminal tree sizes the marshalling cost dominates. Pilates avoids the bridge — typically 7–10× faster than Yoga on the same workload.
+**Why pure TS:** Most JS TUI libraries (Ink, OpenTUI) layer on top of WASM Yoga for layout. That's fast compute but every property setter crosses the JS↔WASM boundary, and at terminal tree sizes the marshalling cost dominates. Pilates avoids the bridge — typically 5–9× faster than Yoga on the same workload, plus the Spineless incremental engine that wins every hot-relayout shape.
 
 Repo + benchmarks: https://github.com/pilatesjs/pilates
 
