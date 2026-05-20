@@ -6,6 +6,40 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.4.0] — 2026-05-20
+
+### Layout devtools
+
+First consumer of the `@pilates/core` `1.1.0` layout profiler API — an
+in-TUI overlay that visualises which layout path each frame took and
+how much incremental work it did. Useful for debugging perf-sensitive
+TUIs and for confirming the Spineless incremental engine is on its
+fast path in your tree.
+
+- **Added** `useLayoutProfiler()` hook — returns
+  `{ last: LayoutTrace | null; history: LayoutTrace[]; totals:
+  Record<LayoutTrace['path'], number> }`. Subscribes via
+  `setLayoutProfiler` on mount, unsubscribes on unmount. Ref-counted:
+  multiple consumers share one subscription.
+- **Added** `<LayoutDevtools>` component — an absolute-positioned
+  overlay panel showing the current engine path, dirty/changed field
+  counts, moved-subtree count, and a path-distribution sparkline of
+  the last N traces. Self-sizing (the panel doesn't depend on parent
+  flex distribution); place anywhere in your tree.
+- **Added** `sparkline(values: number[], width?: number)` helper —
+  reusable Unicode block-char sparkline for terminal contexts.
+- **Added** Exports: `useLayoutProfiler`, `LayoutDevtools`,
+  `LayoutDevtoolsProps`, `sparkline`.
+
+Re-exports the `@pilates/core` profiler types (`LayoutTrace`,
+`LayoutProfiler`) so consumers don't need a separate `@pilates/core`
+import for typings.
+
+### Dependency
+
+- **Bumped** `@pilates/core` peer to `^1.1.0` (required for the layout
+  profiler API).
+
 ## [0.3.0] — 2026-05-07
 
 ### Mouse support

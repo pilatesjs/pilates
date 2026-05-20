@@ -6,6 +6,128 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [1.1.0] — 2026-05-20
+
+The `@pilates/core` 1.1.0 milestone. **The Spineless incremental
+layout engine** — an attribute-grammar + Order-Maintenance +
+priority-queue rewrite of the hot-relayout path — now drives every
+second-and-later layout of a persistent tree. Combined with the
+phase-12 flex-distribution grammar refactor, Pilates is now faster
+than WASM Yoga on **every hot-relayout shape**, not just the
+boundary-tree special case the prior release shipped: ~3× faster
+across fully-fluid trees, explicit-sized rows, and fixed-size
+text-mutation tables alike.
+
+Layout output is byte-identical to 1.0.x — validated cell-for-cell
+against Yoga (33 oracle fixtures) and incrementally vs. cold-recompute
+(value-differential fuzzer + structural-differential fuzzer, both
+running on every CI build).
+
+The release is additive. No public-API change is required to benefit;
+existing trees pick up the new engine on upgrade.
+
+### Added (public API)
+
+- `setLayoutProfiler(listener: LayoutProfiler | null)` — observability
+  hook called once per `calculateLayout` with the `Node` root and a
+  `LayoutTrace` describing the engine path taken and the dirty/changed
+  field counts. Passing `null` clears it. Pay-for-what-you-use: when
+  no listener is installed, the trace object is not even allocated for
+  the imperative-path branch.
+- `LayoutProfiler` type — `(root: Node, trace: LayoutTrace) => void`.
+- `LayoutTrace` interface — `{ path: 'imperative' | 'build' | 'graft' |
+  'detach' | 'reorder' | 'incremental'; dirtyNodes: number;
+  fieldsRecomputed: number; fieldsChanged: number; movedSubtrees: number }`.
+- `inspectLayout(root: Node)` — devtools console-dump of the most
+  recent layout trace + tree state. Convenience wrapper over
+  `lastLayoutPath` + per-node `_layout` reads.
+- `calculateLayoutImperative(root, availableWidth?, availableHeight?)` —
+  the imperative algorithm + its per-node layout cache directly,
+  bypassing the Spineless default. `@internal` (the public
+  `calculateLayout` routes through Spineless); exposed for the
+  imperative cache's own tests + tooling that needs the cold path.
+
+### Changed (engine, behavior-preserving)
+
+- **`calculateLayout` is now a router.** First (cold) layout of a root
+  goes through the imperative algorithm. Second-and-later layouts of a
+  persistent root adopt a `SpinelessLayout` driver and stay on the
+  incremental path. The router is keyed by `Node` identity through a
+  `WeakMap`; a dropped root takes its engine state with it.
+- **`hotrelayout` (no boundaries) is now a Pilates win**, ~3× faster
+  than Yoga. It was a Yoga win across the project's history until
+  this release.
+- **`hotrelayoutboundary` margin shrinks**, ~9× → ~3×. The imperative
+  path's specialized layout-cache fast-path is no longer reachable
+  from `calculateLayout` (it lives behind `calculateLayoutImperative`
+  for the cold path's tests). The Spineless path's uniform ~3× win is
+  the new shape of the bench: less spread, broader coverage. Memory
+  on this is in `docs/announcements/2026-05-09-faster-than-yoga.md`.
+- **`hotrelayouttext` (fixed-size table, one cell width mutated per
+  frame)** — Spineless runtime direct path runs at ~0.2µs, 235× faster
+  than Yoga's WASM round-trip. Via the public `calculateLayout`,
+  ~2.3× faster (driver overhead). The direct path is `@internal` for
+  now; the public hook is `setLayoutProfiler` for observation.
+
+### Internal
+
+- **Phase 8 (slices v19–v24)**: Spineless engine wired into
+  `calculateLayout` as the hot-relayout default. Single-shot layout +
+  write-back (v19), persistent runtime + incremental value relayout
+  (v20), graft fast-path for child append (v21), dirty-flag-guided
+  incremental detection (v22), incremental output write-back (v23),
+  router (v24).
+- **Phase 9 (slices v25–v28)**: layout observability. Runtime recompute
+  counters (v25), per-call trace (v26), public profiler hook (v27),
+  `inspectLayout` console dump (v28).
+- **Phase 10 (slices v29–v32)**: Spineless grammar coverage closes the
+  imperative fallbacks. `display: 'none'` (v29), measure function on
+  an absolute node (v30), remove fast-path (`tryDetachRemove`, v31),
+  mid-list insert fast-path (v32). The grammar now models every tree
+  the imperative algorithm does.
+- **Phase 11 (slices v33–v34)**: structural-differential fuzzer over
+  random insert / remove / move / value sequences (v33; surfaced 4
+  real bugs careful design review missed, each pinned as deterministic
+  regression tests). Reorder fast-path (`tryReorder`, v34) closes the
+  remaining structural mutation patch shape.
+- **Phase 12**: flex-distribution grammar refactor. The per-cell
+  `mainSizeField` rule used to call `distributeMainAxis(siblings, …)`
+  with each cell redoing the full sibling distribution — O(N²) per
+  row. Hoisted into one `mainDistribution: Field<MainAxisDistribution>`
+  per flex-distributing single-line parent; child `mainSize` and
+  `mainPos` (under default flex-start) collapse to trivial array reads
+  of the materialised sizes/positions. O(N) per row. Single-engine
+  architecture preserved.
+
+### Validation
+
+- **Yoga oracle**: 33 fixtures, cell-for-cell equality vs. WASM Yoga.
+  Unchanged.
+- **Value-differential fuzzer**: random mutation sequences asserted
+  byte-identical between the incremental and a fresh cold layout.
+  Caught real bugs throughout phases 8–12; remains the spine of
+  Spineless-correctness validation.
+- **Structural-differential fuzzer (phase 11)**: random insert / remove
+  / move sequences asserted byte-identical. Validates that the graft /
+  detach / reorder fast-paths + the phase-12 `mainDistribution`
+  fragment-builder rebinds patch the dependency graph correctly under
+  every shape of structural change.
+- **`pnpm test:differential`** runs every `calculateLayout` in the
+  core suite twice (cached + cold) and asserts byte-identical output.
+- **Bench budgets** tightened in `bench/thresholds.json` —
+  `hotrelayout` / `hotrelayoutboundary` floors dropped from `1.5ms`
+  (the phase-8 loosened floor) back to `0.15ms`, locking the
+  phase-12 win against future regression.
+
+### Notes on `setLayoutBoundary`
+
+The phase-3 plan mentioned an opt-in `setLayoutBoundary(boolean)` API
+that would let consumers explicitly mark relayout boundaries. The
+Spineless engine made this mechanism unnecessary — boundary
+optimization is no longer the relevant fast-path; incremental
+field propagation generalises across every tree shape. The API was
+never shipped and is dropped from the roadmap.
+
 ## [1.0.1] — 2026-05-11
 
 ### Fixed
