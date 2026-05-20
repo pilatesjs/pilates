@@ -1974,9 +1974,11 @@ function emitMainDistribution(
       const sizes = distributeMainAxis(siblings, innerMain, read(mainGapInput));
 
       // Fold sizes + margins + gaps into a prefix-sum positions array.
-      // positions[i] is the i-th in-flow child's main offset within
-      // the parent's main-axis content box origin (i.e. relative to
-      // parent's main-start padding edge, NOT including padding).
+      // positions[i] is the i-th in-flow child's main offset from the
+      // parent's border-box origin (so it INCLUDES the parent's main-
+      // start padding), matching what the existing flex-start mainPos
+      // rule returns. Task 2 assigns this directly to the child's
+      // mainPos Field.
       const positions = new Array<number>(sizes.length);
       const gap = read(mainGapInput);
       const startPad = read(padMainStartF);
