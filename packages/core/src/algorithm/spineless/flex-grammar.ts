@@ -1062,12 +1062,12 @@ function makeEmitter(
         // Phase 12: read directly from the parent's mainDistribution if
         // it was emitted (parent flex-distributes + single-line).
         // Fallback to today's padding+margin rule when parent didn't qualify.
-        const parentMainDistPos = mainDistributionByParent.get(parent);
-        if (parentMainDistPos !== undefined) {
+        const parentMainDist = mainDistributionByParent.get(parent);
+        if (parentMainDist !== undefined) {
           const myIndexCapture = priorSiblings.length; // in-flow index
           grammar.set(mainPosField, {
-            deps: [parentMainDistPos as Field<unknown>],
-            compute: (read) => read(parentMainDistPos).positions[myIndexCapture]!,
+            deps: [parentMainDist as Field<unknown>],
+            compute: (read) => read(parentMainDist).positions[myIndexCapture]!,
           } satisfies FieldRule<number>);
         } else {
           grammar.set(mainPosField, {
@@ -1097,12 +1097,12 @@ function makeEmitter(
       // Phase 12: read directly from the parent's mainDistribution if it
       // was emitted (parent flex-distributes + single-line). Fallback to
       // today's prior-siblings rule when the parent didn't qualify.
-      const parentMainDistPos = mainDistributionByParent.get(parent);
-      if (parentMainDistPos !== undefined) {
+      const parentMainDist = mainDistributionByParent.get(parent);
+      if (parentMainDist !== undefined) {
         const myIndexCapture = priorSiblings.length; // in-flow index
         grammar.set(mainPosField, {
-          deps: [parentMainDistPos as Field<unknown>],
-          compute: (read) => read(parentMainDistPos).positions[myIndexCapture]!,
+          deps: [parentMainDist as Field<unknown>],
+          compute: (read) => read(parentMainDist).positions[myIndexCapture]!,
         } satisfies FieldRule<number>);
       } else {
         // Non-qualifying regime (wrap): keep today's prior-siblings-sum
