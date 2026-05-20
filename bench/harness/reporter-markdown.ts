@@ -9,7 +9,7 @@
 
 import { writeFileSync } from 'node:fs';
 import type { BenchRunReport } from './reporter-json.js';
-import type { EngineResult, ScenarioResult } from './runner.js';
+import type { ScenarioResult } from './runner.js';
 
 function fmtNs(ns: number): string {
   if (ns < 1_000) return `${ns.toFixed(0)}ns`;
