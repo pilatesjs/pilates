@@ -492,7 +492,7 @@ export class SpinelessLayout {
       }
     }
     const changed = built.runtime.recompute();
-    return { child, changed: changed as Array<Field<unknown>> };
+    return { child, changed };
   }
 
   /**
@@ -610,7 +610,7 @@ export class SpinelessLayout {
       }
     }
     const changed = built.runtime.recompute();
-    return { parent, changed: changed as Array<Field<unknown>> };
+    return { parent, changed };
   }
 
   /**
@@ -685,14 +685,14 @@ export class SpinelessLayout {
       }
     }
     const changed = built.runtime.recompute();
-    return { reordered, changed: changed as Array<Field<unknown>> };
+    return { reordered, changed };
   }
 
   /**
    * Value relayout: re-`markDirty` only the input Fields of the dirty
    * nodes (plus the root `available:*` inputs) whose value drifted,
    * then `recompute()`. Returns the maximal subtree roots whose
-   * layout moved — for `finishIncremental` to write back.
+   * layout moved — for `finishMoved` to write back.
    */
   private relayoutValues(dirty: Node[], availableWidth?: number, availableHeight?: number): Node[] {
     const built = this.built!;
@@ -717,28 +717,7 @@ export class SpinelessLayout {
       if (live !== runtime.evaluate(field)) runtime.markDirty(field);
     }
 
-    // The changed layout Fields name the nodes whose box moved.
-    const changed = runtime.recompute();
-    const moved = new Set<Node>();
-    for (const f of changed) {
-      const n = built.owner.get(f);
-      if (n !== undefined) moved.add(n);
-    }
-    // Keep only the maximal moved subtree roots — a moved node with
-    // no moved ancestor. Re-rounding such a root covers its whole
-    // (shifted) subtree.
-    const roots: Node[] = [];
-    for (const n of moved) {
-      let maximal = true;
-      for (let p = n.getParent(); p !== null; p = p.getParent()) {
-        if (moved.has(p)) {
-          maximal = false;
-          break;
-        }
-      }
-      if (maximal) roots.push(n);
-    }
-    return roots;
+    return this.movedSubtreeRoots(runtime.recompute());
   }
 
   /** Push new `available` values into the holder the grammar closes over. */
