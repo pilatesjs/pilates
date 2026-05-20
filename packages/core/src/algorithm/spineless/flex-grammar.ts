@@ -1923,6 +1923,80 @@ function liveWrapSiblings(
 }
 
 /**
+ * Emit the parent-level main-axis distribution Field for a
+ * flex-distributing parent. Returns the Field so the per-child
+ * mainSize / mainPos rules can declare it as their dependency.
+ *
+ * `deps` is the SAME deps list today's per-cell mainSizeField
+ * rule declares (parent main, gap, padding, plus each in-flow
+ * sibling's eight flex-related inputs).
+ */
+function emitMainDistribution(
+  grammar: Grammar,
+  parent: Node,
+  flexSibs: SizeInputs[],
+  parentMainField: Field<number>,
+  mainGapInput: Field<number>,
+  padMainStartF: Field<number>,
+  padMainEndF: Field<number>,
+  marginInput: (n: Node, edge: number) => Field<number>,
+  parentDirection: 'row' | 'column',
+): Field<MainAxisDistribution> {
+  const mainDistField = field<MainAxisDistribution>(parent, 'mainDistribution');
+  const deps: Field<unknown>[] = [
+    parentMainField as Field<unknown>,
+    mainGapInput as Field<unknown>,
+    padMainStartF as Field<unknown>,
+    padMainEndF as Field<unknown>,
+  ];
+  for (const s of flexSibs) {
+    deps.push(
+      s.flexBasisInput as Field<unknown>,
+      s.mainInput as Field<unknown>,
+      s.growInput as Field<unknown>,
+      s.shrinkInput as Field<unknown>,
+      s.marginMainStartInput as Field<unknown>,
+      s.marginMainEndInput as Field<unknown>,
+      s.minInput as Field<unknown>,
+      s.maxInput as Field<unknown>,
+    );
+  }
+  const mainStartEdgeName = mainStartEdge(parentDirection);
+  const mainEndEdgeName = mainEndEdge(parentDirection);
+  grammar.set(mainDistField as Field<unknown>, {
+    deps,
+    compute: (read) => {
+      const innerMain = Math.max(
+        0,
+        read(parentMainField) - read(padMainStartF) - read(padMainEndF),
+      );
+      const siblings = liveFlexSiblings(flexSibs, read);
+      const sizes = distributeMainAxis(siblings, innerMain, read(mainGapInput));
+
+      // Fold sizes + margins + gaps into a prefix-sum positions array.
+      // positions[i] is the i-th in-flow child's main offset within
+      // the parent's main-axis content box origin (i.e. relative to
+      // parent's main-start padding edge, NOT including padding).
+      const positions = new Array<number>(sizes.length);
+      const gap = read(mainGapInput);
+      const startPad = read(padMainStartF);
+      let cursor = startPad;
+      for (let i = 0; i < sizes.length; i++) {
+        const sib = flexSibs[i]!;
+        const marginStart = read(marginInput(sib.node, mainStartEdgeName));
+        const marginEnd = read(marginInput(sib.node, mainEndEdgeName));
+        if (i > 0) cursor += gap;
+        cursor += marginStart;
+        positions[i] = cursor;
+        cursor += sizes[i]! + marginEnd;
+      }
+      return { sizes, positions };
+    },
+  } satisfies FieldRule<MainAxisDistribution>);
+  return mainDistField;
+}
+
+/**
  * Emit the main-position rule for a child when the parent's
  * `justify-content` is not the default `flex-start`. The leftover
  * along the main axis is `max(0, innerMain - usedMain)`, where
@@ -2108,6 +2182,17 @@ interface DistributeSibling {
   /** Main-axis clamp bounds; `max` carries `Infinity` when unset. */
   min: number;
   max: number;
+}
+
+/**
+ * The materialised result of a flex-distributing parent's main-axis
+ * pass — sizes plus folded positions. One per qualifying parent.
+ * Cells index into this instead of redoing the distribution each.
+ * @internal
+ */
+export interface MainAxisDistribution {
+  readonly sizes: readonly number[];
+  readonly positions: readonly number[];
 }
 
 /**
