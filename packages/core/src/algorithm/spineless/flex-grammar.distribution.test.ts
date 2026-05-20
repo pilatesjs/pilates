@@ -55,9 +55,7 @@ describe('phase 12 — cell mainSize collapses to mainDistribution read', () => 
 
     for (let i = 0; i < 4; i++) {
       const cell = root.getChild(i)!;
-      const cellMainSize = [...grammar.keys()].find(
-        (f) => f.node === cell && f.name === 'width',
-      );
+      const cellMainSize = [...grammar.keys()].find((f) => f.node === cell && f.name === 'width');
       expect(cellMainSize).toBeDefined();
       const rule = grammar.get(cellMainSize!)!;
       expect(rule.deps).toEqual([mainDist]);
@@ -88,9 +86,7 @@ describe('phase 12 — cell mainPos collapses to mainDistribution read', () => {
     )!;
     for (let i = 0; i < 4; i++) {
       const cell = root.getChild(i)!;
-      const cellMainPos = [...grammar.keys()].find(
-        (f) => f.node === cell && f.name === 'left',
-      );
+      const cellMainPos = [...grammar.keys()].find((f) => f.node === cell && f.name === 'left');
       expect(cellMainPos).toBeDefined();
       expect(grammar.get(cellMainPos!)!.deps).toEqual([mainDist]);
     }
