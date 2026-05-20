@@ -184,6 +184,14 @@ export interface FlexGrammarOutput {
    * after a terminal resize.
    */
   availableInputs: { width?: Field<number>; height?: Field<number> };
+  /**
+   * Per-parent intermediate Fields for the phase-12 flex-distribution
+   * grammar. Keyed by each flex-distributing single-line parent; value
+   * is the `mainDistribution` Field emitted for that parent. Fragment
+   * builders (append / remove / reorder) consult this to perform
+   * precise rebinds without a full grammar rebuild.
+   */
+  mainDistributionByParent: Map<Node, Field<MainAxisDistribution>>;
 }
 
 /** Caller-supplied availability for an `'auto'`-sized root. */
@@ -217,6 +225,8 @@ interface EmitContext {
   available: AvailableSize;
   /** The `available:*` input Fields, recorded as the emitter wires them. */
   availableInputs: { width?: Field<number>; height?: Field<number> };
+  /** Phase-12: per-parent mainDistribution Fields, populated during emission. */
+  mainDistributionByParent: Map<Node, Field<MainAxisDistribution>>;
 }
 
 /**
@@ -243,7 +253,7 @@ function isInFlow(node: Node): boolean {
 function makeEmitter(
   ctx: EmitContext,
 ): (node: Node, parent: Node | null, indexInParent: number, priorSiblings: Node[]) => void {
-  const { grammar, allFields, styleInputs, boundary } = ctx;
+  const { grammar, allFields, styleInputs, boundary, mainDistributionByParent } = ctx;
 
   // Register (once) the input Field for the root's caller-supplied
   // `available` size on one axis. Its `compute` reads `ctx.available`
@@ -957,35 +967,76 @@ function makeEmitter(
       }
       const parentMainField = field<number>(parent, mainSizeName);
       const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
-      const deps: Field<unknown>[] = [
-        parentMainField as Field<unknown>,
-        mainGapInput as Field<unknown>,
-        padMainStartF as Field<unknown>,
-        padMainEndF as Field<unknown>,
-      ];
-      for (const s of flexSibs) {
-        deps.push(
-          s.flexBasisInput as Field<unknown>,
-          s.mainInput as Field<unknown>,
-          s.growInput as Field<unknown>,
-          s.shrinkInput as Field<unknown>,
-          s.marginMainStartInput as Field<unknown>,
-          s.marginMainEndInput as Field<unknown>,
-          s.minInput as Field<unknown>,
-          s.maxInput as Field<unknown>,
-        );
-      }
-      grammar.set(mainSizeField, {
-        deps,
-        compute: (read) => {
-          const innerMain = Math.max(
-            0,
-            read(parentMainField) - read(padMainStartF!) - read(padMainEndF!),
+
+      // Phase 12 regime check: single-line + flex-distributing qualifies
+      // for the O(N) intermediate Field. mainSize does NOT gate on
+      // justify-content — that's mainPos-specific in Task 3.
+      const isPhase12SizeRegime =
+        parent.style.flexWrap === undefined || parent.style.flexWrap === 'nowrap';
+
+      let parentMainDist: Field<MainAxisDistribution> | undefined;
+      if (isPhase12SizeRegime) {
+        // Emit once per parent — memoize so subsequent children reuse
+        // the same Field rather than emitting duplicate rules.
+        parentMainDist = mainDistributionByParent.get(parent);
+        if (parentMainDist === undefined) {
+          parentMainDist = emitMainDistribution(
+            grammar,
+            parent,
+            flexSibs,
+            parentMainField,
+            mainGapInput,
+            padMainStartF!,
+            padMainEndF!,
+            marginInput,
+            parentDirection!,
           );
-          const siblings = liveFlexSiblings(flexSibs, read);
-          return distributeMainAxis(siblings, innerMain, read(mainGapInput))[myIndex]!;
-        },
-      } satisfies FieldRule<number>);
+          mainDistributionByParent.set(parent, parentMainDist);
+        }
+      }
+
+      if (parentMainDist !== undefined) {
+        // Phase 12: cell mainSize is a trivial index read into the
+        // parent's pre-computed distribution array — O(1) dep edge
+        // instead of O(N siblings).
+        const myIndexCapture = myIndex;
+        grammar.set(mainSizeField as Field<unknown>, {
+          deps: [parentMainDist as Field<unknown>],
+          compute: (read) => read(parentMainDist!).sizes[myIndexCapture]!,
+        } satisfies FieldRule<number>);
+      } else {
+        // Non-qualifying regime (wrap): keep today's per-cell rule with
+        // full sibling deps — distributeMainAxis called inline.
+        const deps: Field<unknown>[] = [
+          parentMainField as Field<unknown>,
+          mainGapInput as Field<unknown>,
+          padMainStartF as Field<unknown>,
+          padMainEndF as Field<unknown>,
+        ];
+        for (const s of flexSibs) {
+          deps.push(
+            s.flexBasisInput as Field<unknown>,
+            s.mainInput as Field<unknown>,
+            s.growInput as Field<unknown>,
+            s.shrinkInput as Field<unknown>,
+            s.marginMainStartInput as Field<unknown>,
+            s.marginMainEndInput as Field<unknown>,
+            s.minInput as Field<unknown>,
+            s.maxInput as Field<unknown>,
+          );
+        }
+        grammar.set(mainSizeField, {
+          deps,
+          compute: (read) => {
+            const innerMain = Math.max(
+              0,
+              read(parentMainField) - read(padMainStartF!) - read(padMainEndF!),
+            );
+            const siblings = liveFlexSiblings(flexSibs, read);
+            return distributeMainAxis(siblings, innerMain, read(mainGapInput))[myIndex]!;
+          },
+        } satisfies FieldRule<number>);
+      }
     }
 
     // Main-axis position. Two regimes:
@@ -1202,12 +1253,16 @@ export function buildFlexGrammar(root: Node, available: AvailableSize = {}): Fle
   const allFields: FlexGrammarOutput['allFields'] = [];
   const styleInputs: Map<Node, StyleInputs> = new Map();
   const availableInputs: { width?: Field<number>; height?: Field<number> } = {};
-  makeEmitter({ grammar, allFields, styleInputs, boundary: null, available, availableInputs })(
-    root,
-    null,
-    0,
-    [],
-  );
+  const mainDistributionByParent: Map<Node, Field<MainAxisDistribution>> = new Map();
+  makeEmitter({
+    grammar,
+    allFields,
+    styleInputs,
+    boundary: null,
+    available,
+    availableInputs,
+    mainDistributionByParent,
+  })(root, null, 0, []);
 
   return {
     grammar,
@@ -1220,6 +1275,7 @@ export function buildFlexGrammar(root: Node, available: AvailableSize = {}): Fle
     allFields,
     styleInputs,
     availableInputs,
+    mainDistributionByParent,
   };
 }
 
@@ -1380,6 +1436,7 @@ export function buildAppendFragment(
       boundary: prev.grammar,
       available: {},
       availableInputs: {},
+      mainDistributionByParent: new Map(),
     };
     const priors: Node[] = [];
     for (let i = 0; i < childIndex; i++) {
@@ -1403,6 +1460,7 @@ export function buildAppendFragment(
       allFields: [...prev.allFields, ...ctx.allFields],
       styleInputs: mergeStyleInputsMap(prev.styleInputs, ctx.styleInputs),
       availableInputs: prev.availableInputs,
+      mainDistributionByParent: prev.mainDistributionByParent,
     };
     return { additions: ctx.grammar, newRoots, rebinds: [], next };
   }
@@ -1435,12 +1493,22 @@ export function buildAppendFragment(
       if (rule !== undefined) rebinds.push([f, rule]);
     }
   }
+  // Phase 12: if the parent's mainDistribution field already existed in
+  // prev (the parent was already flex-distributing pre-append) its
+  // closure now covers different siblings — rebind it so recompute sees
+  // the updated sibling list.
+  const parentMainDistF = fresh.mainDistributionByParent.get(parent);
+  if (parentMainDistF !== undefined && prev.grammar.has(parentMainDistF as Field<unknown>)) {
+    const freshRule = fresh.grammar.get(parentMainDistF as Field<unknown>);
+    if (freshRule !== undefined) rebinds.unshift([parentMainDistF as Field<unknown>, freshRule]);
+  }
   const next: FlexGrammarOutput = {
     grammar: prev.grammar,
     rootFields: prev.rootFields,
     allFields: fresh.allFields,
     styleInputs: fresh.styleInputs,
     availableInputs: fresh.availableInputs,
+    mainDistributionByParent: fresh.mainDistributionByParent,
   };
   return { additions, newRoots, rebinds, next };
 }
@@ -1501,6 +1569,12 @@ function nodeFields(node: Node, styleInputs: Map<Node, StyleInputs>): Array<Fiel
     field<number>(node, 'measure:cross') as Field<unknown>,
     field<number>(node, 'aspect:width') as Field<unknown>,
     field<number>(node, 'aspect:height') as Field<unknown>,
+    // Phase 12: the per-parent mainDistribution intermediate field is a
+    // non-leaf that has deps (siblings' size/flex inputs) and may be read
+    // by each child's width/height rule. It MUST be in the removed set so
+    // detach() does not see dangling reverse-dep edges from child layout
+    // fields back to it.
+    field<MainAxisDistribution>(node, 'mainDistribution') as Field<unknown>,
   ];
   const si = styleInputs.get(node);
   if (si !== undefined) {
@@ -1609,6 +1683,9 @@ export function buildRemoveFragment(
       allFields: prev.allFields.filter((e) => !removedNodes.has(e.node)),
       styleInputs: new Map([...prev.styleInputs].filter(([n]) => !removedNodes.has(n))),
       availableInputs: prev.availableInputs,
+      mainDistributionByParent: new Map(
+        [...prev.mainDistributionByParent].filter(([n]) => !removedNodes.has(n)),
+      ),
     };
     return { removed, rebinds: [], next };
   }
@@ -1635,12 +1712,21 @@ export function buildRemoveFragment(
       if (rule !== undefined) rebinds.push([f, rule]);
     }
   }
+  // Phase 12: if the parent's mainDistribution field survived the
+  // removal (it's still in fresh.grammar), its closure now covers
+  // fewer siblings — rebind it so recompute sees the updated list.
+  const parentMainDistFRem = fresh.mainDistributionByParent.get(parent);
+  if (parentMainDistFRem !== undefined && prev.grammar.has(parentMainDistFRem as Field<unknown>)) {
+    const freshRule = fresh.grammar.get(parentMainDistFRem as Field<unknown>);
+    if (freshRule !== undefined) rebinds.unshift([parentMainDistFRem as Field<unknown>, freshRule]);
+  }
   const next: FlexGrammarOutput = {
     grammar: prev.grammar,
     rootFields: prev.rootFields,
     allFields: fresh.allFields,
     styleInputs: fresh.styleInputs,
     availableInputs: fresh.availableInputs,
+    mainDistributionByParent: fresh.mainDistributionByParent,
   };
   return { removed, rebinds, next };
 }
@@ -1733,6 +1819,18 @@ export function buildReorderFragment(
       if (rule !== undefined) rebinds.push([f, rule]);
     }
   }
+  // Phase 12: the parent's mainDistribution field captures flexSibs in
+  // child-position order. A reorder changes that order, so rebind it
+  // (prepend so it is rebound before any child width that reads it).
+  const parentMainDistFReorder = fresh.mainDistributionByParent.get(parent);
+  if (
+    parentMainDistFReorder !== undefined &&
+    prev.grammar.has(parentMainDistFReorder as Field<unknown>)
+  ) {
+    const freshRule = fresh.grammar.get(parentMainDistFReorder as Field<unknown>);
+    if (freshRule !== undefined)
+      rebinds.unshift([parentMainDistFReorder as Field<unknown>, freshRule]);
+  }
 
   const next: FlexGrammarOutput = {
     grammar: prev.grammar,
@@ -1740,6 +1838,7 @@ export function buildReorderFragment(
     allFields: fresh.allFields,
     styleInputs: fresh.styleInputs,
     availableInputs: fresh.availableInputs,
+    mainDistributionByParent: fresh.mainDistributionByParent,
   };
   return { additions, newRoots: [...additions.keys()], removed, rebinds, next };
 }

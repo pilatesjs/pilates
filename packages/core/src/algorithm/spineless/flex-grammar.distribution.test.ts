@@ -43,3 +43,38 @@ describe('phase 12 — mainDistribution Field', () => {
     expect(parentMainDistFields).toHaveLength(0);
   });
 });
+
+describe('phase 12 — cell mainSize collapses to mainDistribution read', () => {
+  test('cell mainSize deps reference only mainDistribution (qualifying parent)', () => {
+    const root = row((c) => c.setFlex(1), 4);
+    const { grammar } = buildFlexGrammar(root);
+    const mainDist = [...grammar.keys()].find(
+      (f) => f.node === root && f.name === 'mainDistribution',
+    );
+    expect(mainDist).toBeDefined();
+
+    for (let i = 0; i < 4; i++) {
+      const cell = root.getChild(i)!;
+      const cellMainSize = [...grammar.keys()].find(
+        (f) => f.node === cell && f.name === 'width',
+      );
+      expect(cellMainSize).toBeDefined();
+      const rule = grammar.get(cellMainSize!)!;
+      expect(rule.deps).toEqual([mainDist]);
+    }
+  });
+
+  test('cell mainSize keeps sibling deps when parent does NOT qualify (wrap)', () => {
+    const root = row((c) => c.setFlex(1), 4);
+    root.setFlexWrap('wrap');
+    const { grammar } = buildFlexGrammar(root);
+    const mainDist = [...grammar.keys()].find(
+      (f) => f.node === root && f.name === 'mainDistribution',
+    );
+    expect(mainDist).toBeUndefined();
+    const cell0Width = [...grammar.keys()].find(
+      (f) => f.node === root.getChild(0) && f.name === 'width',
+    )!;
+    expect(grammar.get(cell0Width)!.deps.length).toBeGreaterThan(1);
+  });
+});
