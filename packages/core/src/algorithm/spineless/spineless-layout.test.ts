@@ -11,7 +11,7 @@
  * spec). The fuzzers cover the random-tree surface.
  */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import { Edge } from '../../edge.js';
 import { Node } from '../../node.js';
 import { calculateLayoutImperative } from '../index.js';
@@ -1585,5 +1585,38 @@ describe('SpinelessLayout — reorder fast-path (slice v34)', () => {
       ],
     );
     expect(sl.stats.reorderRelayouts).toBe(1);
+  });
+});
+
+describe('phase 13 — structural fast-paths use scoped finish', () => {
+  test('graft writes back the appended subtree (not zero _layout)', () => {
+    // Build a simple-regime row + 3 cells.
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setWidth(120);
+    root.setHeight(20);
+    for (let i = 0; i < 3; i++) {
+      const cell = Node.create();
+      cell.setWidth(40);
+      cell.setHeight(20);
+      root.insertChild(cell, i);
+    }
+    const driver = new SpinelessLayout(root);
+    driver.layout(120, 20); // first call — fullBuild
+    driver.layout(120, 20); // second call — no-op (no dirty)
+
+    // Append a 4th cell.
+    const newCell = Node.create();
+    newCell.setWidth(40);
+    newCell.setHeight(20);
+    root.insertChild(newCell, 3);
+    driver.layout(120, 20); // graft path
+
+    // Per the bench's simple-regime assumption, the cell should be
+    // laid out at left=120, top=0, width=40, height=20.
+    expect(newCell._layout.width).toBe(40);
+    expect(newCell._layout.height).toBe(20);
+    expect(newCell._layout.left).toBe(120);
+    expect(newCell._layout.top).toBe(0);
   });
 });
