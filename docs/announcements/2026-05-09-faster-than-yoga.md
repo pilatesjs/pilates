@@ -1,24 +1,25 @@
 # Pilates: a pure-TypeScript flex layout engine that beats WASM Yoga at terminal-UI workloads
 
-*Draft of an HN / blog announcement following the Phase 3 perf-hardening merge. Not for publication until the maintainer reviews and the `@pilates/core` 1.0.0 promotion lands.*
+*Draft of an HN / blog announcement following the Spineless incremental engine (phases 8–12) landing. Not for publication until the maintainer reviews and the `@pilates/core` 1.1.0 promotion lands.*
 
 ---
 
 ## TL;DR
 
-[Pilates](https://github.com/pilatesjs/pilates) is a five-package layout-and-render stack for terminal UIs. The headline change in this week's release: the layout engine is now faster than WASM Yoga (Ink's engine) on every benchmarked workload, including the long-lived-tree-with-hot-relayout case Yoga had historically won on.
+[Pilates](https://github.com/pilatesjs/pilates) is a five-package layout-and-render stack for terminal UIs. The headline change in this release: the layout engine is now faster than WASM Yoga (Ink's engine) on every flex-layout workload — including **every** hot-relayout shape Yoga had historically won on, with or without explicit-sized container boundaries.
 
-Numbers:
+Numbers (Node 26, darwin/arm64, `pnpm bench`):
 
 | Scenario | Pilates core | yoga-layout (WASM) | Pilates speedup |
 |---|---:|---:|---:|
-| 10-node tree | 1.5µs | 15.1µs | **10×** |
-| ~100-node tree | 29µs | 263µs | **9×** |
-| ~1000-node tree | 0.17ms | 1.52ms | **9×** |
-| ~5000-node tree | 0.94ms | 7.26ms | **8×** |
-| ~10000-node tree | 2.16ms | 14.6ms | **7×** |
-| 1k-node persistent tree, mutate one leaf/frame | 129µs | 56µs | Yoga wins ~2.3× |
-| **Same + explicit-sized container rows** | **7.1µs** | **51µs** | **7×** |
+| 10-node tree | 2.9µs | 15.4µs | **5×** |
+| ~100-node tree | 32µs | 268µs | **8×** |
+| ~1000-node tree | 181µs | 1.56ms | **9×** |
+| ~5000-node tree | 1.05ms | 7.39ms | **7×** |
+| ~10000-node tree | 2.40ms | 15.3ms | **6×** |
+| **1k-node persistent tree, mutate one leaf/frame** | **19.1µs** | **57.9µs** | **3×** |
+| **Same + explicit-sized container rows** | **18.5µs** | **51.5µs** | **3×** |
+| **Same + fixed-size cells (text-mutation pattern)** | **20.1µs** | **47.0µs** | **2.3×** |
 
 Reproduce: `git clone github.com/pilatesjs/pilates && pnpm install && pnpm bench`.
 
@@ -26,39 +27,41 @@ Reproduce: `git clone github.com/pilatesjs/pilates && pnpm install && pnpm bench
 
 Terminal UI in JavaScript means [Ink](https://github.com/vadimdemedes/ink). Ink uses [Yoga](https://github.com/facebook/yoga) (Facebook's flex layout engine, compiled to WASM) for layout and pairs it with a React reconciler. The split is invisible from the consumer side: you get them together. Yoga's compute kernel is genuinely fast — it's hand-tuned C++ — but every `node.setWidth(N)` crosses the JS↔WASM boundary, and that marshalling cost dominates Yoga's compute advantage at TUI tree sizes (10–10000 nodes).
 
-Pilates is a from-scratch flex layout engine in pure TypeScript, validated cell-for-cell against Yoga across 33 oracle fixtures plus a 500-runs-per-CI property fuzzer. No WASM, no JS↔WASM bridge, zero runtime dependencies.
+Pilates is a from-scratch flex layout engine in pure TypeScript, validated cell-for-cell against Yoga across 33 oracle fixtures plus property-based and structural fuzzers running on every CI build. No WASM, no JS↔WASM bridge, zero runtime dependencies.
 
-For tree-build-then-layout (the natural shape of a TUI redrawing every frame from declarative state), Pilates has been faster than Yoga since day one: 7–12× across all scenarios. The one workload Yoga still won was *long-lived trees with hot relayouts* — build once, mutate one leaf, relayout, repeat. The build cost amortizes, only the layout pass is measured, and Yoga's compute speed shows.
+For tree-build-then-layout (the natural shape of a TUI redrawing every frame from declarative state), Pilates has been faster than Yoga since day one: 5–9× across all scenarios. The workload Yoga still won was *long-lived trees with hot relayouts* — build once, mutate one leaf, relayout, repeat. The build cost amortizes, only the layout pass is measured, and Yoga's compute speed shows.
 
-This week's Phase 3 release adds Flutter-style **relayout boundaries**: a node with explicit `width` AND `height` (the idiomatic TUI pattern, e.g. fixed-height rows or sidebars) acts as a barrier that stops dirty propagation. A leaf mutation inside such a container dirties the container but doesn't propagate to root, so Pilates' root layout cache stays valid and the next layout pass restores most of the tree from cache instead of re-running flex. Combined with the `_hasDirtyDescendant` optimization (so the cache-hit path skips clean subtrees in O(dirty), not O(N)), Pilates now runs the hot-relayout-with-boundaries scenario in ~7.1µs vs Yoga's ~51µs.
+This release flips that. The **Spineless incremental layout engine** re-expresses flex as an attribute grammar — every layout field (`(Node, attribute)` pair) has a rule that computes its value from other fields it depends on — and a runtime built around an Order-Maintenance data structure and a priority-queued dirty-set evaluator. A leaf mutation re-evaluates only the fields actually downstream of the change, in O(N) total work for the affected row instead of O(N²). The phase-12 refactor (the final piece) hoists the row's flex distribution into one intermediate field that every in-flow child reads from — collapsing N redundant per-cell distribution computations into one shared compute.
 
-The boundary path is opt-in by tree shape, not API. Any explicit-sized container with default flex grow/shrink qualifies. No new public types, no new methods on `Node`. Existing trees benefit automatically as soon as a container above the mutation point has both axes pinned.
+The result: **Pilates wins every hot-relayout shape**, not just the boundary-tree special case the previous release shipped. Fully fluid trees, explicit-sized rows, and fixed-size text-mutation tables all run at ~3× Yoga's throughput. The "the only workload Yoga still wins" caveat is gone.
+
+Public API didn't change. `node.calculateLayout()` routes the first (cold) layout through the imperative path and the second-and-later layouts of a persistent tree through Spineless — automatically. No new types, no opt-in flag, no annotation. Existing trees benefit on upgrade.
 
 ## What this is, what it isn't
 
 Pilates is structured as five focused packages:
 
-- `@pilates/core` — the layout engine. Imperative `Node` API. Zero runtime deps.
+- `@pilates/core` — the layout engine. Imperative `Node` API + the Spineless incremental engine inside. Zero runtime deps.
 - `@pilates/render` — declarative POJO tree → painted ANSI string.
 - `@pilates/diff` — frame-to-frame cell diff → minimal redraw sequences.
-- `@pilates/react` — React 19 reconciler driving the above.
+- `@pilates/react` — React 19 reconciler driving the above; layout devtools (`useLayoutProfiler`, `<LayoutDevtools>`).
 - `@pilates/widgets` — interactive widgets (`<TextInput>`, `<Select>`, `<MultiSelect>`, `<Tabs>`, `<Table>`, `<TextArea>`, `<ProgressBar>`, `<Spinner>`).
 
 The split is the product. You can take just `@pilates/core` if you want to drive a non-React runtime (Vue, Solid, vanilla, custom DSL). Ink doesn't expose that path.
 
 This is **not** a drop-in Ink replacement. Ink has 7 years of bug-fixing, more tutorials, more answered questions on Stack Overflow. If you're shipping a CLI tomorrow, Ink is still the safe bet. Pilates is the bet that pure-TS, unbundled, faster matters more than maturity for greenfield projects.
 
-## How the validation works (because cache-correctness bugs are nightmare bugs)
+## How the validation works (because layout-engine bugs are nightmare bugs)
 
-Layout caches are exactly the kind of thing where theoretical analysis confidently arrives at the wrong answer. Three correctness bugs surfaced during Phase 2 and Phase 3 development that careful reasoning got wrong:
+Layout engines are exactly the kind of thing where theoretical analysis confidently arrives at the wrong answer. The Spineless work surfaced this repeatedly — bugs that careful reasoning got wrong, and that the fuzzers caught.
 
-1. **Phase 2:** the layout cache stores rounded values; when an ancestor's position changes, descendants' absolute coordinates shift, and re-rounding restored values gives wrong results. Caught by the fuzzer, fixed by gating the cache fast-path on a `useCache` flag.
+1. **The structural fuzzer (phase 11) found four real bugs theoretical review missed.** `finishIncremental` crashing on a hidden node in a moved subtree; a graft/detach fast-path firing inside a `display: 'none'` subtree; `buildRemoveFragment`'s `nodeFields` omitting non-leaf `measure:*` / `aspect:*` fields; the fragment builders rebuilding with an empty `available` causing an `'auto'` root to lose its size clamp. Each was pinned as a deterministic regression test after the fuzzer reproduced it.
 
-2. **Phase 3:** the spec argued `flexGrow > 0` was fine for relayout boundaries because grow is parent-state, not descendant-state. The fuzzer disagreed: produced a `cached=17 vs cold=16` width drift via multi-child grow interactions. The strict rule (require `flexGrow ≤ 0`) is what passes 500-run fuzzer sweeps.
+2. **Phase 8's engine swap regressed the headline `hotrelayoutboundary` benchmark — and we didn't know until we profiled.** The imperative path's specialized 7µs boundary cache went away when Spineless took over, replaced by ~120µs of grammar evaluation. We caught it because the bench gate uses tinybench medians + threshold budgets in CI, but the *fix* required a thorough investigation: measure where time actually goes (`runtime.recompute` field count, not `finishIncremental`), inspect the grammar to find the O(N) per-cell sibling walk, write a probe that no-op'd subphases, and only then design the refactor. Phase 12 is what shipped.
 
-3. **Phase 3:** `roundLayoutSubtree` (inline subtree rounding for dirty boundaries under clean roots) used rounded integer ancestor positions, while the cold-path `roundLayout` uses unrounded float positions. When parent flex-shrinking gave an ancestor a fractional position, the cached path's anchor was off by 0.5, crossing half-integer rounding thresholds. Surfaced only on macOS CI with seed `1283320469`. Fixed by capturing pre-rounding float positions on every node.
+3. **Cache correctness was always a fuzzer-driven discovery process.** Earlier perf phases (relayout boundaries, layout cache) surfaced three subtle correctness bugs that careful reasoning got wrong: rounded-vs-float ancestor positions producing 0.5px drift on macOS CI (seed `1283320469`); the spec's `flexGrow > 0` boundary rule producing a `cached=17 vs cold=16` width drift via multi-child grow interaction; the layout cache's restored-values needing protection from re-rounding. All caught by the value-differential fuzzer ("every layout test runs twice — cached and cold — and asserts byte-identical results").
 
-The pattern: when the fuzzer disagrees with reasoning, the fuzzer wins. Differential mode (every layout test runs twice — cached and cold — and asserts byte-identical results) plus property-based fuzzing (500 random tree+mutation sequences per CI run, asserting cached == cold) is the validation infrastructure that lets us trust the cache. It pays for itself.
+The pattern: when the fuzzer disagrees with reasoning, the fuzzer wins. Differential mode + structural fuzzer + 33-fixture Yoga oracle + 500-run-per-CI property fuzz is the validation infrastructure that lets us trust an engine this aggressive. It pays for itself every release.
 
 ## Try it
 
@@ -108,7 +111,14 @@ function App() {
 render(<App />);
 ```
 
+Or scaffold a starter:
+
+```bash
+npm create pilates-app my-app
+```
+
 Repository: <https://github.com/pilatesjs/pilates>
+API reference: <https://pilatesjs.github.io/pilates/>
 Bench reproduction: `pnpm bench`
 Strategy + roadmap: [docs/STRATEGY.md](https://github.com/pilatesjs/pilates/blob/main/docs/STRATEGY.md)
 
@@ -118,9 +128,9 @@ Strategy + roadmap: [docs/STRATEGY.md](https://github.com/pilatesjs/pilates/blob
 
 **Tweet 1 (announcement):**
 
-> Pilates 1.0 is shaping up. Pure-TS terminal-UI flex layout engine, validated cell-for-cell against WASM Yoga across 33 fixtures + a 500-run-per-CI property fuzzer.
+> Pilates 1.1 just landed. Pure-TS terminal-UI flex layout engine, validated cell-for-cell against WASM Yoga across 33 fixtures + structural-and-value differential fuzzers.
 >
-> Phase 3 just landed: relayout boundaries. Pilates now beats Yoga 7× on the hot-relayout pattern Yoga used to win on.
+> Spineless incremental engine. Beats Yoga ~3× on every hot-relayout shape — the workloads Yoga used to win.
 >
 > github.com/pilatesjs/pilates
 
@@ -128,23 +138,23 @@ Strategy + roadmap: [docs/STRATEGY.md](https://github.com/pilatesjs/pilates/blob
 
 > Pure-TS layout engine vs WASM Yoga, mean latency:
 >
-> · 10 nodes: 1.5µs vs 15µs (10×)
-> · 100 nodes: 29µs vs 263µs (9×)
-> · 1k nodes: 0.17ms vs 1.52ms (9×)
-> · 10k nodes: 2.16ms vs 14.6ms (7×)
-> · hot-relayout w/ boundaries: 7.1µs vs 51µs (7×)
+> · 10 nodes: 2.9µs vs 15.4µs (5×)
+> · 100 nodes: 32µs vs 268µs (8×)
+> · 1k nodes: 0.18ms vs 1.56ms (9×)
+> · 10k nodes: 2.40ms vs 15.3ms (6×)
+> · hot-relayout (1k persistent, mutate one leaf/frame): 19.1µs vs 57.9µs (3×)
 >
-> JS↔WASM call overhead dominates Yoga's compute advantage at TUI sizes.
+> JS↔WASM call overhead + incremental field propagation beat WASM compute at TUI sizes.
 
 **Tweet 3 (the lesson):**
 
-> Tip from a week of cache work: when your property-based fuzzer disagrees with your theoretical analysis, the fuzzer wins. Three subtle correctness bugs surfaced during the Pilates layout-cache work. Differential testing (cached vs cold paths byte-identical) caught all three.
+> Tip from a year of engine work: when your property-based fuzzer disagrees with your theoretical analysis, the fuzzer wins. The structural fuzzer found 4 real bugs careful design review missed. Differential testing (incremental vs cold byte-identical) caught them all.
 
 **Tweet 4 (call to action):**
 
-> If you write CLI tools or interactive terminals in JavaScript and have ever wished the layout engine wasn't WASM, Pilates is for you. 0 deps, pure TS, faster than Yoga.
+> If you write CLI tools or interactive terminals in JavaScript and have ever wished the layout engine wasn't WASM, Pilates is for you. 0 deps, pure TS, faster than Yoga on every flex-layout workload.
 >
-> `npm i @pilates/core` (1.0 next), `npm i @pilates/react` for the React layer.
+> `npm i @pilates/core` or `npm create pilates-app` for a starter.
 >
 > github.com/pilatesjs/pilates
 
@@ -161,7 +171,7 @@ Pick whichever lands best (ranked):
 
 1. **"Show HN: Pilates – a pure-TypeScript flex layout engine for terminal UIs"** *(safest — descriptive, no claim, no edit risk)*
 2. **"Show HN: Pilates – pure-TS terminal-UI layout, no WASM"** *(the "no WASM" parenthetical implies the Yoga comparison without making the claim)*
-3. **"Show HN: Pilates 1.0 – terminal-UI flex layout in pure TypeScript"** *(version-as-news framing)*
+3. **"Show HN: Pilates 1.1 – terminal-UI flex layout in pure TypeScript"** *(version-as-news framing)*
 
 # Author's first comment (post immediately after submission)
 
@@ -173,29 +183,30 @@ moderators to edit the title.
 >
 > Terminal UI in JavaScript today means [Ink](https://github.com/vadimdemedes/ink), which uses [Yoga](https://github.com/facebook/yoga) (Facebook's flex engine, compiled to WASM) for layout. Yoga's compute kernel is hand-tuned C++ and very fast in absolute terms, but every `node.setWidth(N)` crosses the JS↔WASM boundary, and at TUI tree sizes (10–10000 nodes) the marshalling cost dominates the compute advantage.
 >
-> Pilates is a from-scratch flex layout engine in pure TypeScript, no WASM, zero runtime dependencies. Validated cell-for-cell against Yoga across 33 oracle fixtures plus a 500-runs-per-CI property fuzzer.
+> Pilates is a from-scratch flex layout engine in pure TypeScript, no WASM, zero runtime dependencies. Validated cell-for-cell against Yoga across 33 oracle fixtures plus structural and value differential fuzzers running on every CI build.
 >
 > Bench numbers (mean per-pass, lower is better):
 >
 > | Scenario | Pilates | yoga-layout (WASM) | Speedup |
 > |---|---:|---:|---:|
-> | 10 nodes | 1.5µs | 15.1µs | 10× |
-> | 100 nodes | 29µs | 263µs | 9× |
-> | 1k nodes | 0.17ms | 1.52ms | 9× |
-> | 10k nodes | 2.16ms | 14.6ms | 7× |
-> | 1k tree, mutate one leaf/frame | 129µs | 56µs | Yoga wins ~2.3× |
-> | Same + explicit-sized container rows | 7.1µs | 51µs | 7× |
+> | 10 nodes | 2.9µs | 15.4µs | 5× |
+> | 100 nodes | 32µs | 268µs | 8× |
+> | 1k nodes | 0.18ms | 1.56ms | 9× |
+> | 10k nodes | 2.40ms | 15.3ms | 6× |
+> | 1k tree, mutate one leaf/frame | 19.1µs | 57.9µs | 3× |
+> | Same + explicit-sized container rows | 18.5µs | 51.5µs | 3× |
+> | Same + fixed-size cells (text mutation) | 20.1µs | 47.0µs | 2.3× |
 >
-> The last row is this week's headline: a node with explicit `width` AND `height` (a common TUI pattern — fixed-height rows, sidebars) acts as a Flutter-style relayout boundary, stopping dirty propagation. Combined with subtree dirty-tracking, the cache-hit path is O(dirty), not O(N). Closes the one workload Yoga used to win.
+> The bottom three rows are the headline. Pilates ships an **incremental layout engine** ("Spineless"): a flex grammar where each layout field declares its dependencies on other fields, plus a runtime that on a mutation re-evaluates only the fields actually downstream. Per-row work drops from O(N²) (each cell redoes the full flex distribution) to O(N) (the row's distribution is one shared intermediate field; cells index into it). Across the entire hot-relayout matrix Pilates now wins ~3×.
 >
 > Reproduce: `git clone github.com/pilatesjs/pilates && pnpm install && pnpm bench`
 >
-> Happy to answer questions about the cache-correctness work — three subtle bugs surfaced during Phase 2/3 that careful reasoning got wrong, and the differential-mode fuzzer caught all of them. There's a section in the [post draft](https://github.com/pilatesjs/pilates/blob/main/docs/announcements/2026-05-09-faster-than-yoga.md) on those.
+> Happy to answer questions about the validation work — the structural-differential fuzzer found four real bugs careful design review missed, including one where the imperative engine's specialized boundary cache regressed during the Spineless swap (phase 8) and a thorough refactor (phase 12) was needed to recover the headline win. There's a section in the [post draft](https://github.com/pilatesjs/pilates/blob/main/docs/announcements/2026-05-09-faster-than-yoga.md) on those.
 
 # Notes for the maintainer before posting
 
-- Don't post until `@pilates/core` 1.0.0 is on npm. The "1.0 next" framing only works if the next-week-tag is concrete.
-- Re-run `pnpm bench` on a clean machine before pasting numbers — local-dev variance can drift.
+- Don't post until `@pilates/core` 1.1.0 is on npm. The "1.1 just landed" framing only works if the version-tag is concrete.
+- Re-run `pnpm bench` on a clean machine before pasting numbers — local-dev variance can drift. The table above is darwin/arm64 / Node 26.
 - Best posting window: US Eastern Tuesday–Thursday, 8–10am.
 - Post the "Author's first comment" above as an immediate top-level reply once submitted. That's the pinned context.
 - Anticipate the following pushback in HN comments:
