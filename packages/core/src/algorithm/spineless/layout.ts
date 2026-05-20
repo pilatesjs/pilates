@@ -72,8 +72,9 @@ export interface LayoutTrace {
   fieldsRecomputed: number;
   /** Of those, Fields whose value actually changed. */
   fieldsChanged: number;
-  /** Maximal moved-subtree roots written back. 0 on build / graft —
-   *  those finish whole-tree. */
+  /** Maximal moved-subtree roots written back. 0 on build — that path
+   *  finishes the whole tree. Structural fast-paths report the scoped
+   *  roots their `finishMoved` writes back. */
   movedSubtrees: number;
 }
 
@@ -310,45 +311,74 @@ export class SpinelessLayout {
         fieldsChanged: rs.recomputeChanged,
         movedSubtrees: moved.length,
       };
-      this.finishIncremental(moved);
+      this.finishMoved(moved, []);
       clearDirtyRegion(this.root);
       return;
     }
-    if (this.tryGraftAppend(availableWidth, availableHeight)) {
+
+    const graft = this.tryGraftAppend(availableWidth, availableHeight);
+    if (graft !== null) {
       this.stats.graftRelayouts++;
       const rs = this.built!.runtime.stats;
+      const survivorRoots = this.movedSubtreeRoots(graft.changed);
+      // CRITICAL: include graft.child explicitly. Its fields were
+      // computed via integrate() at graft time, not via recompute(),
+      // so they don't appear in `changed`. Without this, a simple-
+      // regime append (changed is empty) writes back NOTHING and
+      // the appended subtree ships with _layout = 0. The structural-
+      // differential fuzzer catches this.
+      const roots = [graft.child, ...survivorRoots.filter((r) => !isInSubtree(r, graft.child))];
       this._lastTrace = {
         path: 'graft',
         dirtyNodes: dirty.length,
         fieldsRecomputed: rs.recomputeVisited,
         fieldsChanged: rs.recomputeChanged,
-        movedSubtrees: 0,
+        movedSubtrees: roots.length,
       };
-    } else if (this.tryDetachRemove(availableWidth, availableHeight)) {
+      this.finishMoved(roots, []);
+      clearDirtyRegion(this.root);
+      return;
+    }
+
+    const detach = this.tryDetachRemove(availableWidth, availableHeight);
+    if (detach !== null) {
       this.stats.detachRelayouts++;
       const rs = this.built!.runtime.stats;
+      const survivorRoots = this.movedSubtreeRoots(detach.changed);
       this._lastTrace = {
         path: 'detach',
         dirtyNodes: dirty.length,
         fieldsRecomputed: rs.recomputeVisited,
         fieldsChanged: rs.recomputeChanged,
-        movedSubtrees: 0,
+        movedSubtrees: survivorRoots.length,
       };
-    } else if (this.tryReorder(availableWidth, availableHeight)) {
+      // Survivors may be empty for simple-regime removes; explicitly
+      // include detach.parent so its scroll extent is recomputed.
+      this.finishMoved(survivorRoots, [detach.parent]);
+      clearDirtyRegion(this.root);
+      return;
+    }
+
+    const reorder = this.tryReorder(availableWidth, availableHeight);
+    if (reorder !== null) {
       this.stats.reorderRelayouts++;
       const rs = this.built!.runtime.stats;
+      const movedRoots = this.movedSubtreeRoots(reorder.changed);
       this._lastTrace = {
         path: 'reorder',
         dirtyNodes: dirty.length,
         fieldsRecomputed: rs.recomputeVisited,
         fieldsChanged: rs.recomputeChanged,
-        movedSubtrees: 0,
+        movedSubtrees: movedRoots.length,
       };
-    } else {
-      this.fullBuild(availableWidth, availableHeight);
-      this.stats.fullBuilds++;
+      this.finishMoved(movedRoots, [reorder.reordered]);
+      clearDirtyRegion(this.root);
+      return;
     }
-    this.finishWhole();
+
+    this.fullBuild(availableWidth, availableHeight);
+    this.stats.fullBuilds++;
+    this.finishWhole(); // Only reached by fullBuild fallback now
   }
 
   /** Discard any persisted state and build the grammar afresh. */
@@ -389,10 +419,13 @@ export class SpinelessLayout {
   /**
    * Fast-path a structural change that is exactly a single child
    * append: `buildAppendFragment` + `graft`, no whole-tree rebuild.
-   * Returns `false` (and changes nothing) when the change is not a
+   * Returns `null` (and changes nothing) when the change is not a
    * clean append the fast-path covers — the caller then rebuilds.
    */
-  private tryGraftAppend(availableWidth?: number, availableHeight?: number): boolean {
+  private tryGraftAppend(
+    availableWidth?: number,
+    availableHeight?: number,
+  ): { child: Node; changed: Array<Field<unknown>> } | null {
     const built = this.built!;
     const snaps = built.snaps;
 
@@ -404,18 +437,18 @@ export class SpinelessLayout {
       for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
     })(this.root);
     for (const n of snaps.keys()) {
-      if (!curNodes.has(n)) return false;
+      if (!curNodes.has(n)) return null;
     }
     const added: Node[] = [];
     for (const n of curNodes) {
       if (!snaps.has(n)) added.push(n);
     }
-    if (added.length === 0) return false;
+    if (added.length === 0) return null;
 
     // No surviving node's signature / measure may have changed —
     // `graft` patches only the append.
     for (const [n, snap] of snaps) {
-      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return false;
+      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return null;
     }
 
     // The added nodes must form exactly one subtree — its root is the
@@ -425,21 +458,21 @@ export class SpinelessLayout {
     for (const n of added) {
       const p = n.getParent();
       if (p === null || !addedSet.has(p)) {
-        if (child !== null) return false; // two separate appends
+        if (child !== null) return null; // two separate appends
         child = n;
       }
     }
-    if (child === null) return false;
+    if (child === null) return null;
     const parent = child.getParent();
-    if (parent === null) return false;
+    if (parent === null) return null;
     // A change inside a `display: 'none'` subtree: the hidden region
     // has no grammar fields to graft onto. A node with no entry in
     // `fields` is hidden (or under a hidden ancestor) — fall back to
     // a rebuild, which correctly skips the whole hidden subtree.
-    if (!built.fields.has(parent)) return false;
+    if (!built.fields.has(parent)) return null;
 
     const fragment = buildAppendFragment(built.output, this.root, parent, child, built.available);
-    if (fragment === null) return false;
+    if (fragment === null) return null;
 
     built.runtime.graft(fragment.additions, fragment.newRoots);
     for (const [field, rule] of fragment.rebinds) built.runtime.rebindRule(field, rule);
@@ -458,8 +491,8 @@ export class SpinelessLayout {
         built.runtime.markDirty(field);
       }
     }
-    built.runtime.recompute();
-    return true;
+    const changed = built.runtime.recompute();
+    return { child, changed: changed as Array<Field<unknown>> };
   }
 
   /**
@@ -475,7 +508,10 @@ export class SpinelessLayout {
    * is briefly re-inserted at its old index for the fragment build,
    * then detached again.
    */
-  private tryDetachRemove(availableWidth?: number, availableHeight?: number): boolean {
+  private tryDetachRemove(
+    availableWidth?: number,
+    availableHeight?: number,
+  ): { parent: Node; changed: Array<Field<unknown>> } | null {
     const built = this.built!;
     const snaps = built.snaps;
 
@@ -487,19 +523,19 @@ export class SpinelessLayout {
       for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
     })(this.root);
     for (const n of curNodes) {
-      if (!snaps.has(n)) return false;
+      if (!snaps.has(n)) return null;
     }
     const removed: Node[] = [];
     for (const n of snaps.keys()) {
       if (!curNodes.has(n)) removed.push(n);
     }
-    if (removed.length === 0) return false;
+    if (removed.length === 0) return null;
 
     // No surviving node's signature / measure may have changed —
     // `detach` patches only the removal.
     for (const [n, snap] of snaps) {
       if (!curNodes.has(n)) continue;
-      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return false;
+      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return null;
     }
 
     // The snapped child -> parent map — the live tree no longer holds
@@ -517,17 +553,17 @@ export class SpinelessLayout {
     for (const n of removed) {
       const p = snapParent.get(n);
       if (p === undefined || !removedSet.has(p)) {
-        if (child !== null) return false; // two separate removals
+        if (child !== null) return null; // two separate removals
         child = n;
       }
     }
-    if (child === null) return false;
+    if (child === null) return null;
     const parent = snapParent.get(child);
-    if (parent === undefined || !curNodes.has(parent)) return false;
+    if (parent === undefined || !curNodes.has(parent)) return null;
     // A removal inside a `display: 'none'` subtree: the hidden region
     // has no fields to `detach`. A node absent from `fields` is hidden
     // (or under a hidden ancestor) — rebuild instead.
-    if (!built.fields.has(parent)) return false;
+    if (!built.fields.has(parent)) return null;
 
     // `removed` must be exactly `child`'s snapped subtree.
     let subtreeCount = 0;
@@ -535,17 +571,17 @@ export class SpinelessLayout {
       subtreeCount++;
       for (const c of snaps.get(n)!.children) count(c);
     })(child);
-    if (subtreeCount !== removed.length) return false;
+    if (subtreeCount !== removed.length) return null;
 
     // `parent`'s current children must be its snapped children with
     // `child` spliced out — so re-inserting `child` at `idx` restores
     // the exact pre-removal tree for `buildRemoveFragment`.
     const snapChildren = snaps.get(parent)!.children;
     const idx = snapChildren.indexOf(child);
-    if (idx === -1 || parent.getChildCount() !== snapChildren.length - 1) return false;
+    if (idx === -1 || parent.getChildCount() !== snapChildren.length - 1) return null;
     for (let i = 0, j = 0; i < snapChildren.length; i++) {
       if (snapChildren[i] === child) continue;
-      if (parent.getChild(j) !== snapChildren[i]) return false;
+      if (parent.getChild(j) !== snapChildren[i]) return null;
       j++;
     }
 
@@ -553,7 +589,7 @@ export class SpinelessLayout {
     parent.insertChild(child, idx);
     const fragment = buildRemoveFragment(built.output, this.root, parent, child, built.available);
     parent.removeChild(child);
-    if (fragment === null) return false;
+    if (fragment === null) return null;
 
     // Apply: rebind survivors FIRST (so they stop reading the removed
     // fields), then `detach`, then adopt the next grammar.
@@ -573,18 +609,21 @@ export class SpinelessLayout {
         built.runtime.markDirty(field);
       }
     }
-    built.runtime.recompute();
-    return true;
+    const changed = built.runtime.recompute();
+    return { parent, changed: changed as Array<Field<unknown>> };
   }
 
   /**
    * Fast-path a structural change that is exactly one parent's
    * children being reordered (a permutation — no node added or
    * removed): `buildReorderFragment` + `rebindRule`, no whole-tree
-   * rebuild. Returns `false` (changing nothing) when the change is
+   * rebuild. Returns `null` (changing nothing) when the change is
    * not a clean single-parent reorder — the caller then rebuilds.
    */
-  private tryReorder(availableWidth?: number, availableHeight?: number): boolean {
+  private tryReorder(
+    availableWidth?: number,
+    availableHeight?: number,
+  ): { reordered: Node; changed: Array<Field<unknown>> } | null {
     const built = this.built!;
     const snaps = built.snaps;
 
@@ -594,35 +633,35 @@ export class SpinelessLayout {
       curNodes.add(n);
       for (let i = 0; i < n.getChildCount(); i++) visit(n.getChild(i)!);
     })(this.root);
-    if (curNodes.size !== snaps.size) return false;
+    if (curNodes.size !== snaps.size) return null;
     for (const n of curNodes) {
-      if (!snaps.has(n)) return false;
+      if (!snaps.has(n)) return null;
     }
 
     // Every node's signature / measure must be unchanged, and exactly
     // one node's child ORDER may differ — the reordered parent.
     let reordered: Node | null = null;
     for (const [n, snap] of snaps) {
-      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return false;
+      if (snap.sig !== nodeSig(n) || snap.measure !== n.getMeasureFunc()) return null;
       if (!childrenUnchanged(snap, n)) {
-        if (reordered !== null) return false; // two changed parents — not one reorder
+        if (reordered !== null) return null; // two changed parents — not one reorder
         reordered = n;
       }
     }
-    if (reordered === null) return false;
+    if (reordered === null) return null;
 
     // `reordered`'s children must be a permutation of the snapped
     // set (same count, same members) — otherwise it is an add/remove.
     const before = snaps.get(reordered)!.children;
-    if (before.length !== reordered.getChildCount()) return false;
+    if (before.length !== reordered.getChildCount()) return null;
     const beforeSet = new Set(before);
     for (let i = 0; i < reordered.getChildCount(); i++) {
-      if (!beforeSet.has(reordered.getChild(i)!)) return false;
+      if (!beforeSet.has(reordered.getChild(i)!)) return null;
     }
 
     // A reorder inside a `display: 'none'` subtree touches no laid-out
     // node — the hidden region has no fields. Rebuild instead.
-    if (!built.fields.has(reordered)) return false;
+    if (!built.fields.has(reordered)) return null;
 
     const fragment = buildReorderFragment(built.output, this.root, reordered, built.available);
     // Order: integrate the newly-read inputs, rebind the rewritten
@@ -645,8 +684,8 @@ export class SpinelessLayout {
         built.runtime.markDirty(field);
       }
     }
-    built.runtime.recompute();
-    return true;
+    const changed = built.runtime.recompute();
+    return { reordered, changed: changed as Array<Field<unknown>> };
   }
 
   /**
@@ -721,12 +760,42 @@ export class SpinelessLayout {
   }
 
   /**
+   * Reduce a set of changed Fields to the maximal moved-subtree roots.
+   * Used by the structural fast-paths to determine which subtrees need
+   * write-back after an incremental recompute.
+   */
+  private movedSubtreeRoots(changed: Iterable<Field<unknown>>): Node[] {
+    const built = this.built!;
+    const moved = new Set<Node>();
+    for (const f of changed) {
+      const n = built.owner.get(f);
+      if (n !== undefined) moved.add(n);
+    }
+    const roots: Node[] = [];
+    for (const n of moved) {
+      let maximal = true;
+      for (let p = n.getParent(); p !== null; p = p.getParent()) {
+        if (moved.has(p)) {
+          maximal = false;
+          break;
+        }
+      }
+      if (maximal) roots.push(n);
+    }
+    return roots;
+  }
+
+  /**
    * Write-back + round + scroll, scoped to the subtrees that moved.
    * A moved subtree's parent did not move, so its rounding is stable
    * and the subtree can be re-rounded in isolation; only that
    * parent's own scroll extent then needs a recompute.
+   *
+   * `extraScrollParents` are additional nodes whose scroll extents
+   * must be recomputed — used by structural fast-paths to include
+   * the surviving parent of a removed or reordered subtree.
    */
-  private finishIncremental(roots: Node[]): void {
+  private finishMoved(roots: Node[], extraScrollParents: Node[]): void {
     const { runtime, fields } = this.built!;
     for (const root of roots) {
       // Write the float layout for the whole moved subtree, so the
@@ -754,6 +823,7 @@ export class SpinelessLayout {
       const p = root.getParent();
       if (p !== null) scrollParents.add(p);
     }
+    for (const p of extraScrollParents) scrollParents.add(p);
     for (const p of scrollParents) recomputeScroll(p);
   }
 }
@@ -818,4 +888,12 @@ function recomputeScroll(node: Node): void {
   }
   node._layout.scrollWidth = Math.max(node._layout.width, contentRight);
   node._layout.scrollHeight = Math.max(node._layout.height, contentBottom);
+}
+
+/** True iff `candidate` is `root` or a descendant of `root`. */
+function isInSubtree(candidate: Node, root: Node): boolean {
+  for (let n: Node | null = candidate; n !== null; n = n.getParent()) {
+    if (n === root) return true;
+  }
+  return false;
 }
