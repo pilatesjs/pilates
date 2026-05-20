@@ -969,13 +969,15 @@ function makeEmitter(
       const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
 
       // Phase 12 regime check: single-line + flex-distributing qualifies
-      // for the O(N) intermediate Field. mainSize does NOT gate on
-      // justify-content — that's mainPos-specific in Task 3.
-      const isPhase12SizeRegime =
+      // for the O(N) intermediate `mainDistribution` Field. This gates
+      // both the per-cell mainSize collapse (here) and the mainPos
+      // collapse (Task 3); mainPos additionally narrows on
+      // justify-content === 'flex-start'.
+      const isPhase12DistributionRegime =
         parent.style.flexWrap === undefined || parent.style.flexWrap === 'nowrap';
 
       let parentMainDist: Field<MainAxisDistribution> | undefined;
-      if (isPhase12SizeRegime) {
+      if (isPhase12DistributionRegime) {
         // Emit once per parent — memoize so subsequent children reuse
         // the same Field rather than emitting duplicate rules.
         parentMainDist = mainDistributionByParent.get(parent);
