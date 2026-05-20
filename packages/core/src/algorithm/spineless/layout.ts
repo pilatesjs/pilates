@@ -347,7 +347,7 @@ export class SpinelessLayout {
 
     if (!needsRebuild && pivots.length === 1) {
       const pivot = pivots[0]!;
-      const graft = this.tryGraftAppend(pivot, availableWidth, availableHeight);
+      const graft = this.tryGraftAppend(pivot, dirty, availableWidth, availableHeight);
       if (graft !== null) {
         this.stats.graftRelayouts++;
         const rs = this.built!.runtime.stats;
@@ -371,7 +371,7 @@ export class SpinelessLayout {
         return;
       }
 
-      const detach = this.tryDetachRemove(pivot, availableWidth, availableHeight);
+      const detach = this.tryDetachRemove(pivot, dirty, availableWidth, availableHeight);
       if (detach !== null) {
         this.stats.detachRelayouts++;
         const rs = this.built!.runtime.stats;
@@ -390,7 +390,7 @@ export class SpinelessLayout {
         return;
       }
 
-      const reorder = this.tryReorder(pivot, availableWidth, availableHeight);
+      const reorder = this.tryReorder(pivot, dirty, availableWidth, availableHeight);
       if (reorder !== null) {
         this.stats.reorderRelayouts++;
         const rs = this.built!.runtime.stats;
@@ -462,6 +462,7 @@ export class SpinelessLayout {
    */
   private tryGraftAppend(
     pivot: Node,
+    dirty: Node[],
     availableWidth?: number,
     availableHeight?: number,
   ): { child: Node; changed: Array<Field<unknown>> } | null {
@@ -570,13 +571,11 @@ export class SpinelessLayout {
     }
 
     // Pick up any value mutations in the same gap, then recompute
-    // (covering the grafted / rebound fields too).
+    // (covering the grafted / rebound fields too). Iterate ONLY the
+    // dirty nodes' inputs — every value mutation marks its node
+    // dirty, so we don't need to scan the whole input set.
     this.applyAvailable(availableWidth, availableHeight);
-    for (const f of built.inputs) {
-      if (built.output.grammar.get(f)!.compute(NEVER_READ) !== built.runtime.evaluate(f)) {
-        built.runtime.markDirty(f);
-      }
-    }
+    this.markDriftedInputs(dirty);
     const changed = built.runtime.recompute();
     return { child, changed };
   }
@@ -601,6 +600,7 @@ export class SpinelessLayout {
    */
   private tryDetachRemove(
     pivot: Node,
+    dirty: Node[],
     availableWidth?: number,
     availableHeight?: number,
   ): { parent: Node; changed: Array<Field<unknown>> } | null {
@@ -697,12 +697,10 @@ export class SpinelessLayout {
     built.inputs = built.inputs.filter((f) => built.runtime.isTracked(f));
 
     // Pick up any value mutations in the same batch, then recompute.
+    // Iterate ONLY the dirty nodes' inputs — every value mutation
+    // marks its node dirty.
     this.applyAvailable(availableWidth, availableHeight);
-    for (const f of built.inputs) {
-      if (built.output.grammar.get(f)!.compute(NEVER_READ) !== built.runtime.evaluate(f)) {
-        built.runtime.markDirty(f);
-      }
-    }
+    this.markDriftedInputs(dirty);
     const changed = built.runtime.recompute();
     return { parent: pivot, changed };
   }
@@ -720,6 +718,7 @@ export class SpinelessLayout {
    */
   private tryReorder(
     pivot: Node,
+    dirty: Node[],
     availableWidth?: number,
     availableHeight?: number,
   ): { reordered: Node; changed: Array<Field<unknown>> } | null {
@@ -772,12 +771,10 @@ export class SpinelessLayout {
     }
 
     // Pick up any value mutations in the same batch, then recompute.
+    // Iterate ONLY the dirty nodes' inputs — every value mutation
+    // marks its node dirty.
     this.applyAvailable(availableWidth, availableHeight);
-    for (const f of built.inputs) {
-      if (built.output.grammar.get(f)!.compute(NEVER_READ) !== built.runtime.evaluate(f)) {
-        built.runtime.markDirty(f);
-      }
-    }
+    this.markDriftedInputs(dirty);
     const changed = built.runtime.recompute();
     return { reordered: pivot, changed };
   }
@@ -789,9 +786,23 @@ export class SpinelessLayout {
    * layout moved — for `finishMoved` to write back.
    */
   private relayoutValues(dirty: Node[], availableWidth?: number, availableHeight?: number): Node[] {
-    const built = this.built!;
     this.applyAvailable(availableWidth, availableHeight);
+    this.markDriftedInputs(dirty);
+    return this.movedSubtreeRoots(this.built!.runtime.recompute());
+  }
 
+  /**
+   * Re-`markDirty` only the input Fields of the dirty nodes (plus the
+   * root `available:*` inputs) whose live value drifted from the
+   * runtime's stored value. Shared by every relayout path — the value
+   * relayout and all three structural fast-paths.
+   *
+   * Iterates O(dirty inputs), not O(built.inputs) — every value
+   * mutation marks its owning node dirty, so non-dirty nodes can't
+   * have drifted inputs.
+   */
+  private markDriftedInputs(dirty: Iterable<Node>): void {
+    const built = this.built!;
     const fields: Array<Field<unknown>> = [];
     if (built.output.availableInputs.width !== undefined) {
       fields.push(built.output.availableInputs.width as Field<unknown>);
@@ -810,8 +821,6 @@ export class SpinelessLayout {
       const live = output.grammar.get(f)!.compute(NEVER_READ);
       if (live !== runtime.evaluate(f)) runtime.markDirty(f);
     }
-
-    return this.movedSubtreeRoots(runtime.recompute());
   }
 
   /** Push new `available` values into the holder the grammar closes over. */
