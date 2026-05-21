@@ -18,6 +18,7 @@
 
 import { type LayoutCache, MeasureCache } from './algorithm/cache.js';
 import { calculateLayout as runCalculateLayout } from './algorithm/index.js';
+import { DIRTY_ANY } from './dirty-flags.js';
 import { Edge } from './edge.js';
 import { type ComputedLayout, defaultLayout } from './layout.js';
 import type { MeasureFunc } from './measure-func.js';
@@ -113,15 +114,15 @@ export class Node {
   private readonly _children: Node[] = [];
   private _parent: Node | null = null;
   private _measure: MeasureFunc | null = null;
-  /** True if style or tree has changed since the last `calculateLayout()`. */
-  private _dirty = true;
+  /** Bitmask of `DIRTY_*` flags. Non-zero means this node is dirty. */
+  private _dirtyFlags: number = DIRTY_ANY;
   /**
    * True if any descendant has been marked dirty (even if dirty propagation
    * was stopped by a relayout boundary before reaching this node). Used by
    * the root cache-hit path to skip `layoutChildren` for subtrees that have
    * no mutations at all — not just subtrees where this node itself is clean.
    *
-   * Invariant: `_dirty` implies `_hasDirtyDescendant` on the parent (if any).
+   * Invariant: `_dirtyFlags !== 0` implies `_hasDirtyDescendant` on the parent (if any).
    * Cleared by `clearDirty()` after each `calculateLayout()`.
    */
   _hasDirtyDescendant = false;
@@ -504,15 +505,28 @@ export class Node {
    * Walk up the tree marking every ancestor dirty too. The algorithm uses
    * this hint to short-circuit work in subtrees that did not change.
    */
-  markDirty(): void {
-    this._dirty = true;
+  /**
+   * Set specific dirty flag(s) on this node. Propagates upward
+   * through ancestors. Used by individual setters to indicate the
+   * granular nature of the change; cache layers consume the flag
+   * to decide whether to invalidate.
+   *
+   * @internal
+   */
+  markDirtyFlag(flag: number): void {
+    this._dirtyFlags |= flag;
     // Optional-chain: only fires on leaves with a measure func installed.
     // Ancestor nodes (containers with children) cannot have a MeasureCache
     // because setMeasureFunc rejects nodes with children; the optional-chain
     // is a deliberate no-op as we propagate dirty up the tree.
     this._measureCache?.clear();
     this._layoutCache?.clear();
-    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+    if (this._parent !== null && this._parent._dirtyFlags === 0)
+      this._parent.markDirtyFromChild(this);
+  }
+
+  markDirty(): void {
+    this.markDirtyFlag(DIRTY_ANY);
   }
 
   /**
@@ -525,7 +539,7 @@ export class Node {
    * See `isLayoutBoundary()` for the boundary definition and rationale.
    */
   private markDirtyFromChild(_child: Node): void {
-    this._dirty = true;
+    this._dirtyFlags |= DIRTY_ANY;
     this._layoutCache?.clear();
     // Stop dirty propagation at relayout boundaries — see isLayoutBoundary
     // and the Phase 3 spec for why explicit width+height makes the
@@ -540,7 +554,8 @@ export class Node {
       if (this._parent !== null) this._parent.markHasDirtyDescendant();
       return;
     }
-    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+    if (this._parent !== null && this._parent._dirtyFlags === 0)
+      this._parent.markDirtyFromChild(this);
   }
 
   /**
@@ -554,7 +569,8 @@ export class Node {
   private markHasDirtyDescendant(): void {
     if (this._hasDirtyDescendant) return; // already set; further propagation is a no-op
     this._hasDirtyDescendant = true;
-    if (this._parent !== null && !this._parent._dirty) this._parent.markHasDirtyDescendant();
+    if (this._parent !== null && this._parent._dirtyFlags === 0)
+      this._parent.markHasDirtyDescendant();
   }
 
   /**
@@ -567,14 +583,14 @@ export class Node {
    * @internal
    */
   _forceDirty(): void {
-    this._dirty = true;
+    this._dirtyFlags |= DIRTY_ANY;
     this._measureCache?.clear();
     this._layoutCache?.clear();
-    if (this._parent !== null && !this._parent._dirty) this._parent._forceDirty();
+    if (this._parent !== null && this._parent._dirtyFlags === 0) this._parent._forceDirty();
   }
 
   isDirty(): boolean {
-    return this._dirty;
+    return this._dirtyFlags !== 0;
   }
 
   /**
@@ -585,7 +601,7 @@ export class Node {
    * @internal
    */
   clearDirty(): void {
-    this._dirty = false;
+    this._dirtyFlags = 0;
     this._hasDirtyDescendant = false;
   }
 }
