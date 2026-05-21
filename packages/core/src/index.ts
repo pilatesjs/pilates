@@ -28,6 +28,18 @@ export type { ComputedLayout } from './layout.js';
 // `calculateLayout` call (phase 9).
 export { setLayoutProfiler, type LayoutProfiler, type LayoutTrace } from './algorithm/index.js';
 
+// Per-property dirty flags (phase 15B). @internal — consumed by the
+// algorithm + spineless layers; not part of the public API surface.
+export {
+  DIRTY_ANY,
+  DIRTY_CHILDREN,
+  DIRTY_FLEX_DISTRIBUTION,
+  DIRTY_MEASURE,
+  DIRTY_MEASURE_CONTENT,
+  DIRTY_STYLE_SIG,
+  DIRTY_STYLE_VALUE,
+} from './dirty-flags.js';
+
 // Layout inspection — a console dump of a computed-layout subtree.
 export { inspectLayout } from './inspect.js';
 
