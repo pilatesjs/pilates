@@ -1,50 +1,50 @@
 {
   "tiny": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 8.2, "ci95Us": [6.2, 9.02] }
+      "win32-x64": { "expectedMedianUs": 10, "ci95Us": [5.8, 13] }
     }
   },
   "realistic": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 147.1, "ci95Us": [146.6, 161.81] }
+      "win32-x64": { "expectedMedianUs": 175, "ci95Us": [135.5, 227.5] }
     }
   },
   "stress": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 760.05, "ci95Us": [753.2, 836.06] }
+      "win32-x64": { "expectedMedianUs": 901.3, "ci95Us": [695.9, 1171.7] }
     }
   },
   "big": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 4820.8, "ci95Us": [4774.25, 5302.88] }
+      "win32-x64": { "expectedMedianUs": 5797.4, "ci95Us": [4442.3, 7536.6] }
     }
   },
   "huge": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 12710.25, "ci95Us": [12612.6, 13981.28] }
+      "win32-x64": { "expectedMedianUs": 14785.3, "ci95Us": [12036.6, 19220.9] }
     }
   },
   "hotrelayout": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 23.6, "ci95Us": [23.5, 25.96] }
+      "win32-x64": { "expectedMedianUs": 30.8, "ci95Us": [21.4, 40] }
     }
   },
   "hotrelayoutboundary": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 22.9, "ci95Us": [22.8, 25.19] }
+      "win32-x64": { "expectedMedianUs": 30.1, "ci95Us": [21.1, 39.1] }
     }
   },
   "hotrelayouttext": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 22.5, "ci95Us": [22.4, 24.75] }
+      "win32-x64": { "expectedMedianUs": 30.75, "ci95Us": [21.3, 40] }
     },
     "@pilates/core (spineless)": {
-      "win32-x64": { "expectedMedianUs": 0.2, "ci95Us": [0.2, 0.22] }
+      "win32-x64": { "expectedMedianUs": 0.3, "ci95Us": [0.19, 0.39] }
     }
   },
   "hotstructural": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 403.57, "ci95Us": [401.19, 443.93] }
+      "win32-x64": { "expectedMedianUs": 480.3, "ci95Us": [376.9, 624.3] }
     }
   }
 }
