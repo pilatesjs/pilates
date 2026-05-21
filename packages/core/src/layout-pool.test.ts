@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, test } from 'vitest';
 import { Pool, _poolStats, _resetPoolForTesting, allocateNodeId } from './layout-pool.js';
 
 describe('LayoutPool', () => {

@@ -27,6 +27,7 @@ import {
   DIRTY_STYLE_VALUE,
 } from './dirty-flags.js';
 import { Edge } from './edge.js';
+import { allocateNodeId } from './layout-pool.js';
 import { type ComputedLayout, defaultLayout } from './layout.js';
 import type { MeasureFunc } from './measure-func.js';
 import {
@@ -67,6 +68,15 @@ export class Node {
    *
    * @internal
    */
+  /**
+   * Unique integer ID for typed-array indexing in the LayoutPool.
+   * Assigned at construction; recycled via FinalizationRegistry when
+   * this Node is garbage-collected.
+   *
+   * @internal
+   */
+  readonly _id: number = allocateNodeId(this);
+
   readonly _style: Style = defaultStyle();
   /**
    * Backing storage for `layout`. Written by the algorithm in this package
