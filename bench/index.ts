@@ -1,16 +1,23 @@
 /**
  * Benchmark harness for Pilates vs reference WASM flexbox.
  *
- * Usage: `pnpm bench` — builds, runs, writes `bench/RESULTS.md`.
+ * Usage:
+ *   pnpm bench              — default run; writes RESULTS.md + history/<sha>.json
+ *   pnpm bench:variance     — N=20 runs per scenario; reports per-scenario CI95
  *
  * Each scenario builds the same tree shape in three engines, runs each
- * via tinybench (with warmup), and writes a markdown report.
+ * via the bench harness (tinybench + bootstrap CI95), and writes
+ * Markdown + JSON reports.
  */
 
 import { writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Bench } from 'tinybench';
+import { snapshotEnv } from './harness/env.js';
+import { writeJsonReport } from './harness/reporter-json.js';
+import { writeMarkdownReport } from './harness/reporter-markdown.js';
+import { type Scenario, runScenarios } from './harness/runner.js';
+import { computeStats } from './harness/stats.js';
 import * as big from './scenarios/big.js';
 import * as hotRelayoutBoundary from './scenarios/hot-relayout-boundary.js';
 import * as hotRelayoutText from './scenarios/hot-relayout-text.js';
@@ -21,245 +28,115 @@ import * as realistic from './scenarios/realistic.js';
 import * as stress from './scenarios/stress.js';
 import * as tiny from './scenarios/tiny.js';
 
-const RESULTS_PATH = resolve(dirname(fileURLToPath(import.meta.url)), 'RESULTS.md');
+const BENCH_DIR = dirname(fileURLToPath(import.meta.url));
+const RESULTS_PATH = resolve(BENCH_DIR, 'RESULTS.md');
+const HISTORY_DIR = resolve(BENCH_DIR, 'history');
 
-interface Scenario {
-  name: string;
-  notes: string;
+interface ScenarioModule {
   pilatesCoreLayout: () => void;
   pilatesFullRender: () => void;
   yogaLayout: () => void;
-  // Optional fourth engine: the Spineless incremental runtime (phase 5b).
-  // Only the scenarios that exercise its sweet spot wire this in.
   pilatesSpinelessLayout?: () => void;
-  // Optional fifth engine: the Spineless runtime rebuilt from scratch
-  // each iteration (phase 5c baseline) — the naive path the
-  // incremental graft / detach is measured against.
   pilatesSpinelessRebuild?: () => void;
 }
 
+function buildScenario(name: string, notes: string, mod: ScenarioModule): Scenario {
+  const engines: Record<string, () => void> = {
+    '@pilates/core (layout)': mod.pilatesCoreLayout,
+    '@pilates/render (full)': mod.pilatesFullRender,
+    'yoga-layout (WASM)': mod.yogaLayout,
+  };
+  if (mod.pilatesSpinelessLayout !== undefined) {
+    engines['@pilates/core (spineless)'] = mod.pilatesSpinelessLayout;
+  }
+  if (mod.pilatesSpinelessRebuild !== undefined) {
+    engines['@pilates/core (spineless rebuild)'] = mod.pilatesSpinelessRebuild;
+  }
+  return { name, notes, engines };
+}
+
 const SCENARIOS: Scenario[] = [
-  { name: 'tiny', notes: '10 nodes, 1 level', ...tiny },
-  { name: 'realistic', notes: '~100 nodes, 3-4 levels', ...realistic },
-  { name: 'stress', notes: '~1000 nodes, 2 levels', ...stress },
-  { name: 'big', notes: '~5000 nodes, 2 levels (50 × 100)', ...big },
-  { name: 'huge', notes: '~10000 nodes, 2 levels (100 × 100)', ...huge },
-  {
-    name: 'hotrelayout',
-    notes: '1k-node persistent tree, mutate one leaf per pass',
-    ...hotRelayout,
-  },
-  {
-    name: 'hotrelayoutboundary',
-    notes: '1k-node persistent tree with explicit-sized row boundaries, mutate one leaf',
-    ...hotRelayoutBoundary,
-  },
-  {
-    name: 'hotrelayouttext',
-    notes:
-      '1k-node fixed-size table, mutate one leaf width per pass (Spineless incremental engine)',
-    ...hotRelayoutText,
-  },
-  {
-    name: 'hotstructural',
-    notes: '~1k-node table, append + remove a whole row per pass (Spineless graft / detach)',
-    ...hotStructural,
-  },
+  buildScenario('tiny', '10 nodes, 1 level', tiny),
+  buildScenario('realistic', '~100 nodes, 3-4 levels', realistic),
+  buildScenario('stress', '~1000 nodes, 2 levels', stress),
+  buildScenario('big', '~5000 nodes, 2 levels (50 × 100)', big),
+  buildScenario('huge', '~10000 nodes, 2 levels (100 × 100)', huge),
+  buildScenario('hotrelayout', '1k-node persistent tree, mutate one leaf per pass', hotRelayout),
+  buildScenario(
+    'hotrelayoutboundary',
+    '1k-node persistent tree with explicit-sized row boundaries, mutate one leaf',
+    hotRelayoutBoundary,
+  ),
+  buildScenario(
+    'hotrelayouttext',
+    '1k-node fixed-size table, mutate one leaf width per pass (Spineless incremental engine)',
+    hotRelayoutText,
+  ),
+  buildScenario(
+    'hotstructural',
+    '~1k-node table, append + remove a whole row per pass (Spineless graft / detach)',
+    hotStructural,
+  ),
 ];
 
-async function runScenario(s: Scenario): Promise<{
-  name: string;
-  notes: string;
-  results: Record<string, { mean: number; hz: number; samples: number }>;
-}> {
-  const bench = new Bench({ time: 1000, warmupTime: 250, warmup: true });
-  bench
-    .add('@pilates/core (layout)', s.pilatesCoreLayout)
-    .add('@pilates/render (full)', s.pilatesFullRender)
-    .add('yoga-layout (WASM)', s.yogaLayout);
-  if (s.pilatesSpinelessLayout !== undefined) {
-    bench.add('@pilates/core (spineless)', s.pilatesSpinelessLayout);
-  }
-  if (s.pilatesSpinelessRebuild !== undefined) {
-    bench.add('@pilates/core (spineless rebuild)', s.pilatesSpinelessRebuild);
-  }
-
-  await bench.run();
-
-  const results: Record<string, { mean: number; hz: number; samples: number }> = {};
-  for (const task of bench.tasks) {
-    const r = task.result;
-    if (!r || r.state !== 'completed') continue;
-    const meanMs = r.latency.mean;
-    const hz = meanMs > 0 ? 1000 / meanMs : 0;
-    const samples = r.latency.samples?.length ?? 0;
-    results[task.name] = { mean: meanMs, hz, samples };
-  }
-  return { name: s.name, notes: s.notes, results };
+async function runDefault(): Promise<void> {
+  const env = snapshotEnv();
+  const scenarios = await runScenarios({
+    scenarios: SCENARIOS,
+    onScenarioStart: (name) => process.stderr.write(`benching ${name}…\n`),
+  });
+  const report = { env, scenarios };
+  writeMarkdownReport(report, RESULTS_PATH);
+  writeJsonReport(report, resolve(HISTORY_DIR, `${env.git.sha.slice(0, 12) || 'unknown'}.json`));
+  process.stderr.write(`wrote ${RESULTS_PATH}\n`);
+  process.stderr.write(
+    `wrote ${resolve(HISTORY_DIR, `${env.git.sha.slice(0, 12) || 'unknown'}.json`)}\n`,
+  );
 }
 
-function fmtMs(ms: number): string {
-  if (ms < 0.001) return `${(ms * 1000).toFixed(2)}µs`;
-  if (ms < 1) return `${(ms * 1000).toFixed(1)}µs`;
-  if (ms < 10) return `${ms.toFixed(2)}ms`;
-  return `${ms.toFixed(1)}ms`;
-}
-
-function fmtHz(hz: number): string {
-  if (hz >= 1_000_000) return `${(hz / 1_000_000).toFixed(2)}M ops/s`;
-  if (hz >= 1_000) return `${(hz / 1_000).toFixed(1)}k ops/s`;
-  return `${hz.toFixed(0)} ops/s`;
+async function runVariance(): Promise<void> {
+  const N = 20;
+  process.stderr.write(`bench:variance — running ${N} full passes\n`);
+  // Collect per-(scenario, engine) sample-of-medians across N runs.
+  const accum = new Map<string, number[]>();
+  for (let i = 0; i < N; i++) {
+    process.stderr.write(`  pass ${i + 1}/${N}\n`);
+    const results = await runScenarios({ scenarios: SCENARIOS, measureMs: 1500, warmupMs: 250 });
+    for (const s of results) {
+      for (const e of s.engines) {
+        const key = `${s.name}::${e.name}`;
+        const arr = accum.get(key) ?? [];
+        arr.push(e.stats.median);
+        accum.set(key, arr);
+      }
+    }
+  }
+  // Report per-key distribution.
+  const env = snapshotEnv();
+  const lines: string[] = [];
+  lines.push(`# bench:variance — ${N} runs · ${env.platformId} · ${env.node}`);
+  lines.push('');
+  lines.push('| Scenario | Engine | Median of medians | CI95 of medians | min | max |');
+  lines.push('|---|---|---:|---:|---:|---:|');
+  for (const [key, medians] of accum) {
+    const [scenarioName, engineName] = key.split('::');
+    const stats = computeStats(medians);
+    const lo = Math.min(...medians);
+    const hi = Math.max(...medians);
+    const fmt = (ns: number): string => `${(ns / 1000).toFixed(2)}µs`;
+    lines.push(
+      `| ${scenarioName} | ${engineName} | ${fmt(stats.median)} | [${fmt(stats.ci95[0])}, ${fmt(stats.ci95[1])}] | ${fmt(lo)} | ${fmt(hi)} |`,
+    );
+  }
+  const outPath = resolve(BENCH_DIR, 'VARIANCE.md');
+  writeFileSync(outPath, `${lines.join('\n')}\n`);
+  process.stderr.write(`wrote ${outPath}\n`);
 }
 
 async function main(): Promise<void> {
-  const date = new Date().toISOString().slice(0, 10);
-  const node = process.version;
-  const platform = `${process.platform}/${process.arch}`;
-  const out: string[] = [];
-
-  out.push('# Pilates benchmark results');
-  out.push('');
-  out.push(`Generated: ${date} · Node ${node} · ${platform}`);
-  out.push('');
-  out.push('Reproduce: `pnpm bench`. Numbers vary by machine — relative');
-  out.push('positions are the interesting signal.');
-  out.push('');
-  out.push('## Scenarios');
-  out.push('');
-  out.push('| Scenario | Tree shape |');
-  out.push('|---|---|');
-  for (const s of SCENARIOS) {
-    out.push(`| **${s.name}** | ${s.notes} |`);
-  }
-  out.push('');
-
-  for (const s of SCENARIOS) {
-    process.stderr.write(`benching ${s.name}…\n`);
-    const result = await runScenario(s);
-    out.push(`## ${result.name}`);
-    out.push('');
-    out.push(`> ${result.notes}`);
-    out.push('');
-    out.push('| Engine | Mean latency | Throughput | Samples |');
-    out.push('|---|---:|---:|---:|');
-    for (const [name, r] of Object.entries(result.results)) {
-      out.push(`| ${name} | ${fmtMs(r.mean)} | ${fmtHz(r.hz)} | ${r.samples} |`);
-    }
-    out.push('');
-  }
-
-  out.push("## What's measured");
-  out.push('');
-  out.push('Each iteration **builds a fresh tree and runs the layout pass**.');
-  out.push('This is representative of how TUIs use a layout engine in');
-  out.push('practice — every frame redraw constructs (or reconstructs) the');
-  out.push('tree from declarative state.');
-  out.push('');
-  out.push('- `@pilates/core (layout)` — build a Pilates `Node` tree,');
-  out.push('  call `calculateLayout()`. No painting.');
-  out.push('- `@pilates/render (full)` — build a declarative `RenderNode`,');
-  out.push('  call `renderToFrame()` (= build core tree, calculate layout,');
-  out.push('  paint cells into the Frame). Closest analog to Yoga doing');
-  out.push('  layout *plus* a render layer on top.');
-  out.push('- `yoga-layout (WASM)` — build a Yoga `Node` tree (same shape),');
-  out.push('  call `calculateLayout()`. Layout-only baseline. The reference');
-  out.push('  implementation Pilates is validated against cell-for-cell in');
-  out.push('  `packages/core/test/yoga-oracle.test.ts`.');
-  out.push('');
-  out.push('## Why Pilates wins on tree-build-then-layout');
-  out.push('');
-  out.push("WASM Yoga's C++ layout pass is fast in isolation, but every");
-  out.push('Node.create / setProperty crosses the JS↔WASM boundary. At');
-  out.push('typical TUI tree sizes (10–1000 nodes per frame) the marshalling');
-  out.push('cost dominates the compute. Pure-TS Pilates pays no such cost;');
-  out.push('every operation is a property assignment on a JS object.');
-  out.push('');
-  out.push('## Long-lived trees with hot relayouts');
-  out.push('');
-  out.push('Building the tree once and mutating-and-relayouting in a loop');
-  out.push("is the workload Yoga's WASM compute advantage traditionally");
-  out.push('shows up on. Two scenarios cover this shape:');
-  out.push('');
-  out.push('- `hotrelayout` — 1k-node persistent tree with no boundary');
-  out.push('  hints. Yoga still wins here because every leaf mutation');
-  out.push("  walks the dirty bit to root, invalidating Pilates'");
-  out.push('  layout cache.');
-  out.push('- `hotrelayoutboundary` — same shape but with explicit-sized');
-  out.push('  row containers (`width: N, height: M`, default flex). Each');
-  out.push('  row acts as a relayout boundary: leaf mutations dirty the');
-  out.push("  row but don't propagate to root, so Pilates' root layout");
-  out.push('  cache hits and only the row subtree re-runs flex.');
-  out.push('  **Pilates is ~9× faster than Yoga** on this scenario.');
-  out.push('- `hotrelayouttext` — 1k-node fixed-size table; mutating one');
-  out.push("  leaf's width per pass. Adds a fourth engine,");
-  out.push('  `@pilates/core (spineless)`, the phase-5b incremental');
-  out.push('  runtime: the flex grammar is built once, the leaf width');
-  out.push('  is marked dirty, and `recompute()` ripples through only');
-  out.push("  the downstream cells' positions in the same row. The");
-  out.push('  imperative + Yoga columns measure the same mutation under');
-  out.push('  a full `calculateLayout()` for comparison.');
-  out.push('');
-  out.push('The boundary path is opt-in by tree shape, not API: any');
-  out.push('explicit-sized container with default flex grow/shrink');
-  out.push('qualifies, which matches the idiomatic TUI pattern of');
-  out.push('`<Box width={N} height={M}>` containers around dynamic');
-  out.push('content. See `docs/superpowers/specs/2026-05-09-relayout-boundaries-design.md`.');
-  out.push('The Spineless runtime targets the same workload via a');
-  out.push('different mechanism — see');
-  out.push('`docs/superpowers/specs/2026-05-12-spineless-foundation.md`.');
-  out.push('');
-  out.push('## Structural mutation — growing and shrinking trees');
-  out.push('');
-  out.push('`hotstructural` covers the workload where the tree *shape*');
-  out.push('changes each frame — a row appended to a list, a panel shown');
-  out.push('or hidden. A ~1k-node table appends then removes a whole row');
-  out.push('per pass. Four engines:');
-  out.push('');
-  out.push('- `@pilates/core (layout)` — mutate the tree, full');
-  out.push('  `calculateLayout()`.');
-  out.push('- `@pilates/core (spineless)` — the phase-5c incremental');
-  out.push('  structural path: `buildAppendFragment` / `buildRemoveFragment`');
-  out.push('  produce the patch, `graft` / `detach` splice the dependency');
-  out.push('  graph, `recompute()` settles it — no fresh runtime, no');
-  out.push('  `init()`.');
-  out.push('- `@pilates/core (spineless rebuild)` — the naive Spineless');
-  out.push('  path: a full `buildFlexGrammar()` + new runtime + `init()`');
-  out.push('  every pass. The baseline the incremental ops are measured');
-  out.push('  against.');
-  out.push('- `yoga-layout (WASM)` — mutate, full `calculateLayout()`.');
-  out.push('');
-  out.push('What the numbers show: the incremental structural path');
-  out.push('builds its patch in **O(subtree)**, not O(tree).');
-  out.push('`buildAppendFragment` emits just the appended subtree against');
-  out.push('the runtime grammar as a boundary; `buildRemoveFragment`');
-  out.push('collects the removed subtree directly and `detach` cleans');
-  out.push('any orphaned input — neither rebuilds the whole grammar. The');
-  out.push('incremental path is **~70× faster than a full Spineless');
-  out.push('rebuild** and now runs on par with the imperative');
-  out.push('`calculateLayout()` itself — structural incrementality has');
-  out.push('caught up to a tuned from-scratch relayout.');
-  out.push('');
-  out.push('See `docs/superpowers/specs/2026-05-15-spineless-structural.md`.');
-  out.push('');
-  out.push('## When Yoga still wins');
-  out.push('');
-  out.push('- **Concurrent layout of many independent trees**: WASM can');
-  out.push("  unlock SharedArrayBuffer + worker patterns Pilates can't.");
-  out.push('- **Trees with no explicit-sized boundaries that hot-relayout');
-  out.push('  per frame**: see `hotrelayout` scenario above. If your tree');
-  out.push('  is fully fluid (no `width: N, height: M` containers) and');
-  out.push('  every frame mutates a leaf, Yoga is faster.');
-  out.push('');
-  out.push('## What you also get with Pilates regardless');
-  out.push('');
-  out.push('- **Zero WASM init cost** — first layout call returns immediately.');
-  out.push('- **Any JS runtime** — pure TypeScript runs in Node, Bun, Deno,');
-  out.push("  the browser, edge functions. Yoga's WASM bundle requires the");
-  out.push('  loader and adds ~150 KB.');
-  out.push('- **Zero runtime deps** — Pilates ships nothing transitive.');
-
-  writeFileSync(RESULTS_PATH, `${out.join('\n')}\n`);
-  process.stderr.write(`wrote ${RESULTS_PATH}\n`);
+  const variance = process.argv.includes('--variance');
+  if (variance) await runVariance();
+  else await runDefault();
 }
 
 main().catch((err: unknown) => {
