@@ -11,6 +11,9 @@ docs/api/
 *.tgz
 .worktrees/
 
+# Bench history JSON — machine-local; can be large (raw samples)
+bench/history/
+
 # Python build artefacts (placeholder/pilates-py/)
 __pycache__/
 *.egg-info/

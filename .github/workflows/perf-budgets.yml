@@ -30,3 +30,11 @@ jobs:
         with:
           name: bench-results
           path: bench/RESULTS.md
+
+      - name: Upload bench history JSON (push-to-main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v5
+        with:
+          name: bench-history-${{ github.sha }}
+          path: bench/history/*.json
+          retention-days: 90

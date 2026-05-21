@@ -25,6 +25,7 @@
     "docs:build": "typedoc",
     "gen:unicode": "tsx tools/generate-unicode-tables.ts",
     "bench": "pnpm build && tsx bench/index.ts",
+    "bench:variance": "pnpm build && tsx bench/index.ts --variance",
     "bench:budgets": "tsx bench/check-budgets.ts",
     "ci": "pnpm lint && pnpm build && pnpm typecheck && pnpm test && pnpm test:differential",
     "release:dry": "pnpm -r --filter \"./packages/*\" exec pnpm publish --dry-run --access=public --no-git-checks",

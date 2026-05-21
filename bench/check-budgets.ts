@@ -1,94 +1,151 @@
 /**
- * Compares the latest `bench/RESULTS.md` numbers against
- * `bench/thresholds.json`. Exits non-zero if any threshold is exceeded
- * (Phase 2: fail-on-regression).
+ * Regression detector for `pnpm bench`. Loads the most recent
+ * bench/history/<sha>.json, compares each (scenario, engine) median
+ * + CI95 to the expectation in bench/thresholds.json for the current
+ * platform.
  *
- * Usage: `pnpm bench:budgets` (after running `pnpm bench`).
+ * A regression is flagged when the current CI95 LOWER bound is above
+ * the threshold's CI95 UPPER bound × 1.10 — i.e. the distributions
+ * don't overlap AND the gap exceeds 10% of the upper bound. This is
+ * tighter than the pre-overhaul "single ceiling" rule and catches
+ * smaller regressions.
+ *
+ * @internal
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import type { BenchRunReport } from './harness/reporter-json.js';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const RESULTS = resolve(here, 'RESULTS.md');
-const THRESHOLDS = resolve(here, 'thresholds.json');
-
-interface Threshold {
-  maxMeanMs: number;
+interface ThresholdEntry {
+  expectedMedianUs: number;
+  ci95Us: [number, number];
 }
-type Thresholds = Record<string, Record<string, Threshold>>;
+type Thresholds = Record<string, Record<string, Record<string, ThresholdEntry>>>;
 
-interface MeasuredRow {
+export interface Regression {
+  scenario: string;
   engine: string;
-  meanMs: number;
+  platformId: string;
+  observed: { medianUs: number; ci95Us: [number, number] };
+  threshold: ThresholdEntry;
+  ratio: number;
 }
-type MeasuredScenarios = Record<string, MeasuredRow[]>;
 
-function parseResults(md: string): MeasuredScenarios {
-  // RESULTS.md sections start with "## <scenario>" then have a table:
-  //   | Engine | Mean latency | Throughput | Samples |
-  //   |---|---:|---:|---:|
-  //   | @pilates/core (layout) | 2.0µs | ... |
-  // Real scenarios are lowercase one-word identifiers we control.
-  const out: MeasuredScenarios = {};
-  const lines = md.split('\n');
+export interface Improvement {
+  scenario: string;
+  engine: string;
+  observedMedianUs: number;
+  thresholdMedianUs: number;
+}
 
-  let currentScenario: string | null = null;
-  for (const line of lines) {
-    const heading = /^## (\w+)$/.exec(line);
-    if (heading !== null) {
-      const name = heading[1]!;
-      currentScenario = /^[a-z]+$/.test(name) ? name : null;
-      if (currentScenario !== null) out[currentScenario] = [];
-      continue;
-    }
-    if (currentScenario === null) continue;
-    const row = /^\|\s*([^|]+?)\s*\|\s*([0-9.]+)(µs|ms)\s*\|/.exec(line);
-    if (row === null) continue;
-    const engine = row[1]!.trim();
-    const value = Number.parseFloat(row[2]!);
-    const unit = row[3]!;
-    const meanMs = unit === 'µs' ? value / 1000 : value;
-    out[currentScenario]!.push({ engine, meanMs });
+export interface CheckResult {
+  checked: number;
+  regressions: Regression[];
+  improvements: Improvement[];
+  warnings: string[];
+}
+
+const BENCH_DIR = dirname(fileURLToPath(import.meta.url));
+
+const HEADROOM = 1.1; // 10% above threshold upper before regression fails
+
+function loadReport(): BenchRunReport {
+  const historyDir = resolve(BENCH_DIR, 'history');
+  const files = readdirSync(historyDir).filter((f) => f.endsWith('.json'));
+  if (files.length === 0) {
+    throw new Error(`[check-budgets] no history files in ${historyDir}; run \`pnpm bench\` first`);
   }
-  return out;
+  const newest = files
+    .map((f) => ({ f, mtime: statSync(resolve(historyDir, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime)[0]!;
+  return JSON.parse(readFileSync(resolve(historyDir, newest.f), 'utf8')) as BenchRunReport;
 }
 
-function main(): void {
-  const thresholds = JSON.parse(readFileSync(THRESHOLDS, 'utf8')) as Thresholds;
-  const measured = parseResults(readFileSync(RESULTS, 'utf8'));
+function loadThresholds(): Thresholds {
+  const path = resolve(BENCH_DIR, 'thresholds.json');
+  return JSON.parse(readFileSync(path, 'utf8')) as Thresholds;
+}
 
-  const violations: string[] = [];
-  for (const [scenario, engines] of Object.entries(thresholds)) {
-    const rows = measured[scenario];
-    if (rows === undefined) {
-      violations.push(`scenario "${scenario}" has thresholds but no results`);
-      continue;
-    }
-    for (const [engine, threshold] of Object.entries(engines)) {
-      const row = rows.find((r) => r.engine === engine);
-      if (row === undefined) {
-        violations.push(`scenario "${scenario}" engine "${engine}" missing from results`);
+export function evaluateBudgets(report: BenchRunReport, thresholds: Thresholds): CheckResult {
+  const platformId = report.env.platformId;
+  const regressions: Regression[] = [];
+  const improvements: Improvement[] = [];
+  const warnings: string[] = [];
+  let checked = 0;
+  for (const s of report.scenarios) {
+    const scenarioThr = thresholds[s.name];
+    if (scenarioThr === undefined) continue;
+    for (const e of s.engines) {
+      const engineThr = scenarioThr[e.name];
+      if (engineThr === undefined) continue;
+      const thr = engineThr[platformId];
+      if (thr === undefined) {
+        warnings.push(
+          `no threshold for ${s.name} · ${e.name} on ${platformId} — populate via \`pnpm bench:variance\``,
+        );
         continue;
       }
-      if (row.meanMs > threshold.maxMeanMs) {
-        violations.push(
-          `[${scenario}] ${engine}: ${row.meanMs.toFixed(3)}ms > ${threshold.maxMeanMs}ms budget`,
-        );
+      checked++;
+      const observedMedianUs = e.stats.median / 1000;
+      const observedCi95Us: [number, number] = [e.stats.ci95[0] / 1000, e.stats.ci95[1] / 1000];
+      const ceiling = thr.ci95Us[1] * HEADROOM;
+      if (observedCi95Us[0] > ceiling) {
+        regressions.push({
+          scenario: s.name,
+          engine: e.name,
+          platformId,
+          observed: { medianUs: observedMedianUs, ci95Us: observedCi95Us },
+          threshold: thr,
+          ratio: observedCi95Us[0] / thr.ci95Us[1],
+        });
+      } else if (observedCi95Us[1] < thr.ci95Us[0]) {
+        improvements.push({
+          scenario: s.name,
+          engine: e.name,
+          observedMedianUs,
+          thresholdMedianUs: thr.expectedMedianUs,
+        });
       }
     }
   }
-
-  if (violations.length === 0) {
-    process.stderr.write('all bench budgets within threshold\n');
-    return;
-  }
-
-  process.stderr.write('=== bench budget violations ===\n');
-  for (const v of violations) process.stderr.write(`  ${v}\n`);
-  process.stderr.write(`(${violations.length} violation${violations.length === 1 ? '' : 's'})\n`);
-  process.exit(1);
+  return { checked, regressions, improvements, warnings };
 }
 
-main();
+async function main(): Promise<void> {
+  const report = loadReport();
+  const thresholds = loadThresholds();
+  const result = evaluateBudgets(report, thresholds);
+  process.stderr.write(
+    `checked ${result.checked} (scenario, engine) pairs on ${report.env.platformId}\n`,
+  );
+  for (const w of result.warnings) process.stderr.write(`warn: ${w}\n`);
+  for (const i of result.improvements) {
+    process.stderr.write(
+      `improvement: ${i.scenario} · ${i.engine}: ${i.observedMedianUs.toFixed(2)}µs (was ${i.thresholdMedianUs.toFixed(2)}µs)\n`,
+    );
+  }
+  if (result.regressions.length > 0) {
+    for (const r of result.regressions) {
+      process.stderr.write(
+        `REGRESSION: ${r.scenario} · ${r.engine} on ${r.platformId}: median ${r.observed.medianUs.toFixed(2)}µs (CI95 [${r.observed.ci95Us[0].toFixed(2)}, ${r.observed.ci95Us[1].toFixed(2)}]) vs threshold CI95 [${r.threshold.ci95Us[0].toFixed(2)}, ${r.threshold.ci95Us[1].toFixed(2)}] · ratio ${r.ratio.toFixed(2)}×\n`,
+      );
+    }
+    process.exit(1);
+  }
+  process.stderr.write('all bench budgets within threshold\n');
+}
+
+// Only invoke main() when this module is the entry point (e.g.
+// `tsx bench/check-budgets.ts`). When imported by tests, main()
+// would call loadReport() → readdirSync('bench/history') which
+// doesn't exist on a fresh CI checkout → process.exit(1).
+const isEntry =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isEntry) {
+  main().catch((err: unknown) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

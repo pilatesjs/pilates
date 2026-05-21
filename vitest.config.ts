@@ -10,6 +10,7 @@ export default defineConfig({
       'packages/*/src/**/*.test.{ts,tsx}',
       'packages/*/test/**/*.test.{ts,tsx}',
       'e2e/**/*.test.{ts,tsx}',
+      'bench/**/*.test.{ts,tsx}',
     ],
     coverage: {
       provider: 'v8',
@@ -23,6 +24,7 @@ export default defineConfig({
         'packages/*/src/types.ts',
         'packages/*/src/**/types.ts',
         'packages/react/src/reconciler.ts',
+        'bench/**',
       ],
       thresholds: {
         lines: 85,
