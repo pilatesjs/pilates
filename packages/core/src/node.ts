@@ -18,7 +18,14 @@
 
 import { type LayoutCache, MeasureCache } from './algorithm/cache.js';
 import { calculateLayout as runCalculateLayout } from './algorithm/index.js';
-import { DIRTY_ANY } from './dirty-flags.js';
+import {
+  DIRTY_ANY,
+  DIRTY_CHILDREN,
+  DIRTY_FLEX_DISTRIBUTION,
+  DIRTY_MEASURE,
+  DIRTY_STYLE_SIG,
+  DIRTY_STYLE_VALUE,
+} from './dirty-flags.js';
 import { Edge } from './edge.js';
 import { type ComputedLayout, defaultLayout } from './layout.js';
 import type { MeasureFunc } from './measure-func.js';
@@ -186,7 +193,7 @@ export class Node {
     const i = Math.max(0, Math.min(index, this._children.length));
     this._children.splice(i, 0, child);
     child._parent = this;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_CHILDREN);
   }
 
   removeChild(child: Node): void {
@@ -194,7 +201,7 @@ export class Node {
     if (idx === -1) return;
     this._children.splice(idx, 1);
     child._parent = null;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_CHILDREN);
   }
 
   getChild(index: number): Node | undefined {
@@ -234,7 +241,7 @@ export class Node {
         this._measureCache.clear();
       }
     }
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_MEASURE);
   }
 
   getMeasureFunc(): MeasureFunc | null {
@@ -245,12 +252,12 @@ export class Node {
 
   setFlexDirection(value: FlexDirection): void {
     this._style.flexDirection = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setFlexWrap(value: FlexWrap): void {
     this._style.flexWrap = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   /**
@@ -278,23 +285,23 @@ export class Node {
       this._style.flexShrink = 0;
       this._style.flexBasis = 'auto';
     }
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   setFlexGrow(value: number): void {
     this._style.flexGrow = clampNonNegative(value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   setFlexShrink(value: number): void {
     this._style.flexShrink = clampNonNegative(value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   setFlexBasis(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'flexBasis');
     this._style.flexBasis = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   // ─── sizing ────────────────────────────────────────────────────────────
@@ -302,37 +309,37 @@ export class Node {
   setWidth(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'width');
     this._style.width = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setHeight(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'height');
     this._style.height = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setMinWidth(value: number): void {
     this._style.minWidth = nonNegativeOrThrow(value, 'minWidth');
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setMinHeight(value: number): void {
     this._style.minHeight = nonNegativeOrThrow(value, 'minHeight');
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   /** Pass `undefined` to remove an upper bound. */
   setMaxWidth(value: number | undefined): void {
     if (value !== undefined) nonNegativeOrThrow(value, 'maxWidth');
     this._style.maxWidth = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   /** Pass `undefined` to remove an upper bound. */
   setMaxHeight(value: number | undefined): void {
     if (value !== undefined) nonNegativeOrThrow(value, 'maxHeight');
     this._style.maxHeight = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   /**
@@ -346,7 +353,7 @@ export class Node {
       }
     }
     this._style.aspectRatio = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── padding / margin / gap ────────────────────────────────────────────
@@ -354,49 +361,49 @@ export class Node {
   setPadding(edge: Edge, value: number): void {
     nonNegativeOrThrow(value, 'padding');
     writeEdge(this._style.padding, edge, value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setMargin(edge: Edge, value: number): void {
     nonNegativeOrThrow(value, 'margin');
     writeEdge(this._style.margin, edge, value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setGap(axis: 'row' | 'column', value: number): void {
     nonNegativeOrThrow(value, 'gap');
     if (axis === 'row') this._style.gapRow = value;
     else this._style.gapColumn = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   // ─── alignment ─────────────────────────────────────────────────────────
 
   setJustifyContent(value: Justify): void {
     this._style.justifyContent = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setAlignItems(value: Align): void {
     this._style.alignItems = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setAlignContent(value: Align): void {
     this._style.alignContent = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setAlignSelf(value: Align): void {
     this._style.alignSelf = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── positioning ───────────────────────────────────────────────────────
 
   setPositionType(value: PositionType): void {
     this._style.positionType = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   /** Pass `undefined` to leave that edge unconstrained. */
@@ -405,14 +412,14 @@ export class Node {
       throw new RangeError(`position must be finite or undefined, got ${value}`);
     }
     writePositionEdge(this._style.position, edge, value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   // ─── display ───────────────────────────────────────────────────────────
 
   setDisplay(value: Display): void {
     this._style.display = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── overflow ──────────────────────────────────────────────────────────
@@ -421,17 +428,17 @@ export class Node {
     this._style.overflow = overflow;
     this._style.overflowX = overflow;
     this._style.overflowY = overflow;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setOverflowX(overflow: Overflow): void {
     this._style.overflowX = overflow;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setOverflowY(overflow: Overflow): void {
     this._style.overflowY = overflow;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── layout entry points ───────────────────────────────────────────────
