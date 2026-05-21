@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { type CheckResult, evaluateBudgets } from './check-budgets.js';
+import { evaluateBudgets } from './check-budgets.js';
 
 const thresholds = {
   tiny: {

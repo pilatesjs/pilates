@@ -16,7 +16,6 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { EnvSnapshot } from './harness/env.js';
 import type { BenchRunReport } from './harness/reporter-json.js';
 
 interface ThresholdEntry {
