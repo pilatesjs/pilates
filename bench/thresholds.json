@@ -1,45 +1,45 @@
 {
   "tiny": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 8.20, "ci95Us": [6.20, 9.02] }
+      "win32-x64": { "expectedMedianUs": 8.2, "ci95Us": [6.2, 9.02] }
     }
   },
   "realistic": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 147.10, "ci95Us": [146.60, 161.81] }
+      "win32-x64": { "expectedMedianUs": 147.1, "ci95Us": [146.6, 161.81] }
     }
   },
   "stress": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 760.05, "ci95Us": [753.20, 836.06] }
+      "win32-x64": { "expectedMedianUs": 760.05, "ci95Us": [753.2, 836.06] }
     }
   },
   "big": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 4820.80, "ci95Us": [4774.25, 5302.88] }
+      "win32-x64": { "expectedMedianUs": 4820.8, "ci95Us": [4774.25, 5302.88] }
     }
   },
   "huge": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 12710.25, "ci95Us": [12612.60, 13981.28] }
+      "win32-x64": { "expectedMedianUs": 12710.25, "ci95Us": [12612.6, 13981.28] }
     }
   },
   "hotrelayout": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 23.60, "ci95Us": [23.50, 25.96] }
+      "win32-x64": { "expectedMedianUs": 23.6, "ci95Us": [23.5, 25.96] }
     }
   },
   "hotrelayoutboundary": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 22.90, "ci95Us": [22.80, 25.19] }
+      "win32-x64": { "expectedMedianUs": 22.9, "ci95Us": [22.8, 25.19] }
     }
   },
   "hotrelayouttext": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 22.50, "ci95Us": [22.40, 24.75] }
+      "win32-x64": { "expectedMedianUs": 22.5, "ci95Us": [22.4, 24.75] }
     },
     "@pilates/core (spineless)": {
-      "win32-x64": { "expectedMedianUs": 0.20, "ci95Us": [0.20, 0.22] }
+      "win32-x64": { "expectedMedianUs": 0.2, "ci95Us": [0.2, 0.22] }
     }
   },
   "hotstructural": {
