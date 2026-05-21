@@ -15,7 +15,7 @@
 
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { BenchRunReport } from './harness/reporter-json.js';
 
 interface ThresholdEntry {
@@ -137,7 +137,15 @@ async function main(): Promise<void> {
   process.stderr.write('all bench budgets within threshold\n');
 }
 
-main().catch((err: unknown) => {
-  console.error(err);
-  process.exit(1);
-});
+// Only invoke main() when this module is the entry point (e.g.
+// `tsx bench/check-budgets.ts`). When imported by tests, main()
+// would call loadReport() → readdirSync('bench/history') which
+// doesn't exist on a fresh CI checkout → process.exit(1).
+const isEntry =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isEntry) {
+  main().catch((err: unknown) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
