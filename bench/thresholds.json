@@ -1,14 +1,50 @@
 {
-  "tiny": { "@pilates/core (layout)": { "maxMeanMs": 0.03 } },
-  "realistic": { "@pilates/core (layout)": { "maxMeanMs": 1.2 } },
-  "stress": { "@pilates/core (layout)": { "maxMeanMs": 3.0 } },
-  "big": { "@pilates/core (layout)": { "maxMeanMs": 15.0 } },
-  "huge": { "@pilates/core (layout)": { "maxMeanMs": 35.0 } },
-  "hotrelayout": { "@pilates/core (layout)": { "maxMeanMs": 0.15 } },
-  "hotrelayoutboundary": { "@pilates/core (layout)": { "maxMeanMs": 0.15 } },
-  "hotrelayouttext": {
-    "@pilates/core (layout)": { "maxMeanMs": 0.5 },
-    "@pilates/core (spineless)": { "maxMeanMs": 0.1 }
+  "tiny": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 8.20, "ci95Us": [6.20, 9.02] }
+    }
   },
-  "hotstructural": { "@pilates/core (layout)": { "maxMeanMs": 1.0 } }
+  "realistic": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 147.10, "ci95Us": [146.60, 161.81] }
+    }
+  },
+  "stress": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 760.05, "ci95Us": [753.20, 836.06] }
+    }
+  },
+  "big": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 4820.80, "ci95Us": [4774.25, 5302.88] }
+    }
+  },
+  "huge": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 12710.25, "ci95Us": [12612.60, 13981.28] }
+    }
+  },
+  "hotrelayout": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 23.60, "ci95Us": [23.50, 25.96] }
+    }
+  },
+  "hotrelayoutboundary": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 22.90, "ci95Us": [22.80, 25.19] }
+    }
+  },
+  "hotrelayouttext": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 22.50, "ci95Us": [22.40, 24.75] }
+    },
+    "@pilates/core (spineless)": {
+      "win32-x64": { "expectedMedianUs": 0.20, "ci95Us": [0.20, 0.22] }
+    }
+  },
+  "hotstructural": {
+    "@pilates/core (layout)": {
+      "win32-x64": { "expectedMedianUs": 403.57, "ci95Us": [401.19, 443.93] }
+    }
+  }
 }
