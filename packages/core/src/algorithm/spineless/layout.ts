@@ -79,10 +79,10 @@ export interface LayoutTrace {
 }
 
 /** Every leaf input Field (`deps: []`) the runtime currently tracks. */
-function collectInputs(grammar: Grammar, runtime: SpinelessRuntime): Array<Field<unknown>> {
-  const inputs: Array<Field<unknown>> = [];
+function collectInputs(grammar: Grammar, runtime: SpinelessRuntime): Set<Field<unknown>> {
+  const inputs = new Set<Field<unknown>>();
   for (const [f, rule] of grammar) {
-    if (rule.deps.length === 0 && runtime.isTracked(f)) inputs.push(f);
+    if (rule.deps.length === 0 && runtime.isTracked(f)) inputs.add(f);
   }
   return inputs;
 }
@@ -217,7 +217,7 @@ interface Built {
   output: FlexGrammarOutput;
   runtime: SpinelessRuntime;
   /** Every leaf input Field (`deps: []`) the runtime tracks. */
-  inputs: Array<Field<unknown>>;
+  inputs: Set<Field<unknown>>;
   /** Per-node structural snapshot, for the dirty-walk classifier. */
   snaps: Map<Node, NodeSnap>;
   /** A node's four layout-output Fields. */
@@ -560,7 +560,7 @@ export class SpinelessLayout {
       // append the new tracked leaves.
       for (const [f, rule] of fragment.additions) {
         if (rule.deps.length === 0 && built.runtime.isTracked(f)) {
-          built.inputs.push(f);
+          built.inputs.add(f);
         }
       }
     } else {
@@ -664,7 +664,7 @@ export class SpinelessLayout {
     // Apply: rebind survivors FIRST (so they stop reading the removed
     // fields), then `detach`, then adopt the next grammar.
     for (const [f, rule] of fragment.rebinds) built.runtime.rebindRule(f, rule);
-    built.runtime.detach(fragment.removed);
+    const dropped = built.runtime.detach(fragment.removed);
     built.output = fragment.next;
 
     // Incremental bookkeeping (Part C):
@@ -689,12 +689,16 @@ export class SpinelessLayout {
       }
     }
 
-    // `built.inputs` — drop inputs whose owning field is no longer
-    // tracked. `runtime.detach` also auto-cleans orphan leaf inputs
-    // (e.g. a survivor's now-unread main-end margin), so a Set-based
-    // filter over `fragment.removed` alone would miss those; ask the
-    // runtime directly via `isTracked`. O(|built.inputs|).
-    built.inputs = built.inputs.filter((f) => built.runtime.isTracked(f));
+    // `built.inputs` — remove every field detach dropped (the removed
+    // subtree's inputs + any survivor orphan-cleaned by detach).
+    // O(|dropped|) — detach's returned set is complete by construction:
+    // its `drop` closure is the single choke point for ALL removals,
+    // including orphan-cleaned surviving deps (e.g. the previous last
+    // child's now-unread main-end margin). Set.delete is a no-op for
+    // absent keys, so iterating all of `dropped` (which includes
+    // non-input layout fields) correctly removes only the dropped
+    // leaf inputs from `built.inputs`.
+    for (const f of dropped) built.inputs.delete(f);
 
     // Pick up any value mutations in the same batch, then recompute.
     // Iterate ONLY the dirty nodes' inputs — every value mutation
@@ -761,12 +765,11 @@ export class SpinelessLayout {
     // sibling main-end margins (`additions` / `removed`). Update
     // incrementally.
     if (fragment.removed.length > 0) {
-      const removedFields = new Set<Field<unknown>>(fragment.removed);
-      built.inputs = built.inputs.filter((f) => !removedFields.has(f));
+      for (const f of fragment.removed) built.inputs.delete(f);
     }
     for (const [f, rule] of fragment.additions) {
       if (rule.deps.length === 0 && built.runtime.isTracked(f)) {
-        built.inputs.push(f);
+        built.inputs.add(f);
       }
     }
 
