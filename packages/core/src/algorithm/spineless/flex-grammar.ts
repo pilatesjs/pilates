@@ -1365,8 +1365,12 @@ function mergeStyleInputs(a: StyleInputs, b: StyleInputs): StyleInputs {
 function mergeStyleInputsMap(
   base: Map<Node, StyleInputs>,
   extra: Map<Node, StyleInputs>,
+  mutateBase: boolean,
 ): Map<Node, StyleInputs> {
-  const merged = new Map(base);
+  // When mutateBase is true the caller owns `base` exclusively (it is
+  // the previous grammar output, swapped out by the caller right after
+  // this returns) — mutate it directly and skip the ~1,100-entry clone.
+  const merged = mutateBase ? base : new Map(base);
   for (const [node, entry] of extra) {
     const existing = merged.get(node);
     merged.set(node, existing === undefined ? entry : mergeStyleInputs(existing, entry));
@@ -1481,7 +1485,7 @@ export function buildAppendFragment(
       grammar: prev.grammar,
       rootFields: prev.rootFields,
       allFields: [...prev.allFields, ...ctx.allFields],
-      styleInputs: mergeStyleInputsMap(prev.styleInputs, ctx.styleInputs),
+      styleInputs: mergeStyleInputsMap(prev.styleInputs, ctx.styleInputs, true),
       availableInputs: prev.availableInputs,
       mainDistributionByParent: prev.mainDistributionByParent,
     };
@@ -1700,15 +1704,20 @@ export function buildRemoveFragment(
         if (prev.grammar.has(f)) removed.push(f);
       }
     }
+    // Mutate prev.styleInputs and prev.mainDistributionByParent in place:
+    // `prev` is the old grammar output, single-use — the caller swaps
+    // built.output to the new fragment immediately after this returns.
+    for (const n of removedNodes) {
+      prev.styleInputs.delete(n);
+      prev.mainDistributionByParent.delete(n);
+    }
     const next: FlexGrammarOutput = {
       grammar: prev.grammar,
       rootFields: prev.rootFields,
       allFields: prev.allFields.filter((e) => !removedNodes.has(e.node)),
-      styleInputs: new Map([...prev.styleInputs].filter(([n]) => !removedNodes.has(n))),
+      styleInputs: prev.styleInputs,
       availableInputs: prev.availableInputs,
-      mainDistributionByParent: new Map(
-        [...prev.mainDistributionByParent].filter(([n]) => !removedNodes.has(n)),
-      ),
+      mainDistributionByParent: prev.mainDistributionByParent,
     };
     return { removed, rebinds: [], next };
   }
