@@ -101,7 +101,7 @@ export function calculateLayout(
     // engine takes over — build once, relay incrementally.
     const engine = layoutEngines.get(root);
     if (engine === undefined) {
-      calculateLayoutImpl(root, availableWidth, availableHeight);
+      calculateLayoutImpl(root, availableWidth, availableHeight, false);
       layoutEngines.set(root, 'cold');
     } else {
       driver = engine === 'cold' ? new SpinelessLayout(root) : engine;
@@ -130,13 +130,13 @@ export function calculateLayout(
   }
 
   // First pass: cached path (normal).
-  calculateLayoutImpl(root, availableWidth, availableHeight);
+  calculateLayoutImpl(root, availableWidth, availableHeight, true);
   const cachedSnapshot = snapshotTreeLayouts(root);
 
   // Second pass: clear caches, re-dirty, recompute cold.
   clearAllCaches(root);
   markDirtyDeep(root);
-  calculateLayoutImpl(root, availableWidth, availableHeight);
+  calculateLayoutImpl(root, availableWidth, availableHeight, true);
   const coldSnapshot = snapshotTreeLayouts(root);
 
   const diff = diffLayouts(cachedSnapshot, coldSnapshot);
@@ -160,13 +160,14 @@ export function calculateLayoutImperative(
   availableWidth?: number,
   availableHeight?: number,
 ): void {
-  calculateLayoutImpl(root, availableWidth, availableHeight);
+  calculateLayoutImpl(root, availableWidth, availableHeight, true);
 }
 
 function calculateLayoutImpl(
   root: Node,
   availableWidth: number | undefined,
   availableHeight: number | undefined,
+  populateCache: boolean,
 ): void {
   const widthMode = availableWidth === undefined ? ('undefined' as const) : ('exactly' as const);
   const heightMode = availableHeight === undefined ? ('undefined' as const) : ('exactly' as const);
@@ -228,12 +229,17 @@ function calculateLayoutImpl(
 
   layoutChildren(root);
   roundLayout(root);
-  computeScrollSizes(root);
+  computeScrollSizes(root, populateCache);
   markClean(root);
 
   // Store the root's result (computeScrollSizes already cached inner nodes).
-  if (root._layoutCache === undefined) root._layoutCache = new LayoutCache();
-  root._layoutCache.store(key, snapshotForCache(root));
+  // Skipped when populateCache is false — the router runs the imperative
+  // engine only once per root, then switches to Spineless, which never
+  // reads this cache.
+  if (populateCache) {
+    if (root._layoutCache === undefined) root._layoutCache = new LayoutCache();
+    root._layoutCache.store(key, snapshotForCache(root));
+  }
 }
 
 function markClean(node: Node): void {
@@ -253,8 +259,10 @@ function markClean(node: Node): void {
  * Runs after `roundLayout` so the recorded extent is in integer cells and
  * matches what the renderer paints.
  */
-function computeScrollSizes(node: Node): void {
-  for (let i = 0; i < node.getChildCount(); i++) computeScrollSizes(node.getChild(i)!);
+function computeScrollSizes(node: Node, populateCache: boolean): void {
+  for (let i = 0; i < node.getChildCount(); i++) {
+    computeScrollSizes(node.getChild(i)!, populateCache);
+  }
 
   let contentRight = 0;
   let contentBottom = 0;
@@ -268,8 +276,10 @@ function computeScrollSizes(node: Node): void {
   node._layout.scrollHeight = Math.max(node._layout.height, contentBottom);
 
   // Cache the node's layout for next pass. Skip root (cached separately
-  // by calculateLayoutImpl with the original root key).
-  if (node.getParent() !== null) {
+  // by calculateLayoutImpl with the original root key). Skipped entirely
+  // when populateCache is false — the router's first-layout imperative pass
+  // populates a cache no subsequent layout reads (layout 2+ uses Spineless).
+  if (populateCache && node.getParent() !== null) {
     const innerKey = {
       availableWidth: node.layout.width,
       widthMode: 'exactly' as const,
