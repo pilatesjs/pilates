@@ -570,6 +570,13 @@ describe('SpinelessRuntime — precise margin-input propagation', () => {
       root.insertChild(c, i);
       children.push(c);
     }
+    // Phase 17: margin is folded when at default (0). Pre-set non-zero
+    // margins so the fields are emitted before buildFlexGrammar. This
+    // tests the within-regime incremental path (non-default → different
+    // non-default). The fold-boundary (0 → nonzero) is handled by the
+    // SpinelessLayout driver via nodeSig/rebuild.
+    children[1]!.setMargin(Edge.Left, 2);
+    children[1]!.setMargin(Edge.Right, 1);
     const { grammar, allFields, styleInputs } = buildFlexGrammar(root);
     const rootFields: Field<unknown>[] = [];
     for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);
@@ -800,6 +807,11 @@ describe('SpinelessRuntime — incremental layout under spacing / flex mutations
       root.insertChild(c, i);
       children.push(c);
     }
+    // Phase 17: margin fields are only emitted when non-zero (default 0
+    // is folded to a constant). Pre-set non-zero margins so the fields
+    // exist in the grammar; this tests within-regime incremental mutation.
+    children[1]!.setMargin(Edge.Left, 2);
+    children[1]!.setMargin(Edge.Right, 1);
     const { grammar, allFields } = buildFlexGrammar(root);
     const rootFields: Field<unknown>[] = [];
     for (const f of allFields) rootFields.push(f.width, f.height, f.left, f.top);

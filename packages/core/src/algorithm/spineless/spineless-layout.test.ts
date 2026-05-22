@@ -1624,3 +1624,129 @@ describe('phase 13 — structural fast-paths use scoped finish', () => {
     expect(newCell._layout.top).toBe(0);
   });
 });
+
+// ─── Phase 17: fold-then-mutate correctness ─────────────────────────────────
+//
+// Phase 17 folds default-valued style inputs (margin 0, minWidth/Height 0,
+// maxWidth/Height undefined→∞, flexBasis 'auto') out of the grammar — no
+// Field is emitted for them at default. The safety mechanism is nodeSig:
+// when a folded property is mutated from default to non-default, nodeSig
+// changes → the classifier rebuilds the grammar un-folded → correct output.
+//
+// These tests directly exercise the fold-then-mutate path through the
+// SpinelessLayout driver: build a tree at default, layout, mutate a folded
+// property, layout again, assert byte-identical to a fresh cold build.
+
+describe('SpinelessLayout — Phase 17 fold-then-mutate correctness', () => {
+  it('setMinWidth on a folded node triggers a rebuild with correct result', () => {
+    // Build a row with a child at default min/max (folded). Layout once.
+    // Then setMinWidth → nodeSig changes → rebuild → correct clamp.
+    const root = Node.create();
+    root.setWidth(100);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+
+    const child = Node.create();
+    child.setWidth(20); // explicit size, minWidth === 0 (default, will be folded)
+    child.setHeight(20);
+    root.insertChild(child, 0);
+
+    const driver = new SpinelessLayout(root);
+    driver.layout();
+
+    // Mutate: set minWidth to 50 — larger than explicit width=20.
+    child.setMinWidth(50);
+    driver.layout();
+
+    // Cold rebuild for reference.
+    const cold = Node.create();
+    cold.setWidth(100);
+    cold.setHeight(40);
+    cold.setFlexDirection('row');
+    const coldChild = Node.create();
+    coldChild.setWidth(20);
+    coldChild.setHeight(20);
+    coldChild.setMinWidth(50);
+    cold.insertChild(coldChild, 0);
+    new SpinelessLayout(cold).layout();
+
+    expect(snapshot(root)).toEqual(snapshot(cold));
+  });
+
+  it('setMargin on a folded node triggers a rebuild with correct position', () => {
+    // Build a row with two children, margins at default (folded). Layout.
+    // Then setMargin on the first child → nodeSig changes → rebuild.
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+
+    const c1 = Node.create();
+    c1.setWidth(30);
+    c1.setHeight(20);
+    root.insertChild(c1, 0);
+
+    const c2 = Node.create();
+    c2.setWidth(30);
+    c2.setHeight(20);
+    root.insertChild(c2, 1);
+
+    const driver = new SpinelessLayout(root);
+    driver.layout();
+
+    // c2 starts at left=30. Mutate c1's right margin to 10.
+    c1.setMargin(Edge.Right, 10);
+    driver.layout();
+
+    // Cold rebuild: c1 right margin = 10, c2 should be at left=40.
+    const cold = Node.create();
+    cold.setWidth(200);
+    cold.setHeight(40);
+    cold.setFlexDirection('row');
+    const cc1 = Node.create();
+    cc1.setWidth(30);
+    cc1.setHeight(20);
+    cc1.setMargin(Edge.Right, 10);
+    cold.insertChild(cc1, 0);
+    const cc2 = Node.create();
+    cc2.setWidth(30);
+    cc2.setHeight(20);
+    cold.insertChild(cc2, 1);
+    new SpinelessLayout(cold).layout();
+
+    expect(snapshot(root)).toEqual(snapshot(cold));
+  });
+
+  it('setMaxWidth on a folded node triggers a rebuild with correct clamp', () => {
+    // Build a row child with explicit width=80 and maxWidth undefined (folded to ∞).
+    // Layout once. Then setMaxWidth(40) → clamp should shrink the child.
+    const root = Node.create();
+    root.setWidth(200);
+    root.setHeight(40);
+    root.setFlexDirection('row');
+
+    const child = Node.create();
+    child.setWidth(80);
+    child.setHeight(20);
+    root.insertChild(child, 0);
+
+    const driver = new SpinelessLayout(root);
+    driver.layout();
+
+    child.setMaxWidth(40);
+    driver.layout();
+
+    const cold = Node.create();
+    cold.setWidth(200);
+    cold.setHeight(40);
+    cold.setFlexDirection('row');
+    const coldChild = Node.create();
+    coldChild.setWidth(80);
+    coldChild.setHeight(20);
+    coldChild.setMaxWidth(40);
+    cold.insertChild(coldChild, 0);
+    new SpinelessLayout(cold).layout();
+
+    expect(snapshot(root)).toEqual(snapshot(cold));
+  });
+});

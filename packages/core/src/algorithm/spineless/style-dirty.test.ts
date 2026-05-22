@@ -162,6 +162,11 @@ describe('createStyleDirtier — edge props', () => {
 
   it('drives a margin-edge mutation', () => {
     const { root, children } = rowOfChildren(3);
+    // Phase 17: margin is folded when 0. Pre-set a non-zero margin so
+    // the field is emitted in buildFlexGrammar. This tests within-regime
+    // incremental mutation (nonzero → different nonzero). The 0→nonzero
+    // fold-boundary path goes through SpinelessLayout/nodeSig/rebuild.
+    children[1]!.setMargin(Edge.Left, 3);
     const { rt, allFields, styleInputs } = buildRuntime(root);
     const markStyleDirty = createStyleDirtier(rt, styleInputs);
 
