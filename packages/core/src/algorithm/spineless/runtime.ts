@@ -200,8 +200,13 @@ export class SpinelessRuntime {
    * That makes the caller's removed set just the subtree's own
    * fields — orphan input fields, e.g. the previous last child's
    * now-unread main-end margin, need not be enumerated.
+   *
+   * @returns The set of every field actually removed — both the
+   * explicit `fields` argument AND any orphan-cleaned surviving deps.
+   * Callers can use this to maintain a `Set<Field>` index in O(|dropped|)
+   * rather than scanning all tracked fields.
    */
-  detach(fields: Iterable<Field<unknown>>): void {
+  detach(fields: Iterable<Field<unknown>>): Set<Field<unknown>> {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] detach called before init()');
     }
@@ -225,8 +230,10 @@ export class SpinelessRuntime {
     // cleanup once their reverse-dependency lists are pruned.
     const survivingDeps = new Set<Field<unknown>>();
 
+    const dropped = new Set<Field<unknown>>();
     const removedOmNodes = new Set<OMNode>();
     const drop = (f: Field<unknown>): void => {
+      dropped.add(f);
       const omNode = this.omNodes.get(f);
       if (omNode !== undefined) {
         this.om.delete(omNode);
@@ -275,6 +282,8 @@ export class SpinelessRuntime {
       }
       this.lastOm = candidate;
     }
+
+    return dropped;
   }
 
   /**
