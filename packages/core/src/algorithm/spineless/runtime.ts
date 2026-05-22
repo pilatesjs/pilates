@@ -105,10 +105,24 @@ const NEVER_READ: ReadFn = (dep) => {
  * @internal
  */
 export class SpinelessRuntime {
-  private readonly grammar: Grammar;
   private readonly rootFields: ReadonlyArray<Field<unknown>>;
   private readonly om: OrderMaintenance;
   private readonly pq: OmPriorityQueue<Field<unknown>>;
+
+  /**
+   * External Grammar map reference — kept so that callers holding the
+   * same map reference (e.g. layout.ts's `output.grammar`) see mutations
+   * made by `graft` / `rebindRule` / `detach`. All internal HOT-PATH
+   * reads use `rulesArr` (O(1) array index) instead.
+   */
+  private readonly grammar: Grammar;
+
+  /**
+   * Field rules indexed by field.id — the fast-path mirror of `grammar`.
+   * Updated in lockstep with every `grammar.set` / `grammar.delete`.
+   * Plain array; auto-grows on out-of-range assignment (JS semantics).
+   */
+  private rulesArr: (FieldRule<unknown> | undefined)[] = [];
 
   /**
    * Fast path: numeric field values indexed by field.id.
@@ -162,6 +176,11 @@ export class SpinelessRuntime {
     this.rootFields = rootFields;
     this.om = om;
     this.pq = new OmPriorityQueue<Field<unknown>>(om);
+    // Mirror the public Grammar map into rulesArr (indexed by field.id)
+    // so the hot path can do O(1) array reads instead of Map lookups.
+    for (const [f, rule] of grammar) {
+      this.rulesArr[f.id] = rule;
+    }
     // Initialise value arrays to cover all IDs allocated so far.
     // ensureFieldCapacity() grows them on demand as new fields arrive.
     const initialCap = Math.max(fieldIdCount(), 1024);
@@ -221,6 +240,7 @@ export class SpinelessRuntime {
           `[spineless-runtime] graft: field "${f.name}" already exists — graft integrates NEW fields only`,
         );
       }
+      this.rulesArr[f.id] = rule;
       this.grammar.set(f, rule);
     }
     this.integrate(newRoots);
@@ -293,13 +313,14 @@ export class SpinelessRuntime {
       }
       this.valuePresent[f.id] = 0;
       this.dependents.delete(f);
+      this.rulesArr[f.id] = undefined;
       this.grammar.delete(f);
     };
 
     for (const f of removing) {
       // Prune `f` from the reverse-dependency list of each field it
       // read (a surviving dep must forget this removed dependent).
-      const rule = this.grammar.get(f);
+      const rule = this.rulesArr[f.id];
       if (rule !== undefined) {
         for (const dep of rule.deps) {
           const revs = this.dependents.get(dep);
@@ -318,7 +339,7 @@ export class SpinelessRuntime {
     for (const dep of survivingDeps) {
       const revs = this.dependents.get(dep);
       if (revs !== undefined && revs.length > 0) continue;
-      const rule = this.grammar.get(dep);
+      const rule = this.rulesArr[dep.id];
       if (rule === undefined || rule.deps.length > 0) continue;
       drop(dep);
     }
@@ -362,7 +383,7 @@ export class SpinelessRuntime {
         `[spineless-runtime] rebindRule: field "${field.name}" is not in this runtime`,
       );
     }
-    const oldRule = this.grammar.get(field);
+    const oldRule = this.rulesArr[field.id];
     const oldDeps = new Set<Field<unknown>>(oldRule?.deps ?? []);
     const newDeps = new Set<Field<unknown>>(newRule.deps);
 
@@ -391,6 +412,7 @@ export class SpinelessRuntime {
       revs.push(field);
     }
 
+    this.rulesArr[field.id] = newRule;
     this.grammar.set(field, newRule);
     this.markDirty(field);
   }
@@ -418,7 +440,7 @@ export class SpinelessRuntime {
       }
       visiting.add(f);
 
-      const rule = this.grammar.get(f);
+      const rule = this.rulesArr[f.id];
       if (rule === undefined) {
         throw new Error(
           `[spineless-runtime] no rule for field "${f.name}". Register it in the grammar or remove the dep edge.`,
@@ -545,7 +567,7 @@ export class SpinelessRuntime {
       const f = this.pq.popMin()!;
       this.stats.recomputeVisited++;
       this.stats.totalVisited++;
-      const rule = this.grammar.get(f)!;
+      const rule = this.rulesArr[f.id]!;
       const id = f.id;
       const kind = this.valuePresent[id]!;
       const prev: unknown = kind === 1 ? this.valuesArr[id] : this.valuesMap.get(f);
