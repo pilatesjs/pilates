@@ -44,7 +44,7 @@
   },
   "hotstructural": {
     "@pilates/core (layout)": {
-      "win32-x64": { "expectedMedianUs": 123, "ci95Us": [95, 175] }
+      "win32-x64": { "expectedMedianUs": 70, "ci95Us": [55, 105] }
     }
   }
 }

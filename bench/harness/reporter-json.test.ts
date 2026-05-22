@@ -54,8 +54,12 @@ describe('writeJsonReport', () => {
       expect(parsed.env.platformId).toBe('linux-x64');
       expect(parsed.scenarios).toHaveLength(1);
       expect(parsed.scenarios[0]!.engines[0]!.stats.median).toBe(105);
-      // Samples are preserved as-is (no truncation in Phase A).
-      expect(parsed.scenarios[0]!.engines[0]!.samples).toHaveLength(5);
+      // Raw per-iteration samples are stripped from the JSON history —
+      // millions of them blow past V8's max string length, and the
+      // history file only needs the computed stats.
+      expect(
+        (parsed.scenarios[0]!.engines[0] as { samples?: number[] }).samples,
+      ).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
