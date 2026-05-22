@@ -24,9 +24,9 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 5.10µs | ±0ns | 5.70µs | 196.1k ops/s |
-| @pilates/render (full) | 89.80µs | ±100ns | 113.70µs | 11.1k ops/s |
-| yoga-layout (WASM) | 30.20µs | ±0ns | 31.80µs | 33.1k ops/s |
+| @pilates/core (layout) | 5.00µs | ±0ns | 6.10µs | 200.0k ops/s |
+| @pilates/render (full) | 75.30µs | ±300ns | 104.70µs | 13.3k ops/s |
+| yoga-layout (WASM) | 21.20µs | ±0ns | 31.90µs | 47.2k ops/s |
 
 ## realistic
 
@@ -34,9 +34,9 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 159.20µs | ±400ns | 208.90µs | 6.3k ops/s |
-| @pilates/render (full) | 452.80µs | ±1.00µs | 579.04µs | 2.2k ops/s |
-| yoga-layout (WASM) | 504.80µs | ±200ns | 538.79µs | 2.0k ops/s |
+| @pilates/core (layout) | 146.30µs | ±800ns | 211.40µs | 6.8k ops/s |
+| @pilates/render (full) | 403.05µs | ±1.65µs | 569.00µs | 2.5k ops/s |
+| yoga-layout (WASM) | 389.05µs | ±1.45µs | 558.80µs | 2.6k ops/s |
 
 ## stress
 
@@ -44,9 +44,9 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 807.70µs | ±3.70µs | 1.18ms | 1.2k ops/s |
-| @pilates/render (full) | 2.50ms | ±17.81µs | 3.65ms | 399 ops/s |
-| yoga-layout (WASM) | 2.89ms | ±4.40µs | 3.44ms | 346 ops/s |
+| @pilates/core (layout) | 709.05µs | ±3.05µs | 1.03ms | 1.4k ops/s |
+| @pilates/render (full) | 2.18ms | ±25.40µs | 3.40ms | 459 ops/s |
+| yoga-layout (WASM) | 2.14ms | ±8.25µs | 2.59ms | 467 ops/s |
 
 ## big
 
@@ -54,9 +54,9 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 4.57ms | ±73.45µs | 6.12ms | 219 ops/s |
-| @pilates/render (full) | 13.30ms | ±599.85µs | 18.52ms | 75 ops/s |
-| yoga-layout (WASM) | 14.17ms | ±87.80µs | 14.76ms | 71 ops/s |
+| @pilates/core (layout) | 4.19ms | ±138.50µs | 5.85ms | 239 ops/s |
+| @pilates/render (full) | 12.38ms | ±393.00µs | 18.12ms | 81 ops/s |
+| yoga-layout (WASM) | 10.88ms | ±107.30µs | 13.46ms | 92 ops/s |
 
 ## huge
 
@@ -64,9 +64,9 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 11.52ms | ±158.45µs | 14.33ms | 87 ops/s |
-| @pilates/render (full) | 31.57ms | ±929.50µs | 37.30ms | 32 ops/s |
-| yoga-layout (WASM) | 28.65ms | ±119.40µs | 29.75ms | 35 ops/s |
+| @pilates/core (layout) | 12.24ms | ±278.60µs | 15.44ms | 82 ops/s |
+| @pilates/render (full) | 32.87ms | ±762.07µs | 39.41ms | 30 ops/s |
+| yoga-layout (WASM) | 24.73ms | ±704.50µs | 28.79ms | 40 ops/s |
 
 ## hotrelayout
 
@@ -74,9 +74,9 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 28.20µs | ±100ns | 31.70µs | 35.5k ops/s |
-| @pilates/render (full) | 28.20µs | ±0ns | 31.90µs | 35.5k ops/s |
-| yoga-layout (WASM) | 104.90µs | ±100ns | 114.40µs | 9.5k ops/s |
+| @pilates/core (layout) | 19.40µs | ±100ns | 27.10µs | 51.5k ops/s |
+| @pilates/render (full) | 20.30µs | ±100ns | 28.20µs | 49.3k ops/s |
+| yoga-layout (WASM) | 110.00µs | ±400ns | 133.10µs | 9.1k ops/s |
 
 ## hotrelayoutboundary
 
@@ -84,9 +84,9 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 27.60µs | ±0ns | 32.00µs | 36.2k ops/s |
-| @pilates/render (full) | 27.50µs | ±0ns | 31.80µs | 36.4k ops/s |
-| yoga-layout (WASM) | 97.70µs | ±100ns | 105.90µs | 10.2k ops/s |
+| @pilates/core (layout) | 21.90µs | ±200ns | 29.30µs | 45.7k ops/s |
+| @pilates/render (full) | 18.90µs | ±100ns | 26.50µs | 52.9k ops/s |
+| yoga-layout (WASM) | 92.80µs | ±400ns | 119.30µs | 10.8k ops/s |
 
 ## hotrelayouttext
 
@@ -94,10 +94,10 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 25.30µs | ±0ns | 27.50µs | 39.5k ops/s |
-| @pilates/render (full) | 25.40µs | ±100ns | 27.80µs | 39.4k ops/s |
-| yoga-layout (WASM) | 91.90µs | ±100ns | 99.80µs | 10.9k ops/s |
-| @pilates/core (spineless) | 200ns | ±0ns | 200ns | 5.00M ops/s |
+| @pilates/core (layout) | 10.60µs | ±100ns | 14.30µs | 94.3k ops/s |
+| @pilates/render (full) | 12.50µs | ±100ns | 15.90µs | 80.0k ops/s |
+| yoga-layout (WASM) | 95.30µs | ±400ns | 119.90µs | 10.5k ops/s |
+| @pilates/core (spineless) | 200ns | ±0ns | 300ns | 5.00M ops/s |
 
 ## hotstructural
 
@@ -105,11 +105,11 @@ Reproduce: `pnpm bench`. Numbers vary by machine — relative positions are the 
 
 | Engine | Median | CI95 | P95 | Throughput |
 |---|---:|---:|---:|---:|
-| @pilates/core (layout) | 252.00µs | ±5.20µs | 398.90µs | 4.0k ops/s |
-| @pilates/render (full) | 258.85µs | ±10.96µs | 372.20µs | 3.9k ops/s |
-| yoga-layout (WASM) | 119.90µs | ±600ns | 129.10µs | 8.3k ops/s |
-| @pilates/core (spineless) | 208.95µs | ±9.85µs | 313.50µs | 4.8k ops/s |
-| @pilates/core (spineless rebuild) | 43.03ms | ±5.68ms | 55.55ms | 23 ops/s |
+| @pilates/core (layout) | 251.60µs | ±8.10µs | 402.40µs | 4.0k ops/s |
+| @pilates/render (full) | 245.15µs | ±9.55µs | 387.80µs | 4.1k ops/s |
+| yoga-layout (WASM) | 108.90µs | ±301ns | 145.70µs | 9.2k ops/s |
+| @pilates/core (spineless) | 218.90µs | ±2.05µs | 443.00µs | 4.6k ops/s |
+| @pilates/core (spineless rebuild) | 236.66ms | ±66.16ms | 442.93ms | 4 ops/s |
 
 ## What's measured
 
