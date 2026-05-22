@@ -154,8 +154,13 @@ export class SpinelessRuntime {
    * Dead entries are never removed; the skip is O(1) per slot.
    */
   private readonly fieldRoster: Field<unknown>[] = [];
-  /** field -> fields that read this field (reverse of `rule.deps`) */
-  private readonly dependents: Map<Field<unknown>, Field<unknown>[]> = new Map();
+  /**
+   * Reverse-dependency lists indexed by field.id — replaces the former
+   * `dependents: Map<Field, Field[]>`. `dependentsArr[id]` is the array
+   * of fields that read field-id. undefined = no dependents recorded yet
+   * (or field detached). Plain array; auto-grows on assignment.
+   */
+  private dependentsArr: (Field<unknown>[] | undefined)[] = [];
 
   /** The OM node at the topological tail — where `graft` appends. */
   private lastOm: OMNode | null = null;
@@ -294,7 +299,7 @@ export class SpinelessRuntime {
     // Precondition: the removed set must be closed under "is read by"
     // — no surviving field may depend on a removed one.
     for (const f of removing) {
-      const revs = this.dependents.get(f);
+      const revs = this.dependentsArr[f.id];
       if (revs === undefined) continue;
       for (const d of revs) {
         if (!removing.has(d)) {
@@ -323,7 +328,7 @@ export class SpinelessRuntime {
         this.valuesMap.delete(f);
       }
       this.valuePresent[f.id] = 0;
-      this.dependents.delete(f);
+      this.dependentsArr[f.id] = undefined;
       this.rulesArr[f.id] = undefined;
       this.grammar.delete(f);
     };
@@ -334,7 +339,7 @@ export class SpinelessRuntime {
       const rule = this.rulesArr[f.id];
       if (rule !== undefined) {
         for (const dep of rule.deps) {
-          const revs = this.dependents.get(dep);
+          const revs = this.dependentsArr[dep.id];
           if (revs !== undefined) {
             const i = revs.indexOf(f);
             if (i !== -1) revs.splice(i, 1);
@@ -348,7 +353,7 @@ export class SpinelessRuntime {
     // Orphan cleanup: a surviving dep with no dependents left, whose
     // own rule is a leaf (no dependencies), is now dead weight.
     for (const dep of survivingDeps) {
-      const revs = this.dependents.get(dep);
+      const revs = this.dependentsArr[dep.id];
       if (revs !== undefined && revs.length > 0) continue;
       const rule = this.rulesArr[dep.id];
       if (rule === undefined || rule.deps.length > 0) continue;
@@ -401,7 +406,7 @@ export class SpinelessRuntime {
     // Deps no longer read: drop `field` from their dependents list.
     for (const d of oldDeps) {
       if (newDeps.has(d)) continue;
-      const revs = this.dependents.get(d);
+      const revs = this.dependentsArr[d.id];
       if (revs !== undefined) {
         const i = revs.indexOf(field);
         if (i !== -1) revs.splice(i, 1);
@@ -415,10 +420,10 @@ export class SpinelessRuntime {
           `[spineless-runtime] rebindRule: new dependency "${d.name}" of "${field.name}" is not integrated`,
         );
       }
-      let revs = this.dependents.get(d);
+      let revs = this.dependentsArr[d.id];
       if (revs === undefined) {
         revs = [];
-        this.dependents.set(d, revs);
+        this.dependentsArr[d.id] = revs;
       }
       revs.push(field);
     }
@@ -460,10 +465,10 @@ export class SpinelessRuntime {
 
       for (const dep of rule.deps) {
         visit(dep);
-        let revs = this.dependents.get(dep);
+        let revs = this.dependentsArr[dep.id];
         if (revs === undefined) {
           revs = [];
-          this.dependents.set(dep, revs);
+          this.dependentsArr[dep.id] = revs;
         }
         revs.push(f);
       }
@@ -597,7 +602,7 @@ export class SpinelessRuntime {
         }
         this.stats.recomputeChanged++;
         changed.push(f);
-        const deps = this.dependents.get(f);
+        const deps = this.dependentsArr[f.id];
         if (deps !== undefined) {
           for (const d of deps) {
             const om = this.omNodesArr[d.id]!;
