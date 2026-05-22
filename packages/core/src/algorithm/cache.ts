@@ -135,25 +135,11 @@ export interface LayoutCacheKey {
   // Differential mode catches divergence if this assumption is ever wrong.
 }
 
-/** @internal */
-export interface CachedChildLayout {
-  left: number;
-  top: number;
-  width: number;
-  height: number;
-  scrollWidth: number;
-  scrollHeight: number;
-  /**
-   * Pre-rounding (float) left position of this child, captured before
-   * `roundLayout` converts positions to integers. Used by
-   * `roundLayoutSubtree` to compute the correct float absolute coordinate
-   * when re-laying out a dirty boundary node under a cache-hit root.
-   * See `Node._floatLeft` for the full explanation.
-   */
-  floatLeft: number;
-  /** See {@link floatLeft}. */
-  floatTop: number;
-}
+/** Number of Float64 slots per child in a `LayoutCacheValue.childData` array. */
+const CHILD_STRIDE = 8;
+
+/** Shared empty child-data array for leaf nodes — avoids per-leaf allocation. */
+const EMPTY_CHILD_DATA = new Float64Array(0);
 
 /** @internal */
 export interface LayoutCacheValue {
@@ -161,7 +147,14 @@ export interface LayoutCacheValue {
   height: number;
   scrollWidth: number;
   scrollHeight: number;
-  childLayouts: CachedChildLayout[];
+  /**
+   * Flat child-layout data — `CHILD_STRIDE` (8) floats per direct child:
+   * [left, top, width, height, scrollWidth, scrollHeight, floatLeft, floatTop].
+   * Leaf nodes share the module-level `EMPTY_CHILD_DATA`.
+   */
+  childData: Float64Array;
+  /** Number of direct children captured. `childData.length === childCount * CHILD_STRIDE`. */
+  childCount: number;
 }
 
 /**
@@ -299,27 +292,27 @@ export function markDirtyDeep(root: Node): void {
  * @internal
  */
 export function snapshotForCache(node: Node): LayoutCacheValue {
-  const childLayouts: CachedChildLayout[] = [];
   const count = node.getChildCount();
+  const childData = count === 0 ? EMPTY_CHILD_DATA : new Float64Array(count * CHILD_STRIDE);
   for (let i = 0; i < count; i++) {
     const c = node.getChild(i)!;
-    childLayouts.push({
-      left: c.layout.left,
-      top: c.layout.top,
-      width: c.layout.width,
-      height: c.layout.height,
-      scrollWidth: c.layout.scrollWidth,
-      scrollHeight: c.layout.scrollHeight,
-      floatLeft: c._floatLeft,
-      floatTop: c._floatTop,
-    });
+    const base = i * CHILD_STRIDE;
+    childData[base] = c.layout.left;
+    childData[base + 1] = c.layout.top;
+    childData[base + 2] = c.layout.width;
+    childData[base + 3] = c.layout.height;
+    childData[base + 4] = c.layout.scrollWidth;
+    childData[base + 5] = c.layout.scrollHeight;
+    childData[base + 6] = c._floatLeft;
+    childData[base + 7] = c._floatTop;
   }
   return {
     width: node.layout.width,
     height: node.layout.height,
     scrollWidth: node.layout.scrollWidth,
     scrollHeight: node.layout.scrollHeight,
-    childLayouts,
+    childData,
+    childCount: count,
   };
 }
 
@@ -339,9 +332,9 @@ export function snapshotForCache(node: Node): LayoutCacheValue {
  */
 export function restoreFromCache(node: Node, value: LayoutCacheValue): void {
   if (process.env.PILATES_DIFFERENTIAL_LAYOUT === '1') {
-    if (node.getChildCount() !== value.childLayouts.length) {
+    if (node.getChildCount() !== value.childCount) {
       throw new Error(
-        `[pilates layout cache] restored value has ${value.childLayouts.length} children but node has ${node.getChildCount()} — cache invalidation bug`,
+        `[pilates layout cache] restored value has ${value.childCount} children but node has ${node.getChildCount()} — cache invalidation bug`,
       );
     }
   }
@@ -349,20 +342,20 @@ export function restoreFromCache(node: Node, value: LayoutCacheValue): void {
   node._layout.height = value.height;
   node._layout.scrollWidth = value.scrollWidth;
   node._layout.scrollHeight = value.scrollHeight;
-  // node._layout.left/top are set by the caller before recursion starts
-  // (root sets to 0; child positions come from this restore via the
-  // childLayouts array below).
-  for (let i = 0; i < node.getChildCount(); i++) {
+  // node._layout.left/top are set by the caller before recursion starts.
+  const cd = value.childData;
+  const count = node.getChildCount();
+  for (let i = 0; i < count; i++) {
     const c = node.getChild(i)!;
-    const cl = value.childLayouts[i]!;
-    c._layout.left = cl.left;
-    c._layout.top = cl.top;
-    c._layout.width = cl.width;
-    c._layout.height = cl.height;
-    c._layout.scrollWidth = cl.scrollWidth;
-    c._layout.scrollHeight = cl.scrollHeight;
-    c._floatLeft = cl.floatLeft;
-    c._floatTop = cl.floatTop;
+    const base = i * CHILD_STRIDE;
+    c._layout.left = cd[base]!;
+    c._layout.top = cd[base + 1]!;
+    c._layout.width = cd[base + 2]!;
+    c._layout.height = cd[base + 3]!;
+    c._layout.scrollWidth = cd[base + 4]!;
+    c._layout.scrollHeight = cd[base + 5]!;
+    c._floatLeft = cd[base + 6]!;
+    c._floatTop = cd[base + 7]!;
   }
 }
 

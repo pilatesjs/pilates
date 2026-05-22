@@ -271,33 +271,16 @@ describe('LayoutCache', () => {
     availableHeight: 40,
     heightMode: MeasureMode.AtMost,
   };
+  const VAL_A_CHILD_DATA = new Float64Array([
+    0, 0, 50, 25, 50, 25, 0, 0, 50, 0, 50, 25, 50, 25, 50, 0,
+  ]);
   const VAL_A = {
     width: 100,
     height: 50,
     scrollWidth: 100,
     scrollHeight: 50,
-    childLayouts: [
-      {
-        left: 0,
-        top: 0,
-        width: 50,
-        height: 25,
-        scrollWidth: 50,
-        scrollHeight: 25,
-        floatLeft: 0,
-        floatTop: 0,
-      },
-      {
-        left: 50,
-        top: 0,
-        width: 50,
-        height: 25,
-        scrollWidth: 50,
-        scrollHeight: 25,
-        floatLeft: 50,
-        floatTop: 0,
-      },
-    ],
+    childData: VAL_A_CHILD_DATA,
+    childCount: 2,
   };
 
   it('returns undefined on empty cache', () => {
@@ -365,7 +348,8 @@ describe('LayoutCache', () => {
       height: 10,
       scrollWidth: 10,
       scrollHeight: 10,
-      childLayouts: [],
+      childData: new Float64Array(0),
+      childCount: 0,
     };
     c.store(KEY_A, v);
     v.width = 999;
@@ -392,27 +376,12 @@ describe('snapshotForCache', () => {
     expect(snap.height).toBe(50);
     expect(snap.scrollWidth).toBe(100);
     expect(snap.scrollHeight).toBe(50);
-    expect(snap.childLayouts).toHaveLength(2);
-    expect(snap.childLayouts[0]).toEqual({
-      left: 0,
-      top: 0,
-      width: 50,
-      height: 50,
-      scrollWidth: 50,
-      scrollHeight: 50,
-      floatLeft: 0,
-      floatTop: 0,
-    });
-    expect(snap.childLayouts[1]).toEqual({
-      left: 50,
-      top: 0,
-      width: 50,
-      height: 50,
-      scrollWidth: 50,
-      scrollHeight: 50,
-      floatLeft: 50,
-      floatTop: 0,
-    });
+    expect(snap.childCount).toBe(2);
+    expect(snap.childData.length).toBe(16); // 2 children × 8 floats
+    // child 0: left=0, top=0, width=50, height=50, scrollWidth=50, scrollHeight=50, floatLeft=0, floatTop=0
+    expect(Array.from(snap.childData.slice(0, 8))).toEqual([0, 0, 50, 50, 50, 50, 0, 0]);
+    // child 1: left=50, top=0, width=50, height=50, scrollWidth=50, scrollHeight=50, floatLeft=50, floatTop=0
+    expect(Array.from(snap.childData.slice(8, 16))).toEqual([50, 0, 50, 50, 50, 50, 50, 0]);
   });
 });
 
@@ -432,28 +401,8 @@ describe('restoreFromCache', () => {
       height: 50,
       scrollWidth: 100,
       scrollHeight: 50,
-      childLayouts: [
-        {
-          left: 0,
-          top: 0,
-          width: 50,
-          height: 50,
-          scrollWidth: 50,
-          scrollHeight: 50,
-          floatLeft: 0,
-          floatTop: 0,
-        },
-        {
-          left: 50,
-          top: 0,
-          width: 50,
-          height: 50,
-          scrollWidth: 50,
-          scrollHeight: 50,
-          floatLeft: 50,
-          floatTop: 0,
-        },
-      ],
+      childData: new Float64Array([0, 0, 50, 50, 50, 50, 0, 0, 50, 0, 50, 50, 50, 50, 50, 0]),
+      childCount: 2,
     };
     restoreFromCache(root, cached);
 

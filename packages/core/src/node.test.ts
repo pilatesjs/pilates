@@ -544,7 +544,8 @@ describe('Node — layout cache integration', () => {
         height: 50,
         scrollWidth: 100,
         scrollHeight: 50,
-        childLayouts: [],
+        childData: new Float64Array(0),
+        childCount: 0,
       },
     );
     expect(
@@ -585,7 +586,8 @@ describe('Node — layout cache integration', () => {
       height: 25,
       scrollWidth: 50,
       scrollHeight: 25,
-      childLayouts: [],
+      childData: new Float64Array(0),
+      childCount: 0,
     };
     rootCache.store(KEY, VAL);
     childCache.store(KEY, VAL);
