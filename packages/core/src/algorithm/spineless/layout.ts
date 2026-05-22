@@ -151,6 +151,18 @@ function nodeSig(node: Node): string {
     s.position
       .map((p) => (p === undefined ? '_' : String(p)))
       .join(','),
+    // Fold-predicate bits for Phase 17: each bit flips when the
+    // property crosses its fold boundary (default → non-default).
+    // Mutating a folded property must change nodeSig so the
+    // classifier triggers a grammar rebuild.
+    s.minWidth === 0 ? '_' : 'mw',
+    s.minHeight === 0 ? '_' : 'mh',
+    s.maxWidth === undefined ? '_' : 'xw',
+    s.maxHeight === undefined ? '_' : 'xh',
+    s.margin[0] === 0 ? '_' : 'm0',
+    s.margin[1] === 0 ? '_' : 'm1',
+    s.margin[2] === 0 ? '_' : 'm2',
+    s.margin[3] === 0 ? '_' : 'm3',
   ].join('|');
 }
 

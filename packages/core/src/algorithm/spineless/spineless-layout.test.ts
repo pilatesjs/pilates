@@ -368,17 +368,21 @@ describe('SpinelessLayout — persistent runtime + incremental relayout (slice v
     });
   });
 
-  it('gap / padding / margin / min / max mutations stay incremental', () => {
+  it('gap / padding mutations stay incremental; margin / min / max crossings rebuild', () => {
+    // Phase 17: nodeSig captures the fold predicate of min/max/margin.
+    // A mutation that crosses the fold boundary (default → non-default)
+    // changes nodeSig → full rebuild (correct: the grammar is now folded
+    // differently). Gap and padding have no fold bit — they stay incremental.
     const sl = checkSequence(fixedRow, [
-      (r) => r.setGap('column', 6),
-      (r) => r.setPadding(Edge.Left, 9),
-      (r) => r.getChild(0)!.setMargin(Edge.Right, 5),
-      (r) => r.getChild(1)!.setMinWidth(80),
-      (r) => r.getChild(2)!.setMaxWidth(15),
+      (r) => r.setGap('column', 6), // no fold bit → incremental
+      (r) => r.setPadding(Edge.Left, 9), // no fold bit → incremental
+      (r) => r.getChild(0)!.setMargin(Edge.Right, 5), // margin[1] 0→5 → rebuild
+      (r) => r.getChild(1)!.setMinWidth(80), // minWidth 0→80 → rebuild
+      (r) => r.getChild(2)!.setMaxWidth(15), // maxWidth undef→15 → rebuild
     ]);
     expect(sl.stats).toEqual({
-      fullBuilds: 1,
-      incrementalRelayouts: 5,
+      fullBuilds: 4, // 1 initial + 3 fold-boundary crossings
+      incrementalRelayouts: 2,
       graftRelayouts: 0,
       detachRelayouts: 0,
       reorderRelayouts: 0,
