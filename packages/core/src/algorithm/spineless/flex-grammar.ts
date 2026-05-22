@@ -632,6 +632,7 @@ function makeEmitter(
     const crossPosField =
       parentDirection === 'column' ? (left as Field<unknown>) : (top as Field<unknown>);
     const mainSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
+    const mainPosName: 'top' | 'left' = parentDirection === 'column' ? 'top' : 'left';
 
     // Spacing inputs for this child. Both the parent's padding and
     // this child's own margin are modelled as leaf input Fields (see
@@ -1104,9 +1105,42 @@ function makeEmitter(
           deps: [parentMainDist as Field<unknown>],
           compute: (read) => read(parentMainDist).positions[myIndexCapture]!,
         } satisfies FieldRule<number>);
+      } else if (!parentReverse) {
+        // Phase 16: linear recurrence. This child's main position is the
+        // immediate predecessor's position + its box + one gap. O(1) deps
+        // regardless of sibling count (was O(N) cumulative-sum). Unrolls
+        // to the same total — see the Phase 16 design doc.
+        // Note: only applies to forward directions; reverse directions use
+        // the cumulative-sum below because applyReverseMainPos overwrites
+        // each sibling's mainPosField with a reflected value, breaking the
+        // chain (the predecessor's field holds its reflected position, not
+        // the forward cursor this recurrence relies on).
+        const prevSibling = priorSiblings[priorSiblings.length - 1]!;
+        const prevMainPos = field<number>(prevSibling, mainPosName);
+        const prevMainSize = field<number>(prevSibling, mainSizeName);
+        const prevMarginEnd = marginInput(prevSibling, mainEndEdge(parentDirection!));
+        const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
+        grammar.set(mainPosField, {
+          deps: [
+            prevMainPos as Field<unknown>,
+            prevMainSize as Field<unknown>,
+            prevMarginEnd as Field<unknown>,
+            myMarginMainStartF as Field<unknown>,
+            mainGapInput as Field<unknown>,
+          ],
+          compute: (read) =>
+            read(prevMainPos) +
+            read(prevMainSize) +
+            read(prevMarginEnd) +
+            read(myMarginMainStartF!) +
+            read(mainGapInput),
+        } satisfies FieldRule<number>);
       } else {
-        // Non-qualifying regime (wrap): keep today's prior-siblings-sum
-        // rule — size / spacing mutation on any prior sibling propagates here.
+        // Reverse direction: keep the cumulative-sum rule. The recurrence
+        // cannot chain through the predecessor's mainPosField here because
+        // applyReverseMainPos (applied per-sibling below) overwrites that
+        // field with a reflected value — the predecessor's field no longer
+        // carries the forward cursor the recurrence depends on.
         const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
         const priorMargins = priorSiblings.map((s) => ({
           start: marginInput(s, mainStartEdge(parentDirection!)),
