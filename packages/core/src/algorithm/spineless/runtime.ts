@@ -102,6 +102,14 @@ const NEVER_READ: ReadFn = (dep) => {
 };
 
 /**
+ * Cache of the declared-deps Set for each rule. Keyed by the rule object
+ * (FieldRule is immutable after creation); when a rule is replaced via
+ * `rebindRule`, the new rule object gets a fresh WeakMap miss — no manual
+ * invalidation needed.
+ */
+const depSetCache = new WeakMap<FieldRule<unknown>, Set<Field<unknown>>>();
+
+/**
  * @internal
  */
 export class SpinelessRuntime {
@@ -620,9 +628,18 @@ export class SpinelessRuntime {
     if (rule.deps.length === 0) {
       return rule.compute(NEVER_READ);
     }
-    const declaredDeps = new Set<Field<unknown>>(rule.deps);
+    // Look up the cached declared-deps Set for this rule object.
+    // Build and store on first call; reuse on every subsequent call.
+    // `rebindRule` installs a NEW rule object → WeakMap miss → fresh Set.
+    // No manual invalidation needed.
+    const ruleAsUnknown = rule as FieldRule<unknown>;
+    let declaredDeps = depSetCache.get(ruleAsUnknown);
+    if (declaredDeps === undefined) {
+      declaredDeps = new Set<Field<unknown>>(rule.deps);
+      depSetCache.set(ruleAsUnknown, declaredDeps);
+    }
     const read: ReadFn = <U>(dep: Field<U>): U => {
-      if (!declaredDeps.has(dep as Field<unknown>)) {
+      if (!(declaredDeps as Set<Field<unknown>>).has(dep as Field<unknown>)) {
         throw new Error(
           `[spineless-runtime] rule for "${field.name}" reads "${dep.name}" but did not declare it as a dependency`,
         );
