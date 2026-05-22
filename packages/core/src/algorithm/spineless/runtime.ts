@@ -90,6 +90,17 @@ import { BenderOrderMaintenance, type OMNode, type OrderMaintenance } from './or
 import { OmPriorityQueue } from './priority-queue.js';
 
 /**
+ * A `ReadFn` for zero-dependency rules — they declare no deps, so their
+ * `compute` must never call `read`. If one does, this throws (a grammar
+ * bug), mirroring the undeclared-dependency error in the normal path.
+ */
+const NEVER_READ: ReadFn = (dep) => {
+  throw new Error(
+    `[spineless-runtime] a zero-dependency rule called read("${dep.name}") — it did not declare it as a dependency`,
+  );
+};
+
+/**
  * @internal
  */
 export class SpinelessRuntime {
@@ -503,6 +514,11 @@ export class SpinelessRuntime {
   }
 
   private runCompute<T>(field: Field<T>, rule: FieldRule<T>): T {
+    // Zero-dep fields (leaf inputs, constants) can't read anything —
+    // skip the per-compute Set allocation + validating closure.
+    if (rule.deps.length === 0) {
+      return rule.compute(NEVER_READ);
+    }
     const declaredDeps = new Set<Field<unknown>>(rule.deps);
     const read: ReadFn = <U>(dep: Field<U>): U => {
       if (!declaredDeps.has(dep as Field<unknown>)) {
