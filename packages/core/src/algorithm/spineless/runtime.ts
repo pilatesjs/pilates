@@ -85,6 +85,7 @@
  * @internal
  */
 
+import { fieldIdCount } from './field-id-pool.js';
 import type { Field, FieldRule, Grammar, ReadFn } from './grammar.js';
 import { BenderOrderMaintenance, type OMNode, type OrderMaintenance } from './order-maintenance.js';
 import { OmPriorityQueue } from './priority-queue.js';
@@ -109,8 +110,23 @@ export class SpinelessRuntime {
   private readonly om: OrderMaintenance;
   private readonly pq: OmPriorityQueue<Field<unknown>>;
 
-  /** field -> cached value */
-  private readonly values: Map<Field<unknown>, unknown> = new Map();
+  /**
+   * Fast path: numeric field values indexed by field.id.
+   * valuePresent[id] === 1 means the value is stored here as a number.
+   */
+  private valuesArr: Float64Array;
+  /**
+   * Presence / storage-kind bitset, indexed by field.id:
+   *   0 = absent (not yet computed or detached)
+   *   1 = computed, value is a number stored in valuesArr[id]
+   *   2 = computed, value is a non-number object stored in valuesMap
+   */
+  private valuePresent: Uint8Array;
+  /**
+   * Fallback for non-number field values (e.g. Field<MainAxisDistribution>).
+   * Only populated when valuePresent[id] === 2.
+   */
+  private readonly valuesMap: Map<Field<unknown>, unknown> = new Map();
   /** field -> its OM timestamp (allocated in topo order at init) */
   private readonly omNodes: Map<Field<unknown>, OMNode> = new Map();
   /** field -> fields that read this field (reverse of `rule.deps`) */
@@ -146,6 +162,27 @@ export class SpinelessRuntime {
     this.rootFields = rootFields;
     this.om = om;
     this.pq = new OmPriorityQueue<Field<unknown>>(om);
+    // Initialise value arrays to cover all IDs allocated so far.
+    // ensureFieldCapacity() grows them on demand as new fields arrive.
+    const initialCap = Math.max(fieldIdCount(), 1024);
+    this.valuesArr = new Float64Array(initialCap);
+    this.valuePresent = new Uint8Array(initialCap);
+  }
+
+  /**
+   * Grow `valuesArr` and `valuePresent` so that `id` is a valid index.
+   * Doubles capacity until sufficient, copying forward (LayoutPool pattern).
+   */
+  private ensureFieldCapacity(id: number): void {
+    if (id < this.valuesArr.length) return;
+    let cap = this.valuesArr.length;
+    while (id >= cap) cap *= 2;
+    const newArr = new Float64Array(cap);
+    const newPresent = new Uint8Array(cap);
+    newArr.set(this.valuesArr);
+    newPresent.set(this.valuePresent);
+    this.valuesArr = newArr;
+    this.valuePresent = newPresent;
   }
 
   /**
@@ -251,7 +288,10 @@ export class SpinelessRuntime {
         removedOmNodes.add(omNode);
       }
       this.omNodes.delete(f);
-      this.values.delete(f);
+      if (f.id < this.valuePresent.length && this.valuePresent[f.id] === 2) {
+        this.valuesMap.delete(f);
+      }
+      this.valuePresent[f.id] = 0;
       this.dependents.delete(f);
       this.grammar.delete(f);
     };
@@ -403,7 +443,15 @@ export class SpinelessRuntime {
       this.stats.initFields++;
 
       // Compute and cache.
-      this.values.set(f, this.runCompute(f, rule));
+      this.ensureFieldCapacity(f.id);
+      const initVal = this.runCompute(f, rule);
+      if (typeof initVal === 'number') {
+        this.valuesArr[f.id] = initVal;
+        this.valuePresent[f.id] = 1;
+      } else {
+        this.valuesMap.set(f, initVal);
+        this.valuePresent[f.id] = 2;
+      }
 
       visiting.delete(f);
     };
@@ -417,12 +465,15 @@ export class SpinelessRuntime {
    * exists).
    */
   evaluate<T>(field: Field<T>): T {
-    if (!this.values.has(field as Field<unknown>)) {
+    const id = (field as Field<unknown>).id;
+    const kind = id < this.valuePresent.length ? this.valuePresent[id] : 0;
+    if (kind === 0) {
       throw new Error(
         `[spineless-runtime] field "${field.name}" was not computed in init() — it isn't reachable from any root`,
       );
     }
-    return this.values.get(field as Field<unknown>) as T;
+    if (kind === 1) return this.valuesArr[id] as unknown as T;
+    return this.valuesMap.get(field as Field<unknown>) as T;
   }
 
   /**
@@ -495,10 +546,19 @@ export class SpinelessRuntime {
       this.stats.recomputeVisited++;
       this.stats.totalVisited++;
       const rule = this.grammar.get(f)!;
-      const prev = this.values.get(f);
+      const id = f.id;
+      const kind = this.valuePresent[id]!;
+      const prev: unknown = kind === 1 ? this.valuesArr[id] : this.valuesMap.get(f);
       const next = this.runCompute(f, rule);
       if (!Object.is(prev, next)) {
-        this.values.set(f, next);
+        if (typeof next === 'number') {
+          this.valuesArr[id] = next;
+          this.valuePresent[id] = 1;
+          if (kind === 2) this.valuesMap.delete(f);
+        } else {
+          this.valuesMap.set(f, next);
+          this.valuePresent[id] = 2;
+        }
         this.stats.recomputeChanged++;
         changed.push(f);
         const deps = this.dependents.get(f);
@@ -526,7 +586,10 @@ export class SpinelessRuntime {
           `[spineless-runtime] rule for "${field.name}" reads "${dep.name}" but did not declare it as a dependency`,
         );
       }
-      return this.values.get(dep as Field<unknown>) as U;
+      const depId = (dep as Field<unknown>).id;
+      const depKind = this.valuePresent[depId]!;
+      if (depKind === 1) return this.valuesArr[depId] as unknown as U;
+      return this.valuesMap.get(dep as Field<unknown>) as U;
     };
     return rule.compute(read);
   }
