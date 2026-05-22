@@ -225,9 +225,13 @@ export class SpinelessRuntime {
     // cleanup once their reverse-dependency lists are pruned.
     const survivingDeps = new Set<Field<unknown>>();
 
+    const removedOmNodes = new Set<OMNode>();
     const drop = (f: Field<unknown>): void => {
       const omNode = this.omNodes.get(f);
-      if (omNode !== undefined) this.om.delete(omNode);
+      if (omNode !== undefined) {
+        this.om.delete(omNode);
+        removedOmNodes.add(omNode);
+      }
       this.omNodes.delete(f);
       this.values.delete(f);
       this.dependents.delete(f);
@@ -261,13 +265,15 @@ export class SpinelessRuntime {
       drop(dep);
     }
 
-    // The OM tail may have been among the removed fields; recompute
-    // it so a later `graft` still appends after every surviving node.
-    this.lastOm = null;
-    for (const omNode of this.omNodes.values()) {
-      if (this.lastOm === null || this.om.compare(omNode, this.lastOm) > 0) {
-        this.lastOm = omNode;
+    // The OM tail may have been among the removed fields. If so, walk
+    // back through predecessors (skipping just-removed nodes) to find
+    // the new tail — O(removed) instead of O(total live nodes).
+    if (this.lastOm !== null && removedOmNodes.has(this.lastOm)) {
+      let candidate: OMNode | null = this.lastOm;
+      while (candidate !== null && removedOmNodes.has(candidate)) {
+        candidate = this.om.predecessor(candidate);
       }
+      this.lastOm = candidate;
     }
   }
 
