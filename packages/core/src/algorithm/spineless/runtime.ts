@@ -141,8 +141,19 @@ export class SpinelessRuntime {
    * Only populated when valuePresent[id] === 2.
    */
   private readonly valuesMap: Map<Field<unknown>, unknown> = new Map();
-  /** field -> its OM timestamp (allocated in topo order at init) */
-  private readonly omNodes: Map<Field<unknown>, OMNode> = new Map();
+  /**
+   * OM nodes indexed by field.id — replaces the former `omNodes: Map<Field, OMNode>`.
+   * Plain array; auto-grows on out-of-range assignment (JS semantics).
+   * undefined slot = field not integrated (or detached).
+   */
+  private omNodesArr: (OMNode | undefined)[] = [];
+  /**
+   * Authoritative list of all fields ever registered with this runtime
+   * (in integration order). Used for iteration in `markAllDirty` — slots
+   * whose `omNodesArr[field.id]` is `undefined` (detached) are skipped.
+   * Dead entries are never removed; the skip is O(1) per slot.
+   */
+  private readonly fieldRoster: Field<unknown>[] = [];
   /** field -> fields that read this field (reverse of `rule.deps`) */
   private readonly dependents: Map<Field<unknown>, Field<unknown>[]> = new Map();
 
@@ -235,7 +246,7 @@ export class SpinelessRuntime {
       throw new Error('[spineless-runtime] graft called before init()');
     }
     for (const [f, rule] of additions) {
-      if (this.omNodes.has(f)) {
+      if (this.omNodesArr[f.id] !== undefined) {
         throw new Error(
           `[spineless-runtime] graft: field "${f.name}" already exists — graft integrates NEW fields only`,
         );
@@ -302,12 +313,12 @@ export class SpinelessRuntime {
     const removedOmNodes = new Set<OMNode>();
     const drop = (f: Field<unknown>): void => {
       dropped.add(f);
-      const omNode = this.omNodes.get(f);
+      const omNode = this.omNodesArr[f.id];
       if (omNode !== undefined) {
         this.om.delete(omNode);
         removedOmNodes.add(omNode);
       }
-      this.omNodes.delete(f);
+      this.omNodesArr[f.id] = undefined;
       if (f.id < this.valuePresent.length && this.valuePresent[f.id] === 2) {
         this.valuesMap.delete(f);
       }
@@ -378,7 +389,7 @@ export class SpinelessRuntime {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] rebindRule called before init()');
     }
-    if (!this.omNodes.has(field)) {
+    if (this.omNodesArr[field.id] === undefined) {
       throw new Error(
         `[spineless-runtime] rebindRule: field "${field.name}" is not in this runtime`,
       );
@@ -399,7 +410,7 @@ export class SpinelessRuntime {
     // Newly read deps: register the reverse edge.
     for (const d of newDeps) {
       if (oldDeps.has(d)) continue;
-      if (!this.omNodes.has(d)) {
+      if (this.omNodesArr[d.id] === undefined) {
         throw new Error(
           `[spineless-runtime] rebindRule: new dependency "${d.name}" of "${field.name}" is not integrated`,
         );
@@ -430,9 +441,9 @@ export class SpinelessRuntime {
 
     const visit = (f: Field<unknown>): void => {
       // A field has an OM node exactly once it is integrated, so
-      // `omNodes` doubles as the "already done" marker — which makes
-      // existing fields natural boundaries during a graft.
-      if (this.omNodes.has(f)) return;
+      // the omNodesArr slot doubles as the "already done" marker — which
+      // makes existing fields natural boundaries during a graft.
+      if (this.omNodesArr[f.id] !== undefined) return;
       if (visiting.has(f)) {
         throw new Error(
           `[spineless-runtime] cycle detected: field "${f.name}" depends on itself transitively`,
@@ -461,7 +472,8 @@ export class SpinelessRuntime {
       // before the very first field, then chains insertAfter.
       const omNode = this.lastOm === null ? this.om.init() : this.om.insertAfter(this.lastOm);
       this.lastOm = omNode;
-      this.omNodes.set(f, omNode);
+      this.omNodesArr[f.id] = omNode;
+      this.fieldRoster.push(f);
       this.stats.initFields++;
 
       // Compute and cache.
@@ -505,7 +517,7 @@ export class SpinelessRuntime {
    * this before `markDirty`.
    */
   isTracked(field: Field<unknown>): boolean {
-    return this.omNodes.has(field);
+    return this.omNodesArr[field.id] !== undefined;
   }
 
   /**
@@ -521,7 +533,9 @@ export class SpinelessRuntime {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] markAllDirty called before init()');
     }
-    for (const [field, omNode] of this.omNodes) {
+    for (const field of this.fieldRoster) {
+      const omNode = this.omNodesArr[field.id];
+      if (omNode === undefined) continue; // detached — skip
       this.pq.push(field, omNode);
     }
   }
@@ -538,7 +552,7 @@ export class SpinelessRuntime {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] markDirty called before init()');
     }
-    const om = this.omNodes.get(field);
+    const om = this.omNodesArr[field.id];
     if (om === undefined) {
       throw new Error(
         `[spineless-runtime] field "${field.name}" is not in this runtime — call markDirty only on fields reachable from a root at init`,
@@ -586,7 +600,7 @@ export class SpinelessRuntime {
         const deps = this.dependents.get(f);
         if (deps !== undefined) {
           for (const d of deps) {
-            const om = this.omNodes.get(d)!;
+            const om = this.omNodesArr[d.id]!;
             this.pq.push(d, om);
           }
         }
