@@ -18,6 +18,8 @@ Show HN: Pilates – pure-TypeScript flex layout for terminal UIs
 
 **URL**: `https://github.com/pilatesjs/pilates`
 
+**Image:** none. HN doesn't render inline images and an image-only Show HN reads as low-effort. The README the URL points at already shows the bench comparison.
+
 **First comment** (post immediately after the submission so it ranks at the top):
 
 ```
@@ -61,7 +63,7 @@ Across the 9 benchmark scenarios I track, it's now faster than WASM Yoga (Ink's 
 🧵
 ```
 
-**Tweet 2** (the numbers, qualified):
+**Tweet 2** (the numbers, qualified — **attach the bench comparison image** here; export `assets/bench-comparison.svg` to PNG first, X doesn't accept SVG):
 
 ```
 Median, win32-x64, Node 22, ~5s tinybench windows. 9-scenario hand-picked suite:
@@ -111,6 +113,8 @@ Adversarial benchmarks especially welcome.
 ---
 
 ## Reddit — r/typescript
+
+**Image:** consider posting as an **image submission** (the bench comparison PNG) with the text body in the first comment, OR a text post with the table inline. Image posts tend to outperform text-only on r/typescript and r/javascript. For r/programming, stay text — image-only submissions get treated as low-effort there.
 
 **Title:**
 
@@ -208,6 +212,16 @@ Caveats: 9 hand-picked scenarios, not a universal claim. Adversarial benchmarks 
 ```
 
 ---
+
+## Image export
+
+The bench comparison lives at `assets/bench-comparison.svg`. To get a PNG for X/Reddit:
+
+```bash
+npx svgexport assets/bench-comparison.svg assets/bench-comparison.png 1760:1320
+```
+
+(1760×1320 is 2× the native SVG viewBox — high-DPI for retina displays. Drop the `1760:1320` argument for 1× output.) Alternatively: open the SVG in a browser and screenshot, or use Inkscape / any vector editor.
 
 ## Posting order
 
