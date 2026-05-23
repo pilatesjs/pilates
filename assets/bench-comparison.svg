@@ -20,10 +20,10 @@
 
   <!-- title -->
   <text x="40" y="40" class="title">Pilates vs WASM Yoga — flex layout latency</text>
-  <text x="40" y="60" class="subtitle">Median time per layout pass · lower is better · @pilates/core 2.0.1 vs yoga-layout 3.x · 9 scenarios in our bench suite</text>
+  <text x="40" y="60" class="subtitle">Median time per layout pass · lower is better · 9 scenarios in our bench suite</text>
 
   <!-- legend -->
-  <g transform="translate(620, 35)">
+  <g transform="translate(660, 30)">
     <rect width="14" height="14" fill="#10b981" rx="2"/>
     <text x="22" y="11" class="legend">@pilates/core (pure TS)</text>
     <rect y="22" width="14" height="14" fill="#f97316" rx="2"/>
