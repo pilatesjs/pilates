@@ -55,13 +55,14 @@ Outside JS, the comparable libraries — Textual (Python), Ratatui
 language ecosystems entirely.
 
 **Pilates' positioning is the unbundled, faster alternative to Ink in
-the JS/TS niche.** Faster matters: Pilates is faster than WASM Yoga on
-**every** benchmark scenario (see `bench/RESULTS.md` and the
-Performance section of the root README) — every tree-build-then-
-layout size, every hot-relayout shape, and the structural-mutation
-workload (append + remove a row per frame) Yoga historically led on.
-As of phase 17 (2026-05-22) that's 9/9 decisive wins in pure
-TypeScript.
+the JS/TS niche.** Faster matters: across the 9 scenarios in
+`bench/RESULTS.md`, Pilates is faster than WASM Yoga on each — every
+tree-build-then-layout size, every hot-relayout shape, and the
+structural-mutation workload (append + remove a row per frame) Yoga
+led on through mid-2026. Phase 17 (2026-05-22) closed the last
+remaining gap. A hand-picked 9-scenario suite isn't a universal proof
+of speed; real workloads will differ. Adversarial bench scenarios are
+welcome.
 
 ## What Pilates actually offers vs. Ink / Yoga / OpenTUI
 
@@ -72,21 +73,22 @@ The wedge is *decoupling + speed + scope*, not "better DX yet":
    0-dep TypeScript. Ink doesn't expose that path. OpenTUI doesn't
    expose layout standalone either.
 
-2. **Faster than WASM Yoga on every benchmark scenario.** Pure-TS
+2. **Faster than WASM Yoga across the 9-scenario bench suite.** Pure-TS
    layout engine, no `WebAssembly.compile` startup cost, no JS↔WASM
    marshalling on every layout pass. The May 2026 perf-hardening
    work (measure-cache, layout-cache, relayout-boundaries) plus the
-   Spineless incremental engine (phases 8–17) bring Pilates **1.9–
-   4.2× faster on tree-build-then-layout, 4.6–11× faster on every
-   hot-relayout shape, and 1.3× faster on the structural-mutation
+   Spineless incremental engine (phases 8–17) put Pilates at **1.9–
+   4.2× faster on tree-build-then-layout, 4.6–10× faster on every
+   hot-relayout shape, and ~1.7× faster on the structural-mutation
    workload** (append + remove a row per frame). Phases 15–17 closed
-   the last gap: a typed-array runtime, a linear-recurrence main-
-   axis position rule, and fold-default input elimination took
-   `hot-structural` from a 5× Yoga win to a 1.3× Pilates win — pure
-   TypeScript beating Yoga's C++/WASM kernel on every measured
-   workload. Validated cell-for-cell against Yoga across 33 oracle
-   fixtures, a structural-differential fuzzer (3000 runs), and a
-   per-pass cached-vs-cold byte-identity check.
+   the structural-mutation gap: a typed-array runtime, a
+   linear-recurrence main-axis position rule, and fold-default input
+   elimination took `hot-structural` from a ~5× Yoga lead to a
+   ~1.7× Pilates lead — pure TypeScript running ahead of Yoga's
+   C++/WASM kernel on the workloads in our suite. Validated
+   cell-for-cell against Yoga across 33 oracle fixtures, a
+   structural-differential fuzzer (3000 runs), and a per-pass
+   cached-vs-cold byte-identity check.
 
 3. **Zero runtime deps.** Across the entire 5-package surface,
    `@pilates/core` ships with zero transitive runtime dependencies.
@@ -173,18 +175,18 @@ Ordered roughly by ship date. All on npm; no public API breakages.
   differential fuzzers (no behavior change vs imperative path). New
   public API: `setLayoutProfiler`, `LayoutProfiler`, `LayoutTrace`,
   `inspectLayout`, `calculateLayoutImperative`.
-- **Spineless phases 13–17 — decisive Yoga beat (2026-05-22).**
-  Closed the last remaining Yoga win (`hot-structural`, the
-  append-and-remove-a-row-per-frame workload). Phase 13 scoped the
-  public-API structural finish; phase 15 (sub-phases A–I) refactored
-  the runtime to typed arrays (`Field.id` integer + array storage
-  replacing `Map<Field,X>`, `LayoutPool` indexed by `Node._id`, flat
-  `Float64Array` cache snapshots, per-property dirty bitmask); phase
-  16 replaced the O(N) cumulative-sum main-axis position rule with a
-  linear recurrence; phase 17 folded default-valued style inputs out
-  of the grammar. Result: pure TypeScript Pilates wins **all 9 bench
-  scenarios** against WASM Yoga. Public `calculateLayout` API
-  byte-unchanged through the entire rearchitecture.
+- **Spineless phases 13–17 (2026-05-22).** Closed the last remaining
+  Yoga lead (`hot-structural`, the append-and-remove-a-row-per-frame
+  workload). Phase 13 scoped the public-API structural finish; phase
+  15 (sub-phases A–I) refactored the runtime to typed arrays
+  (`Field.id` integer + array storage replacing `Map<Field,X>`,
+  `LayoutPool` indexed by `Node._id`, flat `Float64Array` cache
+  snapshots, per-property dirty bitmask); phase 16 replaced the O(N)
+  cumulative-sum main-axis position rule with a linear recurrence;
+  phase 17 folded default-valued style inputs out of the grammar.
+  Result: pure-TypeScript Pilates is faster than WASM Yoga on each
+  of the 9 scenarios in the bench suite. Public `calculateLayout`
+  API byte-unchanged through the entire rearchitecture.
 - **Perf hardening Phase 3 (2026-05-09).** Flutter-style relayout
   boundaries: a node with explicit `width` AND `height` AND default
   flex grow/shrink stops the upward `markDirty` propagation;
@@ -260,4 +262,4 @@ Living. Update when the roadmap shifts or major capabilities ship.
 Don't update when a single feature gets added or fixed — those
 belong in `CHANGELOG.md`.
 
-Last refresh: 2026-05-22 (post Phase 15–17 — decisive 9/9 Yoga beat).
+Last refresh: 2026-05-23 (post Phase 15–17; tone-softened from "decisive 9/9" to qualified suite-scoped framing per public-launch posture).
