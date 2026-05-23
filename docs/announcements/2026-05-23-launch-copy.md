@@ -227,6 +227,212 @@ Caveats: 9 hand-picked scenarios, not a universal claim. Adversarial benchmarks 
 
 ---
 
+## V2EX — 分享创造(中文社区)
+
+**导航:** https://www.v2ex.com/new → 节点选 **分享创造**
+
+**标题(选一个):**
+
+```
+[分享创造] 纯 TypeScript 实现的终端 flex 布局引擎,9 项基准跑赢 WASM Yoga
+```
+
+或者更短:
+
+```
+[分享创造] Pilates 2.0:纯 TS flex 布局引擎,9 个基准都比 WASM Yoga 快
+```
+
+**正文:**
+
+```
+最近在做一个终端 UI 的 flex 布局引擎,叫 Pilates。纯 TypeScript,零运行时依赖,跟 Ink 用的 WASM Yoga(Facebook 的 flex 引擎,C++ 编译成 WASM)对照过 33 个 oracle fixture 加一个结构化 fuzzer。
+
+本周发的 2.0 想分享一下:在我跑的 9 个基准场景里,纯 TS 引擎都比 WASM Yoga 快。包括 hot-structural(每帧 append + remove 一行),这个场景一周前 Yoga 还领先 5×,现在反过来 Pilates 快 1.7×。
+
+中位延迟,win32-x64,Node 22:
+
+| 场景 | Pilates | Yoga | 比率 |
+|---|---|---|---|
+| tiny (10 节点) | 4.5µs | 19.0µs | 4.2× |
+| realistic (~100) | 121µs | 328µs | 2.7× |
+| stress (~1000) | 601µs | 1.94ms | 3.2× |
+| big (~5000) | 3.32ms | 9.17ms | 2.8× |
+| huge (~10000) | 8.62ms | 18.5ms | 2.1× |
+| hot-relayout | 16.3µs | 83.0µs | 5.1× |
+| hot-relayout + boundaries | 15.8µs | 77.8µs | 4.9× |
+| hot-relayout (文本变更) | 8.9µs | 90.6µs | 10× |
+| hot-structural | 71.3µs | 118.3µs | 1.7× |
+
+提前说一下:9 个场景是我自己挑的,不能代表所有 workload。复现 `pnpm bench`,5 分钟。
+
+这周做的两件事让 hot-structural 从 ~450µs 降到 ~70µs:
+
+1. flex 分配规则之前每个 cell 都依赖前面所有兄弟的尺寸,一行 100 cell 就有 ~300 条依赖边。改成线性递推,每个 cell 只读前一个 cell 的位置和尺寸。
+
+2. 大概一半的 grammar input field 永远停留在默认值上(margin 0, minWidth 0 那种)。在 grammar 构建期把它们 fold 成常量,每个 cell 的字段数从 ~15 降到 ~7。
+
+公开 API 跟 1.x 字节级一致,calculateLayout() 没变,升级就有提速。
+
+仓库(MIT):https://github.com/pilatesjs/pilates
+npm:https://www.npmjs.com/package/@pilates/core
+
+欢迎对抗性 benchmark,如果有 workload 是这个方案破解不了的,我很想看看。
+```
+
+---
+
+## 掘金(Juejin)— 长文
+
+**导航:** https://juejin.cn/editor/drafts/new → 写文章。**标签**:JavaScript、TypeScript、性能优化、前端
+
+**标题:**
+
+```
+纯 TypeScript 实现的 Flex 布局引擎,9 项基准全部跑赢了 WASM Yoga —— Pilates 2.0
+```
+
+**正文:**
+
+```
+## 起因
+
+最近一直在做一个叫 Pilates 的项目 —— 给终端 UI 用的 flex 布局引擎,纯 TypeScript 实现,零运行时依赖。本周 2.0 发到 npm,跟大家分享里面比较有意思的部分。
+
+它跟 Ink 用的 WASM Yoga(Facebook 的 flex 引擎,C++ 编译成 WASM)对照过 33 个 oracle fixture 加一个结构化 fuzzer,layout 输出和 Yoga 在测试集上字节级一致。
+
+这次想分享的核心结论:**在我跑的 9 个基准场景里,纯 TS 引擎都比 WASM Yoga 快。** 包括 hot-structural(每帧 append + remove 一行,1k 节点的表),上周 Yoga 还领先 5×,现在反过来 Pilates 快 1.7×。
+
+## 基准数据
+
+中位延迟,win32-x64,Node 22,~5 秒 tinybench 窗口 + bootstrap CI95:
+
+| 场景 | Pilates | yoga-layout (WASM) | 比率 |
+|---|---:|---:|---:|
+| tiny (10 节点) | 4.5µs | 19.0µs | 4.2× |
+| realistic (~100 节点) | 121µs | 328µs | 2.7× |
+| stress (~1000 节点) | 601µs | 1.94ms | 3.2× |
+| big (~5000 节点) | 3.32ms | 9.17ms | 2.8× |
+| huge (~10000 节点) | 8.62ms | 18.5ms | 2.1× |
+| hot-relayout | 16.3µs | 83.0µs | 5.1× |
+| hot-relayout + 边界 | 15.8µs | 77.8µs | 4.9× |
+| hot-relayout(文本变更) | 8.9µs | 90.6µs | 10× |
+| **hot-structural** | **71.3µs** | **118.3µs** | **1.7×** |
+
+提前说明 caveats:这是 9 个我自己挑的场景,不是所有 flex workload 的证明,实际业务负载会有差异。复现命令:`pnpm bench`,5 分钟左右。
+
+## 为什么纯 TS 也能赢
+
+终端 UI 是一个对 WASM 不太友好的 workload。树很小(10–10000 节点),但更新频率高(按键、tick、每帧)。JS 跨进 WASM 的边界成本和 WASM 内部计算成本基本一个量级 —— Yoga 单次内核执行几微秒,但 `node.setWidth(N)` 从 JS 到 WASM 也是几微秒,一次完整 layout 可能就 50µs 总开销。
+
+纯 TS 引擎完全不付这个跨边界成本。
+
+这是项目最初的假设。phases 15–17 算是这个假设在最坏情况下也成立的证据 —— 在那个 Yoga 内核被当作主要测量目标的 workload(树常驻、构造成本摊销、只测结构性变更的重排)上,纯 TS 在我这套测量里还是快 1.7×。
+
+## hot-structural 怎么从 450µs 降到 70µs
+
+两个算法级别的改动做了主要工作。
+
+### 1. 线性递推替换累加和
+
+之前主轴位置的规则是累加和:每个 cell 的位置依赖于它前面所有兄弟节点的尺寸总和。stress 场景下一行 100 cell 就有 ~300 条依赖边。
+
+```
+// 旧规则:每个 cell 读前面所有兄弟
+mainPos[N] = sum(siblings[0..N-1].mainSize + margin + gap)
+```
+
+替换成线性递推:每个 cell 只读前一个兄弟的位置和尺寸。
+
+```
+// 新规则:每个 cell 只读前一个
+mainPos[N] = mainPos[N-1] + prev.mainSize + prev.marginEnd + me.marginStart + gap
+```
+
+反向布局(`row-reverse` / `column-reverse`)仍然走累加和路径 —— 反向时前一个 cell 的位置是后解析的,递推依赖关系不成立。
+
+### 2. Fold 默认值的 input field
+
+观察:差不多一半的 grammar input field 永远停留在默认值上 —— `margin: 0`、`minWidth: 0`、`maxWidth: undefined` 这类。但它们仍然占 dirty flag 槽位、传播给依赖者、出现在 dependency set 里。
+
+phase 17 在 grammar 构建期把这些默认值 fold 成编译期常量,每个 cell 的字段数从 ~15 降到 ~7。`nodeSig`(classifier 的结构签名)同时加上 fold predicate,确保从默认变成非默认时正确触发结构重建。
+
+合起来,hot-structural 从 ~450µs 降到 ~70µs。
+
+## 关于「为什么没有 port 到 C++ / native」
+
+考虑过。结论是 Yoga 的优势不在算术速度 —— 它的 C++ 内核确实快,但快不到决定全局。它的优势在算法形状:结构变更走 native 路径,而我之前每次都在做 O(整树) 的 finish 工作,真正需要的只是 O(改动的子树)。
+
+算法在 TS 里改对了,native port 也就没必要 —— 它会继承同样的算法形状,最多打平。"算法对了之后,native 速度也不是瓶颈" 这个结论本身比 port 到 native 更有意思。
+
+## 验证 + 一个事故
+
+- 1470 个单元 + 集成测试通过
+- 结构化差分 fuzzer 跑了 3000 个用例
+- 33 个 Yoga oracle fixture 全部一致
+- 字节级 cached-vs-cold 差分模式跑了 833 个用例
+
+一个值得提的小事故:2.0.0 发出去几小时后,fast-check fuzzer 抓到一个真实 bug —— `createStyleDirtier` 在某种 folded node 上抛断言错误,我的分析说这种情况不会发生,fuzzer 立刻找到了。当天发了 2.0.1 修复 + pinned regression test,把 2.0.0 在 npm 上 deprecate 掉指向 2.0.1。
+
+property-based fuzzing 的投入回报这次彻底兑现了。
+
+## API 稳定性
+
+公开 `calculateLayout()` API 跟 1.x 字节级一致。SemVer-major 主要体现在内部 API 和内存特性的变化:
+
+- 类型化数组运行时(`Field.id` 整数 + array 存储替换 `Map<Field, X>`)
+- `LayoutPool` 不回收增长(试过 FinalizationRegistry,2× 性能回归,所以移除了)
+- 每属性的脏位 bitmask 替换单个 dirty bool
+- 线性递推 + fold 默认值(上面说的算法改动)
+
+但只要你用的是公开 API,升级就有提速,代码不用改。
+
+## 试一下
+
+`​`​`bash
+git clone https://github.com/pilatesjs/pilates
+cd pilates
+pnpm install
+pnpm bench   # ~5 分钟
+`​`​`
+
+或者直接装引擎:
+
+`​`​`bash
+npm install @pilates/core
+`​`​`
+
+完整 React 栈:
+
+`​`​`bash
+npm install @pilates/react @pilates/widgets react
+`​`​`
+
+对抗性 benchmark 非常欢迎 —— 如果有 workload 这个方案破解不了,我很想看看,这是项目当前最有价值的反馈。
+
+---
+
+仓库(MIT):https://github.com/pilatesjs/pilates
+npm:https://www.npmjs.com/package/@pilates/core
+```
+
+> 注:正文里的代码块用了反引号包围,在 markdown 编辑器里可能需要把外层的 ` ``` ` 单独换行。掘金的编辑器对嵌套代码块有自己的处理方式,粘贴后检查一下。
+
+---
+
+## 其他可选中文 / 海外渠道
+
+- **知乎专栏** — 把掘金那篇改个开头(更钩子化:「我把纯 TS 的布局引擎做到比 WASM Yoga 还快」),内容基本可以复用。
+- **Lobsters** (https://lobste.rs) — 邀请制,如果有账号,用 HN 标题 + 正文即可。
+- **dev.to** — 英文长文社区,把掘金的英文版(announcement doc)直接发,标签 `typescript`、`performance`、`webdev`。
+- **少数派** — 工具向社区,匹配度一般,可以跳过。
+
+## 中文渠道发布顺序建议
+
+掘金长文 → V2EX(把短文链接到掘金那篇)→ 知乎(可选)。掘金那篇定位「权威长文」,其他渠道用短帖加一句「详细写在掘金这里」作为引流。
+
+---
+
 ## Image export
 
 The bench comparison lives at `assets/bench-comparison.svg`. To get a PNG for X/Reddit:
