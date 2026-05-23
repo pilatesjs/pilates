@@ -6,6 +6,81 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [2.0.0] — 2026-05-23
+
+**Pure-TypeScript Pilates now beats WASM Yoga on every bench scenario.**
+The structural-mutation workload (append + remove a row per frame),
+the last benchmark Yoga held the lead on, flipped from a ~5× Pilates
+loss (~451µs) to a 1.7× Pilates win (~71µs) — entirely through
+algorithmic and data-structure changes in TypeScript. No native code,
+no WASM port.
+
+Public `calculateLayout` API is **byte-unchanged**; this release is
+SemVer-major only because of the internal-API and memory-characteristic
+shifts described below. Consumers using only the documented public API
+should upgrade with no code changes.
+
+### Performance (median, win32-x64)
+
+| Scenario | 1.1.0 | 2.0.0 | Pilates speedup |
+|---|---:|---:|---:|
+| tiny | 10.0µs | 4.5µs | 2.2× internal; **4.2× vs Yoga** |
+| realistic | 175µs | 121µs | 1.4× internal; **2.7× vs Yoga** |
+| stress | 901µs | 601µs | 1.5× internal; **3.2× vs Yoga** |
+| big | 5.80ms | 3.32ms | 1.7× internal; **2.8× vs Yoga** |
+| huge | 14.8ms | 8.62ms | 1.7× internal; **2.1× vs Yoga** |
+| hotrelayout | 30.8µs | 16.3µs | 1.9× internal; **5.1× vs Yoga** |
+| hotrelayoutboundary | 30.1µs | 15.8µs | 1.9× internal; **4.9× vs Yoga** |
+| hotrelayouttext | 30.75µs | 8.9µs | 3.5× internal; **10× vs Yoga** |
+| **hotstructural** | **~451µs** | **71.3µs** | **6.3× internal; 1.7× vs Yoga** |
+
+### Changed (internals; not breaking by documented surface)
+
+- **Typed-array runtime (phase 15I).** `Field` objects now carry an
+  integer `id`; the Spineless runtime's per-field storage
+  (`values`, `rules`, `omNodes`, `dependents`) moved from
+  `Map<Field, X>` to arrays indexed by `field.id`. Hot-path Map
+  lookups eliminated.
+- **`LayoutPool` (phase 15C).** Per-Node layout state moved to
+  `Float64Array`s indexed by a monotonic `Node._id`. Pool grows
+  unbounded; `FinalizationRegistry`-based recycling was tried and
+  removed (caused 2× regression). For long-running processes that
+  create and discard many nodes, the pool's high-water mark is the
+  retained memory.
+- **Per-property dirty bitmask (phase 15B).** `Node._dirty: boolean`
+  became `Node._dirtyFlags: number`, a bitmask over style-sig / value /
+  flex-distribution / measure / measure-content / children. Setters
+  fire only the flag they affect. Internal-only — public API unchanged.
+- **Flat `Float64Array` cache snapshots (phase 15D).** Per-child
+  cache slots are now strided fields in one `Float64Array` instead
+  of an array of objects.
+- **Linear-recurrence main-axis positions (phase 16).** Cumulative-sum
+  rule (303 dep edges per row in stress) replaced with
+  `mainPos[N] = mainPos[N-1] + ...`. Reverse-direction
+  (`row-reverse` / `column-reverse`) keeps cumulative-sum.
+- **Fold default-valued style inputs (phase 17).** `minWidth: 0`,
+  `maxWidth: undefined`, `margin: 0` and friends fold to compile-time
+  constants in the grammar. `nodeSig` was extended with fold-predicate
+  bits so style mutations correctly trigger rebuilds.
+
+### Added (internal)
+
+- `DIRTY_STYLE_SIG`, `DIRTY_STYLE_VALUE`, `DIRTY_FLEX_DISTRIBUTION`,
+  `DIRTY_MEASURE`, `DIRTY_MEASURE_CONTENT`, `DIRTY_CHILDREN`,
+  `DIRTY_ANY` flag constants (re-exported `@internal`).
+- `Node._id: number` integer index.
+- `Field.id: number` integer index.
+
+### Validation
+
+- 1469 unit + integration tests pass.
+- Structural-differential fuzzer green at 3000 runs.
+- Yoga oracle 33 / 33 absolute-position fixtures.
+- `pnpm test:differential` (per-pass cached-vs-cold byte-identity)
+  green at 833 runs.
+- All 10 perf-budget gates green; every scenario improves vs 1.1.0
+  thresholds.
+
 ## [1.1.0] — 2026-05-20
 
 The `@pilates/core` 1.1.0 milestone. **The Spineless incremental

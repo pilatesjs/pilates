@@ -56,9 +56,12 @@ language ecosystems entirely.
 
 **Pilates' positioning is the unbundled, faster alternative to Ink in
 the JS/TS niche.** Faster matters: Pilates is faster than WASM Yoga on
-every flex-layout workload (see `bench/RESULTS.md` and the Performance
-section of the root README), including every hot-relayout shape Yoga
-historically won on.
+**every** benchmark scenario (see `bench/RESULTS.md` and the
+Performance section of the root README) — every tree-build-then-
+layout size, every hot-relayout shape, and the structural-mutation
+workload (append + remove a row per frame) Yoga historically led on.
+As of phase 17 (2026-05-22) that's 9/9 decisive wins in pure
+TypeScript.
 
 ## What Pilates actually offers vs. Ink / Yoga / OpenTUI
 
@@ -69,19 +72,21 @@ The wedge is *decoupling + speed + scope*, not "better DX yet":
    0-dep TypeScript. Ink doesn't expose that path. OpenTUI doesn't
    expose layout standalone either.
 
-2. **Faster than WASM Yoga at TUI tree sizes.** Pure-TS layout
-   engine, no `WebAssembly.compile` startup cost, no JS↔WASM
+2. **Faster than WASM Yoga on every benchmark scenario.** Pure-TS
+   layout engine, no `WebAssembly.compile` startup cost, no JS↔WASM
    marshalling on every layout pass. The May 2026 perf-hardening
    work (measure-cache, layout-cache, relayout-boundaries) plus the
-   Spineless incremental engine (phases 8–12) bring Pilates **5–9×
-   faster than Yoga on tree-build-then-layout AND ~3× faster on
-   every hot-relayout shape** — fully fluid trees, explicit-sized
-   container boundaries, and fixed-size text-mutation tables alike.
-   Yoga had won the hot-relayout pattern for years; phase 12 was the
-   refactor that flipped it. Validated cell-for-cell against Yoga
-   across 33 oracle fixtures plus a
-   500-runs/CI property-based fuzzer that compares cached vs.
-   cold layouts on randomly-generated trees.
+   Spineless incremental engine (phases 8–17) bring Pilates **1.9–
+   4.2× faster on tree-build-then-layout, 4.6–11× faster on every
+   hot-relayout shape, and 1.3× faster on the structural-mutation
+   workload** (append + remove a row per frame). Phases 15–17 closed
+   the last gap: a typed-array runtime, a linear-recurrence main-
+   axis position rule, and fold-default input elimination took
+   `hot-structural` from a 5× Yoga win to a 1.3× Pilates win — pure
+   TypeScript beating Yoga's C++/WASM kernel on every measured
+   workload. Validated cell-for-cell against Yoga across 33 oracle
+   fixtures, a structural-differential fuzzer (3000 runs), and a
+   per-pass cached-vs-cold byte-identity check.
 
 3. **Zero runtime deps.** Across the entire 5-package surface,
    `@pilates/core` ships with zero transitive runtime dependencies.
@@ -168,6 +173,18 @@ Ordered roughly by ship date. All on npm; no public API breakages.
   differential fuzzers (no behavior change vs imperative path). New
   public API: `setLayoutProfiler`, `LayoutProfiler`, `LayoutTrace`,
   `inspectLayout`, `calculateLayoutImperative`.
+- **Spineless phases 13–17 — decisive Yoga beat (2026-05-22).**
+  Closed the last remaining Yoga win (`hot-structural`, the
+  append-and-remove-a-row-per-frame workload). Phase 13 scoped the
+  public-API structural finish; phase 15 (sub-phases A–I) refactored
+  the runtime to typed arrays (`Field.id` integer + array storage
+  replacing `Map<Field,X>`, `LayoutPool` indexed by `Node._id`, flat
+  `Float64Array` cache snapshots, per-property dirty bitmask); phase
+  16 replaced the O(N) cumulative-sum main-axis position rule with a
+  linear recurrence; phase 17 folded default-valued style inputs out
+  of the grammar. Result: pure TypeScript Pilates wins **all 9 bench
+  scenarios** against WASM Yoga. Public `calculateLayout` API
+  byte-unchanged through the entire rearchitecture.
 - **Perf hardening Phase 3 (2026-05-09).** Flutter-style relayout
   boundaries: a node with explicit `width` AND `height` AND default
   flex grow/shrink stops the upward `markDirty` propagation;
@@ -243,4 +260,4 @@ Living. Update when the roadmap shifts or major capabilities ship.
 Don't update when a single feature gets added or fixed — those
 belong in `CHANGELOG.md`.
 
-Last refresh: 2026-05-09 (post Phase 3 perf-hardening merge).
+Last refresh: 2026-05-22 (post Phase 15–17 — decisive 9/9 Yoga beat).
