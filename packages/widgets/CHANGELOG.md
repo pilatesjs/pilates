@@ -5,15 +5,20 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 package follows [Semantic Versioning](https://semver.org/) once it leaves
 the release-candidate train.
 
-## [0.1.0-rc.3] — 2026-05-23
+## [0.1.0-rc.4] — 2026-05-23
 
 ### Changed
 
 - Pin `@pilates/core` dependency to `2.0.0` (phase 15–17 engine
   speedup; no `@pilates/widgets` public API change).
+- Pin `@pilates/react` dependency to `0.4.1`.
 - Widen `peerDependencies."@pilates/react"` range to
   `>=0.3.0 <0.5.0` so `@pilates/react@0.4.x` satisfies the peer
   constraint.
+- `VERSION` constant fixed from stale `0.1.0-rc.1` to match
+  `package.json`.
+
+## [0.1.0-rc.3] — 2026-05-11
 
 ### Fixed
 

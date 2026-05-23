@@ -82,7 +82,7 @@ all of React. **Pilates** separates them:
 | [`@pilates/render`](./packages/render)   | `1.0.2`          | Out-of-box: declarative tree → painted string. |
 | [`@pilates/diff`](./packages/diff)       | `0.2.1`          | Cell-level frame diff + minimal ANSI redraw. |
 | [`@pilates/react`](./packages/react)     | `0.4.1`          | React reconciler — author terminal UIs with JSX, hooks, mouse, focus, scroll. |
-| [`@pilates/widgets`](./packages/widgets) | `0.1.0-rc.3`     | Interactive widgets (`TextInput`, `Select`, `Spinner`, `MultiSelect`, `Tabs`, `Table`, `ProgressBar`, `TextArea`) for `@pilates/react`. |
+| [`@pilates/widgets`](./packages/widgets) | `0.1.0-rc.4`     | Interactive widgets (`TextInput`, `Select`, `Spinner`, `MultiSelect`, `Tabs`, `Table`, `ProgressBar`, `TextArea`) for `@pilates/react`. |
 
 ## Examples
 
