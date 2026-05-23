@@ -420,12 +420,153 @@ npm:https://www.npmjs.com/package/@pilates/core
 
 ---
 
-## 其他可选中文 / 海外渠道
+## dev.to — long-form article
 
-- **知乎专栏** — 把掘金那篇改个开头(更钩子化:「我把纯 TS 的布局引擎做到比 WASM Yoga 还快」),内容基本可以复用。
-- **Lobsters** (https://lobste.rs) — 邀请制,如果有账号,用 HN 标题 + 正文即可。
-- **dev.to** — 英文长文社区,把掘金的英文版(announcement doc)直接发,标签 `typescript`、`performance`、`webdev`。
-- **少数派** — 工具向社区,匹配度一般,可以跳过。
+**Navigate:** https://dev.to/new
+
+**Cover image:** upload `assets/bench-comparison.png` (export from the SVG first; see Image export section below).
+
+**Title:**
+
+```
+How a pure-TypeScript flex layout engine closed the last WASM-Yoga gap
+```
+
+**Tags** (dev.to allows up to 4):
+
+```
+#typescript #javascript #performance #showdev
+```
+
+**Body** (markdown, paste directly):
+
+```markdown
+## TL;DR
+
+I've been building [Pilates](https://github.com/pilatesjs/pilates), a flex layout engine for terminal UIs in pure TypeScript. As of last week, across the 9 scenarios in my bench suite, the pure-TS engine is faster than WASM Yoga (the engine Ink uses) on each — including the structural-mutation workload (append + remove a row per frame) Yoga led on by ~5× until phases 15–17 closed it. That flipped to a ~1.7× Pilates win, in pure TypeScript.
+
+No native bindings. No WASM port. The fix was algorithmic, and the algorithmic fix worked in TS.
+
+## The numbers
+
+Median latency, win32-x64, Node 22, ~5s tinybench windows with bootstrap CI95:
+
+| Scenario | Pilates | yoga-layout (WASM) | Ratio |
+|---|---:|---:|---:|
+| tiny (10 nodes) | 4.5µs | 19.0µs | **4.2× faster** |
+| realistic (~100) | 121µs | 328µs | **2.7× faster** |
+| stress (~1000) | 601µs | 1.94ms | **3.2× faster** |
+| big (~5000) | 3.32ms | 9.17ms | **2.8× faster** |
+| huge (~10000) | 8.62ms | 18.5ms | **2.1× faster** |
+| hot-relayout | 16.3µs | 83.0µs | **5.1× faster** |
+| hot-relayout + boundaries | 15.8µs | 77.8µs | **4.9× faster** |
+| hot-relayout (text mutation) | 8.9µs | 90.6µs | **10× faster** |
+| **hot-structural** | **71.3µs** | **118.3µs** | **1.7× faster** |
+
+Caveats up front: 9 hand-picked scenarios, not a universal claim. Reproduce with `pnpm bench` — about 5 minutes on a recent machine.
+
+## Why pure TS can beat WASM here
+
+Terminal UI is a curiously hostile workload for a WASM engine. Trees are small (10–10,000 nodes), but updates are frequent — one keystroke, one tick, one frame. The crossing cost from JS into WASM dominates: Yoga's per-call kernel is a few microseconds, but `node.setWidth(N)` from JS to WASM is also a few microseconds. A pure-TS engine pays no crossing cost.
+
+That was the thesis going in. Phases 15–17 are evidence the thesis holds even in the worst case — the workload where Yoga's compute kernel is exactly what's being measured, with the tree pre-built and only the structural-mutation layout timed.
+
+## How hot-structural went from ~450µs to ~70µs
+
+Two algorithmic changes did the work.
+
+### 1. Linear-recurrence main-axis positions
+
+The original main-axis position rule was a cumulative sum: each cell's position depended on the size of every prior sibling. A 100-cell row in the stress fixture meant ~300 dependency edges per row.
+
+```typescript
+// Old rule — every cell reads every prior sibling
+mainPos[N] = sum(siblings[0..N-1].mainSize + margin + gap)
+```
+
+Replaced with a linear recurrence — each cell only reads the cell immediately before it:
+
+```typescript
+// New rule — each cell only reads the previous one
+mainPos[N] = mainPos[N-1] + prev.mainSize + prev.marginEnd + me.marginStart + gap
+```
+
+Reverse-direction (`row-reverse` / `column-reverse`) keeps the cumulative-sum fallback because the recurrence depends on the prior cell's already-resolved position, which doesn't hold when iteration is reversed.
+
+### 2. Fold default-valued style inputs
+
+Observation: roughly half of all input fields in the grammar were sitting at default values forever — `margin: 0`, `minWidth: 0`, `maxWidth: undefined`, etc. They still consumed dirty-flag slots, propagated through dependents, and appeared in dependency sets.
+
+Phase 17 folds these defaults into compile-time constants at grammar-build time. Each per-cell node went from ~15 fields to ~7. The classifier's `nodeSig` was extended with fold-predicate bits so that mutating from default → non-default correctly triggers a structural rebuild.
+
+Combined, hot-structural went from ~450µs to ~70µs.
+
+## Why pure TS over a native rewrite
+
+I considered porting the engine to a native-compiled-to-WASM language before doing the algorithmic work. Glad I didn't.
+
+Yoga's advantage wasn't speed of arithmetic — its C++ kernel is fast and well-tuned, but speed of arithmetic wasn't the bottleneck on this workload. The advantage was the structural-mutation algorithm: Yoga handled it natively, the pure-TS engine was redoing too much work per mutation.
+
+A native-compiled port from my side would have inherited the same algorithmic shape and reached parity at best. The fix was algorithmic, and the algorithmic fix worked in TypeScript. **"Pure TS is competitive with native code on this workload"** is the actually-interesting result.
+
+## Validation, including a same-day hotfix story
+
+- 1,470 unit + integration tests pass
+- Structural-differential fuzzer green at 3,000 runs
+- 33 Yoga oracle fixtures (cell-for-cell comparison)
+- Byte-identical cached-vs-cold differential mode at 833 runs
+
+A small incident worth mentioning: within hours of publishing 2.0.0, the fast-check property fuzzer caught a real bug — `createStyleDirtier` was throwing on a node whose entire style had been folded out, a case my analysis said couldn't happen. The fuzzer immediately found it. 2.0.1 shipped same day with the fix and a pinned regression test, and 2.0.0 was deprecated on npm pointing at 2.0.1.
+
+Property-based fuzzing earns its keep. I had been on the fence about whether the fuzzer was worth maintaining; this answered it.
+
+## API stability
+
+Public `calculateLayout()` is byte-identical between 1.x and 2.x. The SemVer-major bump reflects internal API and memory-characteristic shifts:
+
+- Typed-array runtime (`Field.id` integer + array storage replacing `Map<Field, X>`)
+- `LayoutPool` grows unbounded (tried FinalizationRegistry-based recycling in phase 15C; caused 2× regression so removed)
+- Per-property dirty bitmask replacing single dirty bool
+- Linear recurrence + fold default values (the algorithmic changes above)
+
+If you're using only the documented public API, you upgrade and the speedup is transparent.
+
+## Try it
+
+```bash
+git clone https://github.com/pilatesjs/pilates
+cd pilates
+pnpm install
+pnpm bench   # ~5 min
+```
+
+Or install the engine directly:
+
+```bash
+npm install @pilates/core
+```
+
+Full React stack (reconciler + widgets):
+
+```bash
+npm install @pilates/react @pilates/widgets react
+```
+
+Adversarial benchmarks are very welcome — if there's a workload where this approach breaks down, I'd genuinely like to find it. That's the most valuable feedback the project can get right now.
+
+---
+
+Repo (MIT): https://github.com/pilatesjs/pilates  
+npm: https://www.npmjs.com/package/@pilates/core
+```
+
+---
+
+## Other optional venues
+
+- **知乎专栏** — adapt 掘金 article with a hookier opening (e.g. 「我把纯 TS 的布局引擎做到比 WASM Yoga 还快」), body mostly reusable.
+- **Lobsters** (https://lobste.rs) — invite-only; if you have an account, HN title + body works.
+- **少数派 sspai.com** — Chinese tool-oriented community; tag fit is weak, can skip.
 
 ## 中文渠道发布顺序建议
 
