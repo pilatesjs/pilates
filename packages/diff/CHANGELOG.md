@@ -6,6 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.2.1] — 2026-05-23
+
+Republished pinned against `@pilates/render@1.0.2` (which itself pins
+`@pilates/core@2.0.0`) so consumers don't end up with two copies of
+`@pilates/render` in `node_modules`. No `@pilates/diff` public API
+change.
+
+### Changed
+
+- Pin `@pilates/render` dependency from `1.0.0` to `1.0.2`.
+- `VERSION` constant fixed from stale `0.1.0` to match `package.json`.
+
 ## [0.2.0] — 2026-05-09
 
 Companion bump to `@pilates/core@1.0.0` and `@pilates/render@1.0.0`.

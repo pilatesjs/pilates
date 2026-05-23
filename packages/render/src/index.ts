@@ -1,4 +1,4 @@
-export const VERSION = '1.0.1';
+export const VERSION = '1.0.2';
 
 // Public render entry points.
 export { render, renderToFrame } from './render.js';

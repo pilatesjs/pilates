@@ -6,6 +6,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [0.4.1] — 2026-05-23
+
+Republished pinned against `@pilates/core@2.0.0`, `@pilates/render@1.0.2`,
+and `@pilates/diff@0.2.1` so consumers of `@pilates/react` get the
+phase 15–17 engine speedup transitively with a single de-duplicated
+copy of each package in `node_modules`. No `@pilates/react` public API
+change.
+
+### Changed
+
+- Pin `@pilates/core` dependency from `1.1.0` to `2.0.0`.
+- Pin `@pilates/render` dependency from `1.0.1` to `1.0.2`.
+- Pin `@pilates/diff` dependency from `0.2.0` to `0.2.1`.
+- `VERSION` constant fixed from stale `0.2.1` to match `package.json`.
+
 ## [0.4.0] — 2026-05-20
 
 ### Layout devtools
