@@ -114,15 +114,28 @@ Adversarial benchmarks especially welcome.
 
 ## Reddit — r/typescript
 
+> **⚠️ Read the subreddit rules before posting.** Two specifically apply:
+>
+> - **Rule 2** ("contributes to TS utility, not just a random lib that happens to be written in TS"): borderline. The TypeScript-specific lesson ("native code isn't always the answer for perf-critical hot paths") is the case for posting; if you frame around the lesson rather than the library, you're more likely to clear mod review. Strictly read as "library category", the rule would reject it.
+> - **Rule 5** ("ChatGPT comment/post"): the text below was AI-assisted. r/typescript's culture is sharp at spotting AI-polished prose. **Don't paste the text below verbatim.** Use it as a structural outline (title, table, numbers, links) and rewrite the prose paragraphs in your own voice — first-person, asymmetric sentence lengths, no em-dashes, casual phrasing, mention your stake / what made you start. The numbers and table can stay as-is.
+>
+> Alternative: skip r/typescript. r/javascript and r/programming have weaker AI-detection cultures and HN is the load-bearing venue regardless.
+
 **Image:** consider posting as an **image submission** (the bench comparison PNG) with the text body in the first comment, OR a text post with the table inline. Image posts tend to outperform text-only on r/typescript and r/javascript. For r/programming, stay text — image-only submissions get treated as low-effort there.
 
-**Title:**
+**Title (rewrite-in-voice variant):**
 
 ```
 [Show] Pilates – pure-TypeScript flex layout for terminal UIs
 ```
 
-**Body:**
+Or, framed around the TS lesson rather than the lib:
+
+```
+Closed the last WASM-Yoga gap with a pure-TypeScript layout engine — write-up
+```
+
+**Body (outline — DO NOT paste verbatim; rewrite paragraphs in your voice):**
 
 ```
 I've been building Pilates, a flex layout engine for terminal UIs in pure TypeScript. It's validated cell-for-cell against WASM Yoga (Ink's engine).
