@@ -57,9 +57,7 @@ describe('writeJsonReport', () => {
       // Raw per-iteration samples are stripped from the JSON history —
       // millions of them blow past V8's max string length, and the
       // history file only needs the computed stats.
-      expect(
-        (parsed.scenarios[0]!.engines[0] as { samples?: number[] }).samples,
-      ).toBeUndefined();
+      expect((parsed.scenarios[0]!.engines[0] as { samples?: number[] }).samples).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
