@@ -1,4 +1,4 @@
-export const VERSION = '0.1.0-rc.1';
+export const VERSION = '0.1.0-rc.4';
 
 export { Spinner } from './spinner.js';
 export type { SpinnerProps } from './spinner.js';
