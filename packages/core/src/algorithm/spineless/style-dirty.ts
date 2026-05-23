@@ -69,12 +69,14 @@ export interface StyleDirtier {
  * `buildFlexGrammar` output that produced its grammar into a
  * `StyleDirtier`.
  *
- * The returned callback throws if `node` is not part of the
- * grammar's `styleInputs` (a node from a different / stale build),
- * or if an edge prop is called without an edge index. It is a no-op
- * when the grammar emits no input Field for the `(node, prop)` —
- * which happens precisely when that prop can't affect layout (e.g.
- * `padding` on a childless leaf), so marking nothing is correct.
+ * The returned callback is a no-op when the grammar emits no input
+ * Field for the `(node, prop)` — including the case where the grammar
+ * emits no input Field at all for `node` (every style input folded to
+ * a default-valued constant by phase 17; the `styleInputs` map then
+ * has no entry for the node). In all these cases, marking nothing is
+ * the correct precise behaviour because no layout field can move from
+ * the mutation. The callback throws only if an edge prop is called
+ * without an edge index.
  *
  * @internal
  */
@@ -84,20 +86,15 @@ export function createStyleDirtier(
 ): StyleDirtier {
   return (node: Node, prop: ScalarStyleProp | EdgeStyleProp, edge?: number): void => {
     const entry = styleInputs.get(node);
-    if (entry === undefined) {
-      throw new Error(
-        '[spineless] markStyleDirty: node has no style inputs in this grammar — pass a node from the same buildFlexGrammar() tree',
-      );
-    }
 
     let f: Field<number> | undefined;
     if (prop === 'padding' || prop === 'margin') {
       if (edge === undefined) {
         throw new Error(`[spineless] markStyleDirty: '${prop}' requires an edge index`);
       }
-      f = entry[prop]?.[edge];
+      f = entry?.[prop]?.[edge];
     } else {
-      f = entry[prop];
+      f = entry?.[prop];
     }
 
     // Marking nothing is the correct, precise behaviour when the

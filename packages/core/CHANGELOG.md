@@ -6,6 +6,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [2.0.1] — 2026-05-23
+
+### Fixed
+
+- `createStyleDirtier`'s callback threw `"node has no style inputs
+  in this grammar"` when called on a node whose every style input was
+  folded out of the grammar as a default-valued constant (phase 17).
+  The throw was over-strict — for such nodes, there is genuinely
+  nothing to mark dirty, and the dirtier now treats missing entries
+  the same as missing fields within an entry (silent no-op). Caught
+  by the runtime-incremental fuzzer (seed `1005304606`) post-publish
+  of 2.0.0. Pinned as a regression test in `style-dirty.test.ts`.
+
 ## [2.0.0] — 2026-05-23
 
 **Pure-TypeScript Pilates now beats WASM Yoga on every bench scenario.**
