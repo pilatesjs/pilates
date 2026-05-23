@@ -135,14 +135,14 @@ Or, framed around the TS lesson rather than the lib:
 Closed the last WASM-Yoga gap with a pure-TypeScript layout engine — write-up
 ```
 
-**Body (outline — DO NOT paste verbatim; rewrite paragraphs in your voice):**
+**Body (human-voice rewrite — still pass over it once and swap a few phrases for things you'd actually say):**
 
 ```
-I've been building Pilates, a flex layout engine for terminal UIs in pure TypeScript. It's validated cell-for-cell against WASM Yoga (Ink's engine).
+So I've been hacking on a flex layout engine for terminal UIs and the 2.0 finally went out this week. It's called Pilates. Pure TypeScript, validated against WASM Yoga (the engine Ink uses) across 33 oracle fixtures plus a structural fuzzer.
 
-The 2.0 result: across the 9 benchmark scenarios I track, the pure-TS engine is faster than WASM Yoga on each, including the structural-mutation workload Yoga led on by ~5× until last week. That flipped to a ~1.7× Pilates win.
+The TS-relevant thing I want to share: I started this assuming "pure TS is the constraint you accept for a zero-dep library, you give up some perf vs WASM and that's the trade." That's the wrong frame. For small frequently-updated trees (which is what terminal UI actually is), the JS→WASM crossing cost is comparable to the work being done in WASM. So a pure-TS engine doesn't have to lose. And as of last week it doesn't, across the 9 benchmark scenarios I run.
 
-**Numbers** (median, win32-x64, Node 22):
+Median latency, win32-x64, Node 22:
 
 | Scenario | Pilates | Yoga | Ratio |
 |---|---:|---:|---:|
@@ -156,23 +156,24 @@ The 2.0 result: across the 9 benchmark scenarios I track, the pure-TS engine is 
 | hot-relayout (text mutation) | 8.9µs | 90.6µs | 10× |
 | hot-structural | 71.3µs | 118.3µs | 1.7× |
 
-**Caveats:** 9 hand-picked scenarios, not a universal claim. Win32-x64 here; cross-platform spot checks trend the same direction but aren't the headline numbers. Reproduce with `pnpm bench`.
+Caveats up front because I know how reddit goes: 9 scenarios I picked, not a proof for all workloads. Win32 numbers. Reproduce with `pnpm bench` if you care; takes about 5 min.
 
-**Why pure TS:** Terminal UI is a curiously hostile workload for WASM. Trees are small (10–10k nodes) but updates are frequent. The crossing cost from JS into WASM dominates — Yoga's per-call kernel is a few microseconds, but `node.setWidth(N)` from JS to WASM is also a few microseconds. A pure-TS engine pays no crossing cost.
+The last row, hot-structural (append + remove a row per frame), was Yoga's territory until about a week ago. It was beating me 5×. Two things turned out to matter:
 
-**What did the structural-mutation work:**
+The flex distribution rule built a dependency edge from every cell to every prior sibling's size, so a 100-cell row had ~300 dep edges per row. Switched it to a linear recurrence (each cell only reads the one before it). And separately, when I went looking for "what fields are actually changing here", about half the grammar's input fields were sitting at default values forever (margin 0, minWidth 0, that kind of thing). Folded those out as constants at grammar-build time.
 
-1. The O(N) cumulative-sum main-axis position rule was 303 dependency edges per row in the stress fixture. Replaced with a linear recurrence.
-2. About half the grammar's input fields were inhabited only by their defaults (margin: 0, minWidth: 0). Folded them out as compile-time constants.
+Combined, hot-structural went from ~450µs to ~70µs.
 
-**Validation:** 1470 tests, structural-differential fuzzer at 3000 runs, Yoga oracle 33 fixtures, byte-identical cached-vs-cold differential mode at 833 runs. The fuzzer found a real bug in 2.0.0 within hours of publishing; 2.0.1 shipped same-day with the fix and a pinned regression test.
+I considered porting the engine to Rust + WASM before doing this. Glad I didn't. Yoga's edge wasn't speed of arithmetic, it was the algorithm shape. Once I fixed the algorithm in TS the speed-of-arithmetic gap wasn't the bottleneck. The Rust port would have just inherited the same shape and reached parity at best.
 
-**API:** Public `calculateLayout()` is byte-identical to 1.x. Existing consumers benefit on upgrade.
+One thing I want to flag because it's a TS-community-relevant moment: the fast-check fuzzer I ran across the engine caught a real bug within hours of 2.0.0 hitting npm. createStyleDirtier was throwing on a node whose entire style had been folded out — a case my analysis said couldn't happen, that the fuzzer immediately found. 2.0.1 shipped same day with the fix and a pinned regression test, and I deprecated 2.0.0 on npm. Property-based fuzzing earns its keep. I'd been on the fence about whether the fuzzer was worth maintaining; this answered it.
 
-Repo: https://github.com/pilatesjs/pilates
+Public API didn't change between 1.x and 2.x. calculateLayout() is byte-identical. Existing consumers get the speedup on upgrade.
+
+Repo (MIT): https://github.com/pilatesjs/pilates
 npm: https://www.npmjs.com/package/@pilates/core
 
-Adversarial benchmarks especially welcome — would love to be wrong about a workload.
+Adversarial benchmarks very welcome. I'd genuinely like to find a workload where this approach breaks down.
 ```
 
 ---
