@@ -241,6 +241,27 @@ npx svgexport assets/bench-comparison.svg assets/bench-comparison.png 1760:1320
 
 Suggested: HN first (single shot, can't repost), then X/Twitter thread, then Reddit (in order of strictness: r/typescript → r/javascript → r/programming). Space them by ~30 minutes so HN gets a fair window before the others compete for your attention.
 
+## Reddit reality check (read before posting to any sub)
+
+Each of the three subs has its own posture toward self-promo. The launch copy below was originally written as if all three accept library-launch posts the same way; they don't. Quick venue map:
+
+- **r/programming** — strictly "no self-promotion" sub. Even technically-strong write-ups posted by the author often get removed. Safest pattern: someone else posts your blog post, or you wait. Don't post a GitHub repo directly. If you do try, link to a third-party-hosted write-up (dev.to, blog) and use the article title verbatim with no editorializing.
+
+- **r/javascript** — has a weekly **"Showoff Saturday"** sticky thread; self-promo outside that thread gets removed. Two paths: (a) submit to Saturday sticky (low reach but allowed), or (b) reframe as a technical write-up post — title is about the finding, not the library. The library is mentioned once, near the bottom.
+
+- **r/typescript** — lower volume, sharper moderation. Rules 2 and 5 still apply. The framing that fits the sub: **lead with the TS-specific lesson** ("native code isn't always the perf answer for X workload shape"), not the library. The library is the demo.
+
+Voice patterns that work across all three (drawn from r/programming, r/javascript, r/typescript norms):
+
+- Past tense, story arc ("I started building X. Y was the surprise. Z is what I learned.")
+- Specific numbers, code excerpts, concrete decisions
+- Acknowledge prior art (Yoga, Ink, OpenTUI)
+- One "what I got wrong" or "what surprised me" beat (the 2.0.0 → 2.0.1 fuzzer story fits)
+- Title is about the *finding*, not the project name
+- Link the work, then mostly exit; don't reply defensively to every critical comment
+
+**Verdict on this campaign:** posting to all three is more ambition than the campaign needs. HN is load-bearing. r/typescript is reachable if you take the rewrite seriously. r/javascript fits the Saturday-sticky pattern. r/programming should probably wait for someone else to post the work — or you skip it entirely.
+
 ## Defensive playbook for comments
 
 Expect on HN:
