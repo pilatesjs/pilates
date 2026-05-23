@@ -78,7 +78,7 @@ all of React. **Pilates** separates them:
 
 | Package | Status | What |
 |---|---|---|
-| [`@pilates/core`](./packages/core)       | `1.0.1`          | Engine: imperative Node API, returns layout boxes. |
+| [`@pilates/core`](./packages/core)       | `2.0.0`          | Engine: imperative Node API, returns layout boxes. |
 | [`@pilates/render`](./packages/render)   | `1.0.1`          | Out-of-box: declarative tree → painted string. |
 | [`@pilates/diff`](./packages/diff)       | `0.2.0`          | Cell-level frame diff + minimal ANSI redraw. |
 | [`@pilates/react`](./packages/react)     | `0.3.0`          | React reconciler — author terminal UIs with JSX, hooks, mouse, focus, scroll. |
@@ -182,38 +182,41 @@ input handling, animations, scroll containers, style inheritance.
 ## Performance
 
 <p align="center">
-  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 3-9× faster across every flex-layout workload, including every hot-relayout shape" width="100%">
+  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 1.3-11× faster across every benchmark scenario, including hot-relayout and structural mutation" width="100%">
 </p>
 
 Pure-TypeScript layout, validated cell-for-cell against WASM Yoga,
-**faster than WASM Yoga on every flex-layout workload — including
-every hot-relayout shape, with or without explicit-sized container
-boundaries.** Numbers are mean latency from `pnpm bench` (Node 26,
-darwin/arm64; relative positions are the interesting signal):
+**faster than WASM Yoga on every benchmark scenario — including the
+structural-mutation workload (append + remove a row per frame) that
+Yoga historically won on.** Numbers are median latency from
+`pnpm bench` (Node 22, win32-x64; relative positions are the
+interesting signal):
 
 | Scenario | Pilates core | yoga-layout (WASM) | Pilates speedup |
 |---|---:|---:|---:|
-| tiny (10 nodes) | 2.9µs | 15.4µs | **5× faster** |
-| realistic (~100) | 32µs | 268µs | **8× faster** |
-| stress (~1000) | 181µs | 1.56ms | **9× faster** |
-| big (~5000) | 1.05ms | 7.39ms | **7× faster** |
-| huge (~10000) | 2.40ms | 15.3ms | **6× faster** |
-| **hot-relayout** (1k persistent, mutate one leaf/frame) | **19.1µs** | **57.9µs** | **3× faster** |
-| **hot-relayout + boundaries** (same + explicit-sized rows) | **18.5µs** | **51.5µs** | **3× faster** |
-| **hot-relayout (text mutation, fixed-size table)** | **20.1µs** | **47.0µs** | **2.3× faster** |
+| tiny (10 nodes) | 4.5µs | 19.0µs | **4.2× faster** |
+| realistic (~100) | 121µs | 328µs | **2.7× faster** |
+| stress (~1000) | 601µs | 1.94ms | **3.2× faster** |
+| big (~5000) | 3.32ms | 9.17ms | **2.8× faster** |
+| huge (~10000) | 8.62ms | 18.5ms | **2.1× faster** |
+| **hot-relayout** (1k persistent, mutate one leaf/frame) | **16.3µs** | **83.0µs** | **5.1× faster** |
+| **hot-relayout + boundaries** (same + explicit-sized rows) | **15.8µs** | **77.8µs** | **4.9× faster** |
+| **hot-relayout (text mutation, fixed-size table)** | **8.9µs** | **90.6µs** | **10× faster** |
+| **hot-structural** (append + remove a row / frame) | **71.3µs** | **118.3µs** | **1.7× faster** |
 
-The hot-relayout pattern — building a tree once and mutating-and-
-relaying out per frame — was the workload Yoga's WASM compute
-advantage traditionally won on. The **Spineless incremental layout
-engine** (an attribute-grammar dependency graph + priority-queue
-recomputation, finalized in phase 12) flips that: a single leaf
-mutation re-evaluates only the fields actually downstream of the
-change, in O(N) total work for the affected row — Pilates now wins
-every hot-relayout shape, with or without explicit-sized containers.
+The hot-relayout and hot-structural patterns — building a tree once
+and mutating-and-relaying out per frame — are the workloads Yoga's
+WASM compute advantage traditionally won on. The **Spineless
+incremental layout engine** (an attribute-grammar dependency graph +
+priority-queue recomputation; refined through phases 8–17 with a
+typed-array runtime, linear-recurrence main-axis positions, and
+fold-default input elimination) flips that: a single leaf mutation
+re-evaluates only the fields actually downstream of the change, and
+structural mutations patch only the affected subtree.
 
 For trees of pure fixed-size cells (e.g. a data table with one cell's
 text length changing per frame), the direct `@pilates/core (spineless)`
-runtime mutation goes through in **~0.2µs** — 200× faster than the
+runtime mutation goes through in **~0.2µs** — 380× faster than the
 Yoga round-trip. That path is `@internal` for now; the public
 `calculateLayout` ships the engine and is what every other Pilates
 consumer uses.
