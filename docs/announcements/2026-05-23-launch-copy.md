@@ -38,7 +38,7 @@ Two algorithmic insights did most of the work on the structural-mutation case:
 
 2. About half the grammar's input fields were inhabited only by their defaults (margin: 0, minWidth: 0, maxWidth: undefined). The grammar now folds them out as compile-time constants, shrinking each per-cell node from ~15 fields to ~7.
 
-I considered a Rust + WASM port. The research call was: don't. Yoga's edge wasn't speed-of-arithmetic; it was algorithmic. The fix worked in TypeScript, and the "pure TS is competitive on this workload" framing is the actually-interesting result.
+I considered a native-compiled-to-WASM port. The research call was: don't. Yoga's edge wasn't speed-of-arithmetic; it was algorithmic. The fix worked in TypeScript, and "pure TS is competitive with native code on this workload" is the actually-interesting result.
 
 Public API didn't change. `calculateLayout()` is byte-identical to 1.x.
 
@@ -164,7 +164,7 @@ The flex distribution rule built a dependency edge from every cell to every prio
 
 Combined, hot-structural went from ~450µs to ~70µs.
 
-I considered porting the engine to Rust + WASM before doing this. Glad I didn't. Yoga's edge wasn't speed of arithmetic, it was the algorithm shape. Once I fixed the algorithm in TS the speed-of-arithmetic gap wasn't the bottleneck. The Rust port would have just inherited the same shape and reached parity at best.
+I considered porting to a native-compiled-to-WASM language before doing the algorithmic work. Glad I didn't go that route. Yoga's advantage wasn't speed of arithmetic, it was the algorithm shape. Once I fixed the algorithm in TS the speed-of-arithmetic gap wasn't the bottleneck anymore. A native port would have just inherited the same algorithm shape and reached parity at best.
 
 One thing I want to flag because it's a TS-community-relevant moment: the fast-check fuzzer I ran across the engine caught a real bug within hours of 2.0.0 hitting npm. createStyleDirtier was throwing on a node whose entire style had been folded out — a case my analysis said couldn't happen, that the fuzzer immediately found. 2.0.1 shipped same day with the fix and a pinned regression test, and I deprecated 2.0.0 on npm. Property-based fuzzing earns its keep. I'd been on the fence about whether the fuzzer was worth maintaining; this answered it.
 
@@ -203,7 +203,7 @@ How we closed the last WASM-Yoga gap in a pure-TypeScript layout engine
 ```
 I've been working on a flex layout engine for terminal UIs in pure TypeScript. Last week I finished the work that closed the remaining gap against WASM Yoga (Facebook's flexbox engine, what Ink uses) on the structural-mutation workload — append + remove a row per frame on a 1k-node table. That went from ~5× slower than Yoga to ~1.7× faster, in pure TypeScript.
 
-Posting because (1) the result was non-obvious — I considered a Rust port and the research said don't — and (2) the algorithmic insights are reusable.
+Posting because (1) the result was non-obvious — I considered a port to a native-compiled-to-WASM language and the research said don't — and (2) the algorithmic insights are reusable.
 
 **Two insights:**
 
@@ -215,7 +215,7 @@ Posting because (1) the result was non-obvious — I considered a Rust port and 
 
 [same table as above]
 
-**Why pure TS over Rust:** Yoga's edge wasn't speed-of-arithmetic; the per-pass kernel is fast and well-tuned. The edge was the structural-mutation algorithm — Yoga handled it natively, the pure-TS engine was redoing too much work per mutation. A Rust + WASM port would have inherited the same algorithmic shape and reached parity at best. The fix needed was algorithmic, and the algorithmic fix worked in TS.
+**Why pure TS over C++:** Yoga's edge wasn't speed-of-arithmetic; its C++ kernel is fast and well-tuned but speed-of-arithmetic wasn't the bottleneck on this workload. The edge was the structural-mutation algorithm — Yoga handled it natively, the pure-TS engine was redoing too much work per mutation. A native-compiled-to-WASM port from our side would have inherited the same algorithmic shape and reached parity at best. The fix needed was algorithmic, and the algorithmic fix worked in TS.
 
 **Validation:** Cell-for-cell against Yoga across 33 oracle fixtures; structural-differential fuzzer at 3000 runs; per-pass cached-vs-cold byte-identical differential mode at 833 runs. The fuzzer found a real bug in the first published version within hours; the fix shipped same-day with a pinned regression test. Theoretical analysis said the bug couldn't happen; the fuzzer disagreed; the fuzzer won.
 
@@ -268,7 +268,7 @@ Expect on HN:
 
 - **"Have you benchmarked on Linux?"** — Fair. The README numbers are win32-x64; reproduce locally on the target platform if asked. Don't claim cross-platform parity you haven't measured.
 - **"This is a hand-picked benchmark suite."** — Agree, you literally said so up front. Offer to add scenarios they suggest; the suite is open and reproducible.
-- **"Why not Rust?"** — The research call is in the body. Link the announcement.
+- **"Why not rewrite in C++ / native code?"** — Yoga's edge was algorithmic, not arithmetic-speed; the algorithmic fix in TS removed the bottleneck. A native port would have inherited the same algorithmic shape and reached parity at best. Link the announcement.
 - **"What about Ink?"** — Pilates doesn't replace Ink for shipped apps. Position is unbundled-faster-engine for greenfield work; Ink stays a safe default for production CLIs today.
 - **"How does Yoga's structural-mutation path actually work?"** — Honest answer: I haven't read Yoga's C++ in depth. Pilates was designed from the flex spec + Yoga's *behavior* (oracle fixtures), not its source.
 - **"What's the memory cost?"** — `LayoutPool` grows unbounded; FinalizationRegistry-based recycling was tried and removed (caused 2× regression). For long-running processes that create many nodes over time, the pool's high-water mark is retained memory. Documented in the CHANGELOG.
