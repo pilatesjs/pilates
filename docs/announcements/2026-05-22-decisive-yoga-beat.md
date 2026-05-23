@@ -1,6 +1,6 @@
 # Pilates 2.0: pure TypeScript beats WASM Yoga on every layout workload
 
-*Draft of an HN / blog announcement following Spineless phases 15–17 landing on `main` (PR #135, merged 2026-05-22). Not for publication until the `@pilates/core@2.0.0` release lands on npm.*
+*Draft of an HN / blog announcement. Shipped: `@pilates/core@2.0.1` is live on npm (2026-05-23) along with the matched downstream stack (`@pilates/render@1.0.2`, `@pilates/diff@0.2.1`, `@pilates/react@0.4.1`, `@pilates/widgets@0.1.0-rc.4`). 2.0.0 was deprecated on npm post-publish — the fuzzer caught an over-strict assertion exposed by phase 17's input fold; 2.0.1 has the fix.*
 
 ---
 
@@ -62,7 +62,9 @@ That observation was the thesis going in. Phases 15–17 are the proof that the 
 
 ## What's next
 
-`@pilates/core@2.0.0` ships the engine update. The major version is a SemVer signal (the engine internals are different, including memory characteristics — `LayoutPool` grows unbounded, FinalizationRegistry-based recycling was tried in phase 15C and caused a 2× regression so was removed), but the **public API is source-compatible**. If you call `calculateLayout()` you'll see the speedup without code changes.
+`@pilates/core@2.0.1` ships the engine update (2.0.0 is deprecated — see below). The major version is a SemVer signal: the engine internals are different, including memory characteristics — `LayoutPool` grows unbounded, FinalizationRegistry-based recycling was tried in phase 15C and caused a 2× regression so was removed. The **public API is source-compatible**. If you call `calculateLayout()` you'll see the speedup without code changes.
+
+A brief footnote on 2.0.0 → 2.0.1: the runtime-incremental fast-check fuzzer found a real bug in 2.0.0 within hours of publishing — `createStyleDirtier` was throwing on legitimately-folded nodes (the new fold path produced more "node has no inputs" cases than the safety check anticipated). The fuzzer disagreed with theoretical analysis, and the fuzzer won (a recurring pattern — [the fuzzer has been right every time](https://github.com/pilatesjs/pilates/blob/main/packages/core/src/algorithm/spineless/runtime-incremental.fuzz.test.ts)). Counterexample pinned as a regression test; 2.0.1 published same-day; 2.0.0 marked deprecated on npm. The cost of having strong differential validation infrastructure is paid up-front by infra work; the dividend shows up exactly in cases like this.
 
 The remaining structural gap (Pilates at 71.6µs, Yoga at 92.1µs) is narrow enough that a future Yoga release closing it is plausible. We'll find out. For now: nine for nine, pure TypeScript.
 
@@ -75,10 +77,16 @@ pnpm install
 pnpm bench   # ~5 minutes; produces bench/RESULTS.md
 ```
 
-Or, once 2.0.0 lands:
+Or just install the engine direct:
 
 ```bash
 npm install @pilates/core
+```
+
+Full stack (React reconciler + widgets):
+
+```bash
+npm install @pilates/react @pilates/widgets react
 ```
 
 Issues, PRs, and adversarial benchmarks all welcome on the [repo](https://github.com/pilatesjs/pilates).
