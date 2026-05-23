@@ -43,6 +43,7 @@
  */
 
 import type { Node } from '../../node.js';
+import { allocateFieldId } from './field-id-pool.js';
 
 /**
  * Identifies a single attribute on a single Node. The unit of
@@ -58,6 +59,12 @@ import type { Node } from '../../node.js';
 export interface Field<T = unknown> {
   readonly node: Node;
   readonly name: string;
+  /**
+   * Unique integer id for typed-array indexing in the Spineless
+   * runtime (phase 15I). Assigned at creation by the `field()` factory.
+   * @internal
+   */
+  readonly id: number;
   /**
    * Phantom marker for the value type. Never read at runtime.
    * @internal
@@ -223,7 +230,7 @@ export function field<T>(node: Node, name: string): Field<T> {
   }
   let f = perNode.get(name);
   if (f === undefined) {
-    f = { node, name } as Field<unknown>;
+    f = { node, name, id: allocateFieldId() } as Field<unknown>;
     perNode.set(name, f);
   }
   return f as Field<T>;

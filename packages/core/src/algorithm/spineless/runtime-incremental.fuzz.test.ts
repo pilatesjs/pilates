@@ -241,18 +241,28 @@ function applyMutation(root: Node, m: Mutation, markStyleDirty: StyleDirtier): v
       markStyleDirty(t, 'height');
       return;
     case 'minWidth':
+      // Phase 17: min is folded when at default (0). A 0→nonzero
+      // mutation crosses the fold boundary — it requires a grammar
+      // rebuild, not an incremental recompute, so skip it here.
+      // The SpinelessLayout driver handles it via nodeSig.
+      if (t.style.minWidth === 0 && m.value !== 0) return;
       t.setMinWidth(m.value);
       markStyleDirty(t, 'minWidth');
       return;
     case 'minHeight':
+      if (t.style.minHeight === 0 && m.value !== 0) return;
       t.setMinHeight(m.value);
       markStyleDirty(t, 'minHeight');
       return;
     case 'maxWidth':
+      // Phase 17: max is folded when undefined (=∞). An undefined→number
+      // mutation crosses the fold boundary — skip.
+      if (t.style.maxWidth === undefined) return;
       t.setMaxWidth(m.value);
       markStyleDirty(t, 'maxWidth');
       return;
     case 'maxHeight':
+      if (t.style.maxHeight === undefined) return;
       t.setMaxHeight(m.value);
       markStyleDirty(t, 'maxHeight');
       return;
@@ -269,6 +279,9 @@ function applyMutation(root: Node, m: Mutation, markStyleDirty: StyleDirtier): v
       markStyleDirty(t, 'padding', m.edge);
       return;
     case 'margin':
+      // Phase 17: margin is folded when 0. A 0→nonzero mutation crosses
+      // the fold boundary — skip. The driver rebuilds via nodeSig.
+      if ((t.style.margin[m.edge] ?? 0) === 0 && m.value !== 0) return;
       t.setMargin(m.edge as Edge, m.value);
       markStyleDirty(t, 'margin', m.edge);
       return;

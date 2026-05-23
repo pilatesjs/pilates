@@ -109,6 +109,14 @@ export interface OrderMaintenance {
    * insert/extract.
    */
   compare(a: OMNode, b: OMNode): number;
+
+  /**
+   * Return the node immediately before `node` in the order, or `null`
+   * if `node` is the first. O(1). Used by the runtime to find the new
+   * order tail after the current tail is deleted, without an O(N)
+   * scan of all live nodes.
+   */
+  predecessor(node: OMNode): OMNode | null;
 }
 
 // --- Naive implementation ---
@@ -210,6 +218,10 @@ export class NaiveOrderMaintenance implements OrderMaintenance {
     const ta = (a as NaiveNode)._omTag;
     const tb = (b as NaiveNode)._omTag;
     return ta - tb;
+  }
+
+  predecessor(node: OMNode): OMNode | null {
+    return (node as NaiveNode).prev;
   }
 }
 
@@ -315,6 +327,10 @@ export class BenderOrderMaintenance implements OrderMaintenance {
 
   compare(a: OMNode, b: OMNode): number {
     return (a as BenderNode)._omTag - (b as BenderNode)._omTag;
+  }
+
+  predecessor(node: OMNode): OMNode | null {
+    return (node as BenderNode).prev;
   }
 
   /**

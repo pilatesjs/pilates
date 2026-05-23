@@ -557,6 +557,65 @@ function makeEmitter(
     return f;
   }
 
+  // ─── Phase 17: fold default-valued inputs ─────────────────────────────
+  //
+  // A grammar input field that is at its DEFAULT value contributes a
+  // constant to every consuming rule. Emitting a Field for it creates
+  // unnecessary structural cost — the only reason to have a Field is so
+  // a future mutation has something to dirty. When the property IS at
+  // default we skip the Field entirely and inline the constant. If the
+  // property is later mutated, nodeSig's fold-predicate bits (Task 1)
+  // change → the classifier triggers a full rebuild → the grammar is
+  // re-emitted with the property NOT folded.
+
+  /** A grammar input that is either a tracked Field or a folded constant. */
+  type FoldedInput =
+    | { readonly kind: 'field'; readonly field: Field<number> }
+    | { readonly kind: 'const'; readonly value: number };
+
+  /** Fold `minWidth`/`minHeight` (default 0) or `maxWidth`/`maxHeight`
+   *  (default `undefined` → ∞). Returns a constant when at default;
+   *  emits a leaf Field (via `minMaxInput`) otherwise. */
+  function foldMinMax(
+    n: Node,
+    prop: 'minWidth' | 'minHeight' | 'maxWidth' | 'maxHeight',
+  ): FoldedInput {
+    const isMax = prop === 'maxWidth' || prop === 'maxHeight';
+    const raw = n.style[prop];
+    // Default sentinels MUST match nodeSig exactly (layout.ts):
+    //   minWidth/minHeight default === 0
+    //   maxWidth/maxHeight default === undefined
+    if (isMax ? raw === undefined : raw === 0) {
+      return { kind: 'const', value: isMax ? Number.POSITIVE_INFINITY : 0 };
+    }
+    return { kind: 'field', field: minMaxInput(n, prop) };
+  }
+
+  /** Fold one margin `edge` (default 0). Returns a constant when margin
+   *  is 0; emits a leaf Field (via `marginInput`) otherwise. */
+  function foldMargin(n: Node, edge: number): FoldedInput {
+    // Default sentinel MUST match nodeSig exactly (layout.ts):
+    //   margin[edge] default === 0
+    if ((n.style.margin[edge] ?? 0) === 0) return { kind: 'const', value: 0 };
+    return { kind: 'field', field: marginInput(n, edge) };
+  }
+
+  /** Read a FoldedInput inside a compute callback. */
+  function readFolded(fi: FoldedInput, read: (f: Field<number>) => number): number {
+    return fi.kind === 'field' ? read(fi.field) : fi.value;
+  }
+
+  /** Collect only the Field entries from a FoldedInput list. */
+  function foldedDeps(fis: FoldedInput[]): Field<unknown>[] {
+    const deps: Field<unknown>[] = [];
+    for (const fi of fis) {
+      if (fi.kind === 'field') deps.push(fi.field as Field<unknown>);
+    }
+    return deps;
+  }
+
+  // ──────────────────────────────────────────────────────────────────────
+
   function visit(
     node: Node,
     parent: Node | null,
@@ -632,6 +691,7 @@ function makeEmitter(
     const crossPosField =
       parentDirection === 'column' ? (left as Field<unknown>) : (top as Field<unknown>);
     const mainSizeName: 'width' | 'height' = parentDirection === 'column' ? 'height' : 'width';
+    const mainPosName: 'top' | 'left' = parentDirection === 'column' ? 'top' : 'left';
 
     // Spacing inputs for this child. Both the parent's padding and
     // this child's own margin are modelled as leaf input Fields (see
@@ -654,12 +714,39 @@ function makeEmitter(
       parent === null ? null : paddingInput(parent, crossStartEdge(parentDirection!));
     const padCrossEndF =
       parent === null ? null : paddingInput(parent, crossEndEdge(parentDirection!));
-    const myMarginMainStartF =
-      parent === null ? null : marginInput(node, mainStartEdge(parentDirection!));
-    const myMarginCrossStartF =
-      parent === null ? null : marginInput(node, crossStartEdge(parentDirection!));
-    const myMarginCrossEndF =
-      parent === null ? null : marginInput(node, crossEndEdge(parentDirection!));
+    // Phase 17: margin fields are resolved lazily at each rule site via
+    // foldMargin() (fold-eligible rules) or marginInput() (always-needed).
+    // Pre-compute edge indices once to avoid repeating edge-name calls.
+    const mainStartEdgeIdx = parent === null ? -1 : mainStartEdge(parentDirection!);
+    const crossStartEdgeIdx = parent === null ? -1 : crossStartEdge(parentDirection!);
+    const crossEndEdgeIdx = parent === null ? -1 : crossEndEdge(parentDirection!);
+    // Rules that always require the full tracked Field (e.g. stretch
+    // crossSizeField, flex-end/center crossPos, reverse cumulative-sum)
+    // use these pre-resolved fields so the idempotent marginInput is called
+    // at most once per edge.
+    // NOTE: calling marginInput here forces Field creation for these edges
+    // regardless of whether they end up in a fold path. This is acceptable
+    // because the rules that read them (stretch/flex-end/center/reverse) are
+    // not fold-eligible — they always need tracked incremental propagation.
+    // For nodes on fully fold-eligible paths (flex-start, no-stretch, no-
+    // reverse), the Field is created if the code-path reaches it below;
+    // the fold-eligible rules that invoke foldMargin() bypass this and
+    // create no Field when margin is at default.
+    let myMarginMainStartF: Field<number> | null = null;
+    let myMarginCrossStartF: Field<number> | null = null;
+    let myMarginCrossEndF: Field<number> | null = null;
+    function getMarginMainStart(): Field<number> {
+      if (myMarginMainStartF === null) myMarginMainStartF = marginInput(node, mainStartEdgeIdx);
+      return myMarginMainStartF;
+    }
+    function getMarginCrossStart(): Field<number> {
+      if (myMarginCrossStartF === null) myMarginCrossStartF = marginInput(node, crossStartEdgeIdx);
+      return myMarginCrossStartF;
+    }
+    function getMarginCrossEnd(): Field<number> {
+      if (myMarginCrossEndF === null) myMarginCrossEndF = marginInput(node, crossEndEdgeIdx);
+      return myMarginCrossEndF;
+    }
 
     // Alignment for this child: justify-content lives on the parent,
     // applies along the main axis once per line. align-items lives
@@ -688,27 +775,36 @@ function makeEmitter(
     const crossIsContentAuto =
       typeof node.style[crossKey] !== 'number' && !aspectDerivable(node, crossKey);
     const crossSizeInput = preferredSizeInput(node, crossKey, 'cross', parent);
-    const minCrossInput = minMaxInput(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
-    const maxCrossInput = minMaxInput(node, crossKey === 'width' ? 'maxWidth' : 'maxHeight');
+    // Phase 17: fold min/max cross inputs when at default (0 / undefined→∞).
+    const fMinCross = foldMinMax(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
+    const fMaxCross = foldMinMax(node, crossKey === 'width' ? 'maxWidth' : 'maxHeight');
     if (crossIsContentAuto && parent !== null && align === 'stretch') {
+      // Stretch: resize to fill the parent's inner cross minus margins.
+      // The margins cannot be folded here (they appear in a subtraction
+      // expression), so use the always-needed field accessors.
+      const mcs = getMarginCrossStart();
+      const mce = getMarginCrossEnd();
       const parentCrossF = field<number>(parent, crossKey);
       grammar.set(crossSizeField, {
         deps: [
           parentCrossF as Field<unknown>,
           padCrossStartF as Field<unknown>,
           padCrossEndF as Field<unknown>,
-          myMarginCrossStartF as Field<unknown>,
-          myMarginCrossEndF as Field<unknown>,
-          minCrossInput as Field<unknown>,
-          maxCrossInput as Field<unknown>,
+          mcs as Field<unknown>,
+          mce as Field<unknown>,
+          ...foldedDeps([fMinCross, fMaxCross]),
         ],
         compute: (read) => {
           const innerCross = Math.max(
             0,
             read(parentCrossF) - read(padCrossStartF!) - read(padCrossEndF!),
           );
-          const lineInner = innerCross - read(myMarginCrossStartF!) - read(myMarginCrossEndF!);
-          return clampMinMax(Math.max(0, lineInner), read(minCrossInput), read(maxCrossInput));
+          const lineInner = innerCross - read(mcs) - read(mce);
+          return clampMinMax(
+            Math.max(0, lineInner),
+            readFolded(fMinCross, read),
+            readFolded(fMaxCross, read),
+          );
         },
       } satisfies FieldRule<number>);
     } else if (parent === null && rootAxisIsBareZero(node, crossKey)) {
@@ -719,14 +815,15 @@ function makeEmitter(
         compute: (read) => read(crossSizeInput),
       } satisfies FieldRule<number>);
     } else {
+      // Phase 17: build deps only from non-default inputs.
       grammar.set(crossSizeField, {
-        deps: [
-          crossSizeInput as Field<unknown>,
-          minCrossInput as Field<unknown>,
-          maxCrossInput as Field<unknown>,
-        ],
+        deps: [crossSizeInput as Field<unknown>, ...foldedDeps([fMinCross, fMaxCross])],
         compute: (read) =>
-          clampMinMax(read(crossSizeInput), read(minCrossInput), read(maxCrossInput)),
+          clampMinMax(
+            read(crossSizeInput),
+            readFolded(fMinCross, read),
+            readFolded(fMaxCross, read),
+          ),
       } satisfies FieldRule<number>);
     }
 
@@ -901,8 +998,9 @@ function makeEmitter(
       // never consults it — so the root's main size is its preferred
       // size directly, no `flexBasis` short-circuit.
       const mainInput = preferredSizeInput(node, mainSizeName, 'main', parent);
-      const minMainInput = minMaxInput(node, mainSizeName === 'width' ? 'minWidth' : 'minHeight');
-      const maxMainInput = minMaxInput(node, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight');
+      // Phase 17: fold min/max main inputs when at default (0 / undefined→∞).
+      const fMinMain = foldMinMax(node, mainSizeName === 'width' ? 'minWidth' : 'minHeight');
+      const fMaxMain = foldMinMax(node, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight');
       if (parent === null) {
         if (rootAxisIsBareZero(node, mainSizeName)) {
           // `'auto'` root, no `available` → bare 0, unclamped.
@@ -911,31 +1009,42 @@ function makeEmitter(
             compute: (read) => read(mainInput),
           } satisfies FieldRule<number>);
         } else {
+          // Phase 17: deps only include non-default min/max.
           grammar.set(mainSizeField, {
-            deps: [
-              mainInput as Field<unknown>,
-              minMainInput as Field<unknown>,
-              maxMainInput as Field<unknown>,
-            ],
-            compute: (read) => clampMinMax(read(mainInput), read(minMainInput), read(maxMainInput)),
+            deps: [mainInput as Field<unknown>, ...foldedDeps([fMinMain, fMaxMain])],
+            compute: (read) =>
+              clampMinMax(read(mainInput), readFolded(fMinMain, read), readFolded(fMaxMain, read)),
           } satisfies FieldRule<number>);
         }
       } else {
-        const flexBasisInput = styleSizeInput(node, 'flexBasis');
-        grammar.set(mainSizeField, {
-          deps: [
-            flexBasisInput as Field<unknown>,
-            mainInput as Field<unknown>,
-            minMainInput as Field<unknown>,
-            maxMainInput as Field<unknown>,
-          ],
-          compute: (read) =>
-            clampMinMax(
-              resolveBasisFromRead(read, flexBasisInput, mainInput),
-              read(minMainInput),
-              read(maxMainInput),
-            ),
-        } satisfies FieldRule<number>);
+        // Phase 17: flexBasis 'auto' is folded — when flexBasis === 'auto',
+        // resolveBasisFromRead degenerates to read(mainInput). nodeSig already
+        // captures typeof s.flexBasis (the 'auto' vs numeric boundary), so a
+        // change from 'auto' to a numeric basis triggers a full rebuild.
+        const flexBasisIsAuto = node.style.flexBasis === 'auto';
+        if (flexBasisIsAuto) {
+          // Degenerate form: basis auto → just use mainInput (no flexBasisInput field).
+          grammar.set(mainSizeField, {
+            deps: [mainInput as Field<unknown>, ...foldedDeps([fMinMain, fMaxMain])],
+            compute: (read) =>
+              clampMinMax(read(mainInput), readFolded(fMinMain, read), readFolded(fMaxMain, read)),
+          } satisfies FieldRule<number>);
+        } else {
+          const flexBasisInput = styleSizeInput(node, 'flexBasis');
+          grammar.set(mainSizeField, {
+            deps: [
+              flexBasisInput as Field<unknown>,
+              mainInput as Field<unknown>,
+              ...foldedDeps([fMinMain, fMaxMain]),
+            ],
+            compute: (read) =>
+              clampMinMax(
+                resolveBasisFromRead(read, flexBasisInput, mainInput),
+                readFolded(fMinMain, read),
+                readFolded(fMaxMain, read),
+              ),
+          } satisfies FieldRule<number>);
+        }
       }
     } else {
       // Flex distribution. Capture the in-flow siblings + this
@@ -1070,9 +1179,11 @@ function makeEmitter(
             compute: (read) => read(parentMainDist).positions[myIndexCapture]!,
           } satisfies FieldRule<number>);
         } else {
+          // Phase 17: fold myMarginMainStart when at default (0).
+          const fMyMarginMainStart = foldMargin(node, mainStartEdgeIdx);
           grammar.set(mainPosField, {
-            deps: [padMainStartF as Field<unknown>, myMarginMainStartF as Field<unknown>],
-            compute: (read) => read(padMainStartF!) + read(myMarginMainStartF!),
+            deps: [padMainStartF as Field<unknown>, ...foldedDeps([fMyMarginMainStart])],
+            compute: (read) => read(padMainStartF!) + readFolded(fMyMarginMainStart, read),
           } satisfies FieldRule<number>);
         }
       } else {
@@ -1104,26 +1215,63 @@ function makeEmitter(
           deps: [parentMainDist as Field<unknown>],
           compute: (read) => read(parentMainDist).positions[myIndexCapture]!,
         } satisfies FieldRule<number>);
+      } else if (!parentReverse) {
+        // Phase 16: linear recurrence. This child's main position is the
+        // immediate predecessor's position + its box + one gap. O(1) deps
+        // regardless of sibling count (was O(N) cumulative-sum). Unrolls
+        // to the same total — see the Phase 16 design doc.
+        // Note: only applies to forward directions; reverse directions use
+        // the cumulative-sum below because applyReverseMainPos overwrites
+        // each sibling's mainPosField with a reflected value, breaking the
+        // chain (the predecessor's field holds its reflected position, not
+        // the forward cursor this recurrence relies on).
+        const prevSibling = priorSiblings[priorSiblings.length - 1]!;
+        const prevMainPos = field<number>(prevSibling, mainPosName);
+        const prevMainSize = field<number>(prevSibling, mainSizeName);
+        const mainEndEdgeIdx = mainEndEdge(parentDirection!);
+        // Phase 17: fold prevMarginEnd and myMarginMainStart when at default (0).
+        const fPrevMarginEnd = foldMargin(prevSibling, mainEndEdgeIdx);
+        const fMyMarginMainStart = foldMargin(node, mainStartEdgeIdx);
+        const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
+        grammar.set(mainPosField, {
+          deps: [
+            prevMainPos as Field<unknown>,
+            prevMainSize as Field<unknown>,
+            ...foldedDeps([fPrevMarginEnd, fMyMarginMainStart]),
+            mainGapInput as Field<unknown>,
+          ],
+          compute: (read) =>
+            read(prevMainPos) +
+            read(prevMainSize) +
+            readFolded(fPrevMarginEnd, read) +
+            readFolded(fMyMarginMainStart, read) +
+            read(mainGapInput),
+        } satisfies FieldRule<number>);
       } else {
-        // Non-qualifying regime (wrap): keep today's prior-siblings-sum
-        // rule — size / spacing mutation on any prior sibling propagates here.
+        // Reverse direction: keep the cumulative-sum rule. The recurrence
+        // cannot chain through the predecessor's mainPosField here because
+        // applyReverseMainPos (applied per-sibling below) overwrites that
+        // field with a reflected value — the predecessor's field no longer
+        // carries the forward cursor the recurrence depends on.
         const priorMainSizes = priorSiblings.map((s) => field<number>(s, mainSizeName));
         const priorMargins = priorSiblings.map((s) => ({
           start: marginInput(s, mainStartEdge(parentDirection!)),
           end: marginInput(s, mainEndEdge(parentDirection!)),
         }));
         const mainGapInput = gapInput(parent, parentDirection === 'column' ? 'row' : 'column');
+        // Reverse cumulative-sum: cannot fold margins — the expression
+        // accumulates all sibling margins and this node's own marginMainStart.
+        const myMMS = getMarginMainStart();
         grammar.set(mainPosField, {
           deps: [
             mainGapInput as Field<unknown>,
             padMainStartF as Field<unknown>,
-            myMarginMainStartF as Field<unknown>,
+            myMMS as Field<unknown>,
             ...(priorMainSizes as Field<unknown>[]),
             ...priorMargins.flatMap((m) => [m.start, m.end] as Field<unknown>[]),
           ],
           compute: (read) => {
-            let sum =
-              read(padMainStartF!) + read(myMarginMainStartF!) + indexInParent * read(mainGapInput);
+            let sum = read(padMainStartF!) + read(myMMS) + indexInParent * read(mainGapInput);
             for (const m of priorMargins) sum += read(m.start) + read(m.end);
             for (const m of priorMainSizes) sum += read(m);
             return sum;
@@ -1172,13 +1320,14 @@ function makeEmitter(
           parent,
           parentDirection === 'column' ? 'width' : 'height',
         );
+        const mce = getMarginCrossEnd();
         grammar.set(crossPosField, {
           deps: [
             parentCrossField as Field<unknown>,
             crossSizeField,
             padCrossStartF as Field<unknown>,
             padCrossEndF as Field<unknown>,
-            myMarginCrossEndF as Field<unknown>,
+            mce as Field<unknown>,
           ],
           // Anchor against the line's inner cross, which the
           // imperative `crossAlignItemsInLine` clamps to >= 0 — a
@@ -1187,12 +1336,7 @@ function makeEmitter(
           compute: (read) => {
             const padStart = read(padCrossStartF!);
             const innerCross = Math.max(0, read(parentCrossField) - padStart - read(padCrossEndF!));
-            return (
-              padStart +
-              innerCross -
-              read(crossSizeField as Field<number>) -
-              read(myMarginCrossEndF!)
-            );
+            return padStart + innerCross - read(crossSizeField as Field<number>) - read(mce);
           },
         } satisfies FieldRule<number>);
       } else {
@@ -1207,20 +1351,22 @@ function makeEmitter(
         parent,
         parentDirection === 'column' ? 'width' : 'height',
       );
+      const mcs2 = getMarginCrossStart();
+      const mce2 = getMarginCrossEnd();
       grammar.set(crossPosField, {
         deps: [
           parentCrossField as Field<unknown>,
           crossSizeField,
           padCrossStartF as Field<unknown>,
           padCrossEndF as Field<unknown>,
-          myMarginCrossStartF as Field<unknown>,
-          myMarginCrossEndF as Field<unknown>,
+          mcs2 as Field<unknown>,
+          mce2 as Field<unknown>,
         ],
         compute: (read) => {
           const padStart = read(padCrossStartF!);
           const innerCross = Math.max(0, read(parentCrossField) - padStart - read(padCrossEndF!));
-          const marginStart = read(myMarginCrossStartF!);
-          const innerLine = innerCross - marginStart - read(myMarginCrossEndF!);
+          const marginStart = read(mcs2);
+          const innerLine = innerCross - marginStart - read(mce2);
           const myCross = read(crossSizeField as Field<number>);
           return padStart + marginStart + Math.max(0, (innerLine - myCross) / 2);
         },
@@ -1229,11 +1375,13 @@ function makeEmitter(
       // flex-start, stretch (with explicit cross size — no resize),
       // and any other value (the imperative falls through to
       // flex-start) all share this offset: the parent's cross-start
-      // padding plus this child's cross-start margin, both declared
-      // input deps.
+      // padding plus this child's cross-start margin.
+      // Phase 17: fold myMarginCrossStart when at default (0) — no Field
+      // created, constant 0 inlined.
+      const fMyMarginCrossStart = foldMargin(node, crossStartEdgeIdx);
       grammar.set(crossPosField, {
-        deps: [padCrossStartF as Field<unknown>, myMarginCrossStartF as Field<unknown>],
-        compute: (read) => read(padCrossStartF!) + read(myMarginCrossStartF!),
+        deps: [padCrossStartF as Field<unknown>, ...foldedDeps([fMyMarginCrossStart])],
+        compute: (read) => read(padCrossStartF!) + readFolded(fMyMarginCrossStart, read),
       } satisfies FieldRule<number>);
     }
 
@@ -1365,8 +1513,12 @@ function mergeStyleInputs(a: StyleInputs, b: StyleInputs): StyleInputs {
 function mergeStyleInputsMap(
   base: Map<Node, StyleInputs>,
   extra: Map<Node, StyleInputs>,
+  mutateBase: boolean,
 ): Map<Node, StyleInputs> {
-  const merged = new Map(base);
+  // When mutateBase is true the caller owns `base` exclusively (it is
+  // the previous grammar output, swapped out by the caller right after
+  // this returns) — mutate it directly and skip the ~1,100-entry clone.
+  const merged = mutateBase ? base : new Map(base);
   for (const [node, entry] of extra) {
     const existing = merged.get(node);
     merged.set(node, existing === undefined ? entry : mergeStyleInputs(existing, entry));
@@ -1481,7 +1633,7 @@ export function buildAppendFragment(
       grammar: prev.grammar,
       rootFields: prev.rootFields,
       allFields: [...prev.allFields, ...ctx.allFields],
-      styleInputs: mergeStyleInputsMap(prev.styleInputs, ctx.styleInputs),
+      styleInputs: mergeStyleInputsMap(prev.styleInputs, ctx.styleInputs, true),
       availableInputs: prev.availableInputs,
       mainDistributionByParent: prev.mainDistributionByParent,
     };
@@ -1700,15 +1852,20 @@ export function buildRemoveFragment(
         if (prev.grammar.has(f)) removed.push(f);
       }
     }
+    // Mutate prev.styleInputs and prev.mainDistributionByParent in place:
+    // `prev` is the old grammar output, single-use — the caller swaps
+    // built.output to the new fragment immediately after this returns.
+    for (const n of removedNodes) {
+      prev.styleInputs.delete(n);
+      prev.mainDistributionByParent.delete(n);
+    }
     const next: FlexGrammarOutput = {
       grammar: prev.grammar,
       rootFields: prev.rootFields,
       allFields: prev.allFields.filter((e) => !removedNodes.has(e.node)),
-      styleInputs: new Map([...prev.styleInputs].filter(([n]) => !removedNodes.has(n))),
+      styleInputs: prev.styleInputs,
       availableInputs: prev.availableInputs,
-      mainDistributionByParent: new Map(
-        [...prev.mainDistributionByParent].filter(([n]) => !removedNodes.has(n)),
-      ),
+      mainDistributionByParent: prev.mainDistributionByParent,
     };
     return { removed, rebinds: [], next };
   }

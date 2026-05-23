@@ -127,6 +127,28 @@ for (const { name, make } of IMPLS) {
       });
     });
 
+    describe('predecessor', () => {
+      it('predecessor returns the node before, or null for the first', () => {
+        const om = make();
+        const a = om.init();
+        const b = om.insertAfter(a);
+        const c = om.insertAfter(b);
+        expect(om.predecessor(a)).toBe(null);
+        expect(om.predecessor(b)).toBe(a);
+        expect(om.predecessor(c)).toBe(b);
+      });
+
+      it('predecessor after delete skips the removed node', () => {
+        const om = make();
+        const a = om.init();
+        const b = om.insertAfter(a);
+        const c = om.insertAfter(b);
+        om.delete(b);
+        // c's predecessor is now a (delete repairs the prev/next links)
+        expect(om.predecessor(c)).toBe(a);
+      });
+    });
+
     describe('compare', () => {
       it('compare(x, x) is 0', () => {
         const om = make();

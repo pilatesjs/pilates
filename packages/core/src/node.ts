@@ -18,7 +18,16 @@
 
 import { type LayoutCache, MeasureCache } from './algorithm/cache.js';
 import { calculateLayout as runCalculateLayout } from './algorithm/index.js';
+import {
+  DIRTY_ANY,
+  DIRTY_CHILDREN,
+  DIRTY_FLEX_DISTRIBUTION,
+  DIRTY_MEASURE,
+  DIRTY_STYLE_SIG,
+  DIRTY_STYLE_VALUE,
+} from './dirty-flags.js';
 import { Edge } from './edge.js';
+import { allocateNodeId } from './layout-pool.js';
 import { type ComputedLayout, defaultLayout } from './layout.js';
 import type { MeasureFunc } from './measure-func.js';
 import {
@@ -59,6 +68,15 @@ export class Node {
    *
    * @internal
    */
+  /**
+   * Unique integer ID for typed-array indexing in the LayoutPool.
+   * Assigned at construction; recycled via FinalizationRegistry when
+   * this Node is garbage-collected.
+   *
+   * @internal
+   */
+  readonly _id: number = allocateNodeId(this);
+
   readonly _style: Style = defaultStyle();
   /**
    * Backing storage for `layout`. Written by the algorithm in this package
@@ -113,15 +131,15 @@ export class Node {
   private readonly _children: Node[] = [];
   private _parent: Node | null = null;
   private _measure: MeasureFunc | null = null;
-  /** True if style or tree has changed since the last `calculateLayout()`. */
-  private _dirty = true;
+  /** Bitmask of `DIRTY_*` flags. Non-zero means this node is dirty. */
+  private _dirtyFlags: number = DIRTY_ANY;
   /**
    * True if any descendant has been marked dirty (even if dirty propagation
    * was stopped by a relayout boundary before reaching this node). Used by
    * the root cache-hit path to skip `layoutChildren` for subtrees that have
    * no mutations at all — not just subtrees where this node itself is clean.
    *
-   * Invariant: `_dirty` implies `_hasDirtyDescendant` on the parent (if any).
+   * Invariant: `_dirtyFlags !== 0` implies `_hasDirtyDescendant` on the parent (if any).
    * Cleared by `clearDirty()` after each `calculateLayout()`.
    */
   _hasDirtyDescendant = false;
@@ -185,7 +203,7 @@ export class Node {
     const i = Math.max(0, Math.min(index, this._children.length));
     this._children.splice(i, 0, child);
     child._parent = this;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_CHILDREN);
   }
 
   removeChild(child: Node): void {
@@ -193,7 +211,7 @@ export class Node {
     if (idx === -1) return;
     this._children.splice(idx, 1);
     child._parent = null;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_CHILDREN);
   }
 
   getChild(index: number): Node | undefined {
@@ -233,7 +251,7 @@ export class Node {
         this._measureCache.clear();
       }
     }
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_MEASURE);
   }
 
   getMeasureFunc(): MeasureFunc | null {
@@ -244,12 +262,12 @@ export class Node {
 
   setFlexDirection(value: FlexDirection): void {
     this._style.flexDirection = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setFlexWrap(value: FlexWrap): void {
     this._style.flexWrap = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   /**
@@ -277,23 +295,23 @@ export class Node {
       this._style.flexShrink = 0;
       this._style.flexBasis = 'auto';
     }
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   setFlexGrow(value: number): void {
     this._style.flexGrow = clampNonNegative(value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   setFlexShrink(value: number): void {
     this._style.flexShrink = clampNonNegative(value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   setFlexBasis(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'flexBasis');
     this._style.flexBasis = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_FLEX_DISTRIBUTION);
   }
 
   // ─── sizing ────────────────────────────────────────────────────────────
@@ -301,37 +319,37 @@ export class Node {
   setWidth(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'width');
     this._style.width = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setHeight(value: Length): void {
     if (value !== 'auto') nonNegativeOrThrow(value, 'height');
     this._style.height = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setMinWidth(value: number): void {
     this._style.minWidth = nonNegativeOrThrow(value, 'minWidth');
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setMinHeight(value: number): void {
     this._style.minHeight = nonNegativeOrThrow(value, 'minHeight');
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   /** Pass `undefined` to remove an upper bound. */
   setMaxWidth(value: number | undefined): void {
     if (value !== undefined) nonNegativeOrThrow(value, 'maxWidth');
     this._style.maxWidth = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   /** Pass `undefined` to remove an upper bound. */
   setMaxHeight(value: number | undefined): void {
     if (value !== undefined) nonNegativeOrThrow(value, 'maxHeight');
     this._style.maxHeight = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   /**
@@ -345,7 +363,7 @@ export class Node {
       }
     }
     this._style.aspectRatio = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── padding / margin / gap ────────────────────────────────────────────
@@ -353,49 +371,49 @@ export class Node {
   setPadding(edge: Edge, value: number): void {
     nonNegativeOrThrow(value, 'padding');
     writeEdge(this._style.padding, edge, value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setMargin(edge: Edge, value: number): void {
     nonNegativeOrThrow(value, 'margin');
     writeEdge(this._style.margin, edge, value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   setGap(axis: 'row' | 'column', value: number): void {
     nonNegativeOrThrow(value, 'gap');
     if (axis === 'row') this._style.gapRow = value;
     else this._style.gapColumn = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   // ─── alignment ─────────────────────────────────────────────────────────
 
   setJustifyContent(value: Justify): void {
     this._style.justifyContent = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setAlignItems(value: Align): void {
     this._style.alignItems = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setAlignContent(value: Align): void {
     this._style.alignContent = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setAlignSelf(value: Align): void {
     this._style.alignSelf = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── positioning ───────────────────────────────────────────────────────
 
   setPositionType(value: PositionType): void {
     this._style.positionType = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   /** Pass `undefined` to leave that edge unconstrained. */
@@ -404,14 +422,14 @@ export class Node {
       throw new RangeError(`position must be finite or undefined, got ${value}`);
     }
     writePositionEdge(this._style.position, edge, value);
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_VALUE);
   }
 
   // ─── display ───────────────────────────────────────────────────────────
 
   setDisplay(value: Display): void {
     this._style.display = value;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── overflow ──────────────────────────────────────────────────────────
@@ -420,17 +438,17 @@ export class Node {
     this._style.overflow = overflow;
     this._style.overflowX = overflow;
     this._style.overflowY = overflow;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setOverflowX(overflow: Overflow): void {
     this._style.overflowX = overflow;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   setOverflowY(overflow: Overflow): void {
     this._style.overflowY = overflow;
-    this.markDirty();
+    this.markDirtyFlag(DIRTY_STYLE_SIG);
   }
 
   // ─── layout entry points ───────────────────────────────────────────────
@@ -504,15 +522,28 @@ export class Node {
    * Walk up the tree marking every ancestor dirty too. The algorithm uses
    * this hint to short-circuit work in subtrees that did not change.
    */
-  markDirty(): void {
-    this._dirty = true;
+  /**
+   * Set specific dirty flag(s) on this node. Propagates upward
+   * through ancestors. Used by individual setters to indicate the
+   * granular nature of the change; cache layers consume the flag
+   * to decide whether to invalidate.
+   *
+   * @internal
+   */
+  markDirtyFlag(flag: number): void {
+    this._dirtyFlags |= flag;
     // Optional-chain: only fires on leaves with a measure func installed.
     // Ancestor nodes (containers with children) cannot have a MeasureCache
     // because setMeasureFunc rejects nodes with children; the optional-chain
     // is a deliberate no-op as we propagate dirty up the tree.
     this._measureCache?.clear();
     this._layoutCache?.clear();
-    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+    if (this._parent !== null && this._parent._dirtyFlags === 0)
+      this._parent.markDirtyFromChild(this);
+  }
+
+  markDirty(): void {
+    this.markDirtyFlag(DIRTY_ANY);
   }
 
   /**
@@ -525,7 +556,7 @@ export class Node {
    * See `isLayoutBoundary()` for the boundary definition and rationale.
    */
   private markDirtyFromChild(_child: Node): void {
-    this._dirty = true;
+    this._dirtyFlags |= DIRTY_ANY;
     this._layoutCache?.clear();
     // Stop dirty propagation at relayout boundaries — see isLayoutBoundary
     // and the Phase 3 spec for why explicit width+height makes the
@@ -540,7 +571,8 @@ export class Node {
       if (this._parent !== null) this._parent.markHasDirtyDescendant();
       return;
     }
-    if (this._parent !== null && !this._parent._dirty) this._parent.markDirtyFromChild(this);
+    if (this._parent !== null && this._parent._dirtyFlags === 0)
+      this._parent.markDirtyFromChild(this);
   }
 
   /**
@@ -554,7 +586,8 @@ export class Node {
   private markHasDirtyDescendant(): void {
     if (this._hasDirtyDescendant) return; // already set; further propagation is a no-op
     this._hasDirtyDescendant = true;
-    if (this._parent !== null && !this._parent._dirty) this._parent.markHasDirtyDescendant();
+    if (this._parent !== null && this._parent._dirtyFlags === 0)
+      this._parent.markHasDirtyDescendant();
   }
 
   /**
@@ -567,14 +600,14 @@ export class Node {
    * @internal
    */
   _forceDirty(): void {
-    this._dirty = true;
+    this._dirtyFlags |= DIRTY_ANY;
     this._measureCache?.clear();
     this._layoutCache?.clear();
-    if (this._parent !== null && !this._parent._dirty) this._parent._forceDirty();
+    if (this._parent !== null && this._parent._dirtyFlags === 0) this._parent._forceDirty();
   }
 
   isDirty(): boolean {
-    return this._dirty;
+    return this._dirtyFlags !== 0;
   }
 
   /**
@@ -585,7 +618,7 @@ export class Node {
    * @internal
    */
   clearDirty(): void {
-    this._dirty = false;
+    this._dirtyFlags = 0;
     this._hasDirtyDescendant = false;
   }
 }

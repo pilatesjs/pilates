@@ -16,19 +16,12 @@
  * This mirrors Yoga's "round to pixel grid" pass.
  */
 
+import { Pool } from '../layout-pool.js';
 import type { Node } from '../node.js';
 
-interface AbsCorner {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
-
 export function roundLayout(root: Node): void {
-  const absolutes = new Map<Node, AbsCorner>();
-  collectAbsolutes(root, 0, 0, absolutes);
-  applyRounding(root, absolutes, 0, 0);
+  collectAbsolutes(root, 0, 0);
+  applyRounding(root, 0, 0);
 }
 
 /**
@@ -56,17 +49,16 @@ export function roundLayoutSubtree(node: Node, parentAbsX: number, parentAbsY: n
   // are computed in the same floating-point space as the full-tree roundLayout pass.
   const nodeAbsX = parentAbsX + node._floatLeft;
   const nodeAbsY = parentAbsY + node._floatTop;
-  const absolutes = new Map<Node, AbsCorner>();
   // Collect children relative to the node's absolute corner.
   for (let i = 0; i < node.getChildCount(); i++) {
-    collectAbsolutes(node.getChild(i)!, nodeAbsX, nodeAbsY, absolutes);
+    collectAbsolutes(node.getChild(i)!, nodeAbsX, nodeAbsY);
   }
   // Round children (their positions are relative to `node`, so
   // parentRoundedX/Y for each child is node's absolute corner rounded).
   const roundedNodeX = Math.round(nodeAbsX);
   const roundedNodeY = Math.round(nodeAbsY);
   for (let i = 0; i < node.getChildCount(); i++) {
-    applyRounding(node.getChild(i)!, absolutes, roundedNodeX, roundedNodeY);
+    applyRounding(node.getChild(i)!, roundedNodeX, roundedNodeY);
   }
 }
 
@@ -89,36 +81,27 @@ export function roundLayoutFrom(
   parentRoundedX: number,
   parentRoundedY: number,
 ): void {
-  const absolutes = new Map<Node, AbsCorner>();
-  collectAbsolutes(node, parentAbsX, parentAbsY, absolutes);
-  applyRounding(node, absolutes, parentRoundedX, parentRoundedY);
+  collectAbsolutes(node, parentAbsX, parentAbsY);
+  applyRounding(node, parentRoundedX, parentRoundedY);
 }
 
-function collectAbsolutes(
-  node: Node,
-  parentX: number,
-  parentY: number,
-  out: Map<Node, AbsCorner>,
-): void {
+function collectAbsolutes(node: Node, parentX: number, parentY: number): void {
   const x = parentX + node.layout.left;
   const y = parentY + node.layout.top;
-  out.set(node, { x, y, w: node.layout.width, h: node.layout.height });
+  Pool.absCornersX[node._id] = x;
+  Pool.absCornersY[node._id] = y;
   for (let i = 0; i < node.getChildCount(); i++) {
-    collectAbsolutes(node.getChild(i)!, x, y, out);
+    collectAbsolutes(node.getChild(i)!, x, y);
   }
 }
 
-function applyRounding(
-  node: Node,
-  abs: Map<Node, AbsCorner>,
-  parentRoundedX: number,
-  parentRoundedY: number,
-): void {
-  const my = abs.get(node)!;
-  const roundedX = Math.round(my.x);
-  const roundedY = Math.round(my.y);
-  const roundedR = Math.round(my.x + my.w);
-  const roundedB = Math.round(my.y + my.h);
+function applyRounding(node: Node, parentRoundedX: number, parentRoundedY: number): void {
+  const absX = Pool.absCornersX[node._id]!;
+  const absY = Pool.absCornersY[node._id]!;
+  const roundedX = Math.round(absX);
+  const roundedY = Math.round(absY);
+  const roundedR = Math.round(absX + node.layout.width);
+  const roundedB = Math.round(absY + node.layout.height);
 
   node._layout.left = roundedX - parentRoundedX;
   node._layout.top = roundedY - parentRoundedY;
@@ -126,6 +109,6 @@ function applyRounding(
   node._layout.height = Math.max(0, roundedB - roundedY);
 
   for (let i = 0; i < node.getChildCount(); i++) {
-    applyRounding(node.getChild(i)!, abs, roundedX, roundedY);
+    applyRounding(node.getChild(i)!, roundedX, roundedY);
   }
 }

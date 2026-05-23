@@ -85,25 +85,90 @@
  * @internal
  */
 
+import { fieldIdCount } from './field-id-pool.js';
 import type { Field, FieldRule, Grammar, ReadFn } from './grammar.js';
 import { BenderOrderMaintenance, type OMNode, type OrderMaintenance } from './order-maintenance.js';
 import { OmPriorityQueue } from './priority-queue.js';
 
 /**
+ * A `ReadFn` for zero-dependency rules — they declare no deps, so their
+ * `compute` must never call `read`. If one does, this throws (a grammar
+ * bug), mirroring the undeclared-dependency error in the normal path.
+ */
+const NEVER_READ: ReadFn = (dep) => {
+  throw new Error(
+    `[spineless-runtime] a zero-dependency rule called read("${dep.name}") — it did not declare it as a dependency`,
+  );
+};
+
+/**
+ * Cache of the declared-deps Set for each rule. Keyed by the rule object
+ * (FieldRule is immutable after creation); when a rule is replaced via
+ * `rebindRule`, the new rule object gets a fresh WeakMap miss — no manual
+ * invalidation needed.
+ */
+const depSetCache = new WeakMap<FieldRule<unknown>, Set<Field<unknown>>>();
+
+/**
  * @internal
  */
 export class SpinelessRuntime {
-  private readonly grammar: Grammar;
   private readonly rootFields: ReadonlyArray<Field<unknown>>;
   private readonly om: OrderMaintenance;
   private readonly pq: OmPriorityQueue<Field<unknown>>;
 
-  /** field -> cached value */
-  private readonly values: Map<Field<unknown>, unknown> = new Map();
-  /** field -> its OM timestamp (allocated in topo order at init) */
-  private readonly omNodes: Map<Field<unknown>, OMNode> = new Map();
-  /** field -> fields that read this field (reverse of `rule.deps`) */
-  private readonly dependents: Map<Field<unknown>, Field<unknown>[]> = new Map();
+  /**
+   * External Grammar map reference — kept so that callers holding the
+   * same map reference (e.g. layout.ts's `output.grammar`) see mutations
+   * made by `graft` / `rebindRule` / `detach`. All internal HOT-PATH
+   * reads use `rulesArr` (O(1) array index) instead.
+   */
+  private readonly grammar: Grammar;
+
+  /**
+   * Field rules indexed by field.id — the fast-path mirror of `grammar`.
+   * Updated in lockstep with every `grammar.set` / `grammar.delete`.
+   * Plain array; auto-grows on out-of-range assignment (JS semantics).
+   */
+  private rulesArr: (FieldRule<unknown> | undefined)[] = [];
+
+  /**
+   * Fast path: numeric field values indexed by field.id.
+   * valuePresent[id] === 1 means the value is stored here as a number.
+   */
+  private valuesArr: Float64Array;
+  /**
+   * Presence / storage-kind bitset, indexed by field.id:
+   *   0 = absent (not yet computed or detached)
+   *   1 = computed, value is a number stored in valuesArr[id]
+   *   2 = computed, value is a non-number object stored in valuesMap
+   */
+  private valuePresent: Uint8Array;
+  /**
+   * Fallback for non-number field values (e.g. Field<MainAxisDistribution>).
+   * Only populated when valuePresent[id] === 2.
+   */
+  private readonly valuesMap: Map<Field<unknown>, unknown> = new Map();
+  /**
+   * OM nodes indexed by field.id — replaces the former `omNodes: Map<Field, OMNode>`.
+   * Plain array; auto-grows on out-of-range assignment (JS semantics).
+   * undefined slot = field not integrated (or detached).
+   */
+  private omNodesArr: (OMNode | undefined)[] = [];
+  /**
+   * Authoritative list of all fields ever registered with this runtime
+   * (in integration order). Used for iteration in `markAllDirty` — slots
+   * whose `omNodesArr[field.id]` is `undefined` (detached) are skipped.
+   * Dead entries are never removed; the skip is O(1) per slot.
+   */
+  private readonly fieldRoster: Field<unknown>[] = [];
+  /**
+   * Reverse-dependency lists indexed by field.id — replaces the former
+   * `dependents: Map<Field, Field[]>`. `dependentsArr[id]` is the array
+   * of fields that read field-id. undefined = no dependents recorded yet
+   * (or field detached). Plain array; auto-grows on assignment.
+   */
+  private dependentsArr: (Field<unknown>[] | undefined)[] = [];
 
   /** The OM node at the topological tail — where `graft` appends. */
   private lastOm: OMNode | null = null;
@@ -135,6 +200,32 @@ export class SpinelessRuntime {
     this.rootFields = rootFields;
     this.om = om;
     this.pq = new OmPriorityQueue<Field<unknown>>(om);
+    // Mirror the public Grammar map into rulesArr (indexed by field.id)
+    // so the hot path can do O(1) array reads instead of Map lookups.
+    for (const [f, rule] of grammar) {
+      this.rulesArr[f.id] = rule;
+    }
+    // Initialise value arrays to cover all IDs allocated so far.
+    // ensureFieldCapacity() grows them on demand as new fields arrive.
+    const initialCap = Math.max(fieldIdCount(), 1024);
+    this.valuesArr = new Float64Array(initialCap);
+    this.valuePresent = new Uint8Array(initialCap);
+  }
+
+  /**
+   * Grow `valuesArr` and `valuePresent` so that `id` is a valid index.
+   * Doubles capacity until sufficient, copying forward (LayoutPool pattern).
+   */
+  private ensureFieldCapacity(id: number): void {
+    if (id < this.valuesArr.length) return;
+    let cap = this.valuesArr.length;
+    while (id >= cap) cap *= 2;
+    const newArr = new Float64Array(cap);
+    const newPresent = new Uint8Array(cap);
+    newArr.set(this.valuesArr);
+    newPresent.set(this.valuePresent);
+    this.valuesArr = newArr;
+    this.valuePresent = newPresent;
   }
 
   /**
@@ -168,11 +259,12 @@ export class SpinelessRuntime {
       throw new Error('[spineless-runtime] graft called before init()');
     }
     for (const [f, rule] of additions) {
-      if (this.omNodes.has(f)) {
+      if (this.omNodesArr[f.id] !== undefined) {
         throw new Error(
           `[spineless-runtime] graft: field "${f.name}" already exists — graft integrates NEW fields only`,
         );
       }
+      this.rulesArr[f.id] = rule;
       this.grammar.set(f, rule);
     }
     this.integrate(newRoots);
@@ -200,8 +292,13 @@ export class SpinelessRuntime {
    * That makes the caller's removed set just the subtree's own
    * fields — orphan input fields, e.g. the previous last child's
    * now-unread main-end margin, need not be enumerated.
+   *
+   * @returns The set of every field actually removed — both the
+   * explicit `fields` argument AND any orphan-cleaned surviving deps.
+   * Callers can use this to maintain a `Set<Field>` index in O(|dropped|)
+   * rather than scanning all tracked fields.
    */
-  detach(fields: Iterable<Field<unknown>>): void {
+  detach(fields: Iterable<Field<unknown>>): Set<Field<unknown>> {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] detach called before init()');
     }
@@ -210,7 +307,7 @@ export class SpinelessRuntime {
     // Precondition: the removed set must be closed under "is read by"
     // — no surviving field may depend on a removed one.
     for (const f of removing) {
-      const revs = this.dependents.get(f);
+      const revs = this.dependentsArr[f.id];
       if (revs === undefined) continue;
       for (const d of revs) {
         if (!removing.has(d)) {
@@ -225,22 +322,32 @@ export class SpinelessRuntime {
     // cleanup once their reverse-dependency lists are pruned.
     const survivingDeps = new Set<Field<unknown>>();
 
+    const dropped = new Set<Field<unknown>>();
+    const removedOmNodes = new Set<OMNode>();
     const drop = (f: Field<unknown>): void => {
-      const omNode = this.omNodes.get(f);
-      if (omNode !== undefined) this.om.delete(omNode);
-      this.omNodes.delete(f);
-      this.values.delete(f);
-      this.dependents.delete(f);
+      dropped.add(f);
+      const omNode = this.omNodesArr[f.id];
+      if (omNode !== undefined) {
+        this.om.delete(omNode);
+        removedOmNodes.add(omNode);
+      }
+      this.omNodesArr[f.id] = undefined;
+      if (f.id < this.valuePresent.length && this.valuePresent[f.id] === 2) {
+        this.valuesMap.delete(f);
+      }
+      this.valuePresent[f.id] = 0;
+      this.dependentsArr[f.id] = undefined;
+      this.rulesArr[f.id] = undefined;
       this.grammar.delete(f);
     };
 
     for (const f of removing) {
       // Prune `f` from the reverse-dependency list of each field it
       // read (a surviving dep must forget this removed dependent).
-      const rule = this.grammar.get(f);
+      const rule = this.rulesArr[f.id];
       if (rule !== undefined) {
         for (const dep of rule.deps) {
-          const revs = this.dependents.get(dep);
+          const revs = this.dependentsArr[dep.id];
           if (revs !== undefined) {
             const i = revs.indexOf(f);
             if (i !== -1) revs.splice(i, 1);
@@ -254,21 +361,25 @@ export class SpinelessRuntime {
     // Orphan cleanup: a surviving dep with no dependents left, whose
     // own rule is a leaf (no dependencies), is now dead weight.
     for (const dep of survivingDeps) {
-      const revs = this.dependents.get(dep);
+      const revs = this.dependentsArr[dep.id];
       if (revs !== undefined && revs.length > 0) continue;
-      const rule = this.grammar.get(dep);
+      const rule = this.rulesArr[dep.id];
       if (rule === undefined || rule.deps.length > 0) continue;
       drop(dep);
     }
 
-    // The OM tail may have been among the removed fields; recompute
-    // it so a later `graft` still appends after every surviving node.
-    this.lastOm = null;
-    for (const omNode of this.omNodes.values()) {
-      if (this.lastOm === null || this.om.compare(omNode, this.lastOm) > 0) {
-        this.lastOm = omNode;
+    // The OM tail may have been among the removed fields. If so, walk
+    // back through predecessors (skipping just-removed nodes) to find
+    // the new tail — O(removed) instead of O(total live nodes).
+    if (this.lastOm !== null && removedOmNodes.has(this.lastOm)) {
+      let candidate: OMNode | null = this.lastOm;
+      while (candidate !== null && removedOmNodes.has(candidate)) {
+        candidate = this.om.predecessor(candidate);
       }
+      this.lastOm = candidate;
     }
+
+    return dropped;
   }
 
   /**
@@ -291,19 +402,19 @@ export class SpinelessRuntime {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] rebindRule called before init()');
     }
-    if (!this.omNodes.has(field)) {
+    if (this.omNodesArr[field.id] === undefined) {
       throw new Error(
         `[spineless-runtime] rebindRule: field "${field.name}" is not in this runtime`,
       );
     }
-    const oldRule = this.grammar.get(field);
+    const oldRule = this.rulesArr[field.id];
     const oldDeps = new Set<Field<unknown>>(oldRule?.deps ?? []);
     const newDeps = new Set<Field<unknown>>(newRule.deps);
 
     // Deps no longer read: drop `field` from their dependents list.
     for (const d of oldDeps) {
       if (newDeps.has(d)) continue;
-      const revs = this.dependents.get(d);
+      const revs = this.dependentsArr[d.id];
       if (revs !== undefined) {
         const i = revs.indexOf(field);
         if (i !== -1) revs.splice(i, 1);
@@ -312,19 +423,20 @@ export class SpinelessRuntime {
     // Newly read deps: register the reverse edge.
     for (const d of newDeps) {
       if (oldDeps.has(d)) continue;
-      if (!this.omNodes.has(d)) {
+      if (this.omNodesArr[d.id] === undefined) {
         throw new Error(
           `[spineless-runtime] rebindRule: new dependency "${d.name}" of "${field.name}" is not integrated`,
         );
       }
-      let revs = this.dependents.get(d);
+      let revs = this.dependentsArr[d.id];
       if (revs === undefined) {
         revs = [];
-        this.dependents.set(d, revs);
+        this.dependentsArr[d.id] = revs;
       }
       revs.push(field);
     }
 
+    this.rulesArr[field.id] = newRule;
     this.grammar.set(field, newRule);
     this.markDirty(field);
   }
@@ -342,9 +454,9 @@ export class SpinelessRuntime {
 
     const visit = (f: Field<unknown>): void => {
       // A field has an OM node exactly once it is integrated, so
-      // `omNodes` doubles as the "already done" marker — which makes
-      // existing fields natural boundaries during a graft.
-      if (this.omNodes.has(f)) return;
+      // the omNodesArr slot doubles as the "already done" marker — which
+      // makes existing fields natural boundaries during a graft.
+      if (this.omNodesArr[f.id] !== undefined) return;
       if (visiting.has(f)) {
         throw new Error(
           `[spineless-runtime] cycle detected: field "${f.name}" depends on itself transitively`,
@@ -352,7 +464,7 @@ export class SpinelessRuntime {
       }
       visiting.add(f);
 
-      const rule = this.grammar.get(f);
+      const rule = this.rulesArr[f.id];
       if (rule === undefined) {
         throw new Error(
           `[spineless-runtime] no rule for field "${f.name}". Register it in the grammar or remove the dep edge.`,
@@ -361,10 +473,10 @@ export class SpinelessRuntime {
 
       for (const dep of rule.deps) {
         visit(dep);
-        let revs = this.dependents.get(dep);
+        let revs = this.dependentsArr[dep.id];
         if (revs === undefined) {
           revs = [];
-          this.dependents.set(dep, revs);
+          this.dependentsArr[dep.id] = revs;
         }
         revs.push(f);
       }
@@ -373,11 +485,20 @@ export class SpinelessRuntime {
       // before the very first field, then chains insertAfter.
       const omNode = this.lastOm === null ? this.om.init() : this.om.insertAfter(this.lastOm);
       this.lastOm = omNode;
-      this.omNodes.set(f, omNode);
+      this.omNodesArr[f.id] = omNode;
+      this.fieldRoster.push(f);
       this.stats.initFields++;
 
       // Compute and cache.
-      this.values.set(f, this.runCompute(f, rule));
+      this.ensureFieldCapacity(f.id);
+      const initVal = this.runCompute(f, rule);
+      if (typeof initVal === 'number') {
+        this.valuesArr[f.id] = initVal;
+        this.valuePresent[f.id] = 1;
+      } else {
+        this.valuesMap.set(f, initVal);
+        this.valuePresent[f.id] = 2;
+      }
 
       visiting.delete(f);
     };
@@ -391,12 +512,15 @@ export class SpinelessRuntime {
    * exists).
    */
   evaluate<T>(field: Field<T>): T {
-    if (!this.values.has(field as Field<unknown>)) {
+    const id = (field as Field<unknown>).id;
+    const kind = id < this.valuePresent.length ? this.valuePresent[id] : 0;
+    if (kind === 0) {
       throw new Error(
         `[spineless-runtime] field "${field.name}" was not computed in init() — it isn't reachable from any root`,
       );
     }
-    return this.values.get(field as Field<unknown>) as T;
+    if (kind === 1) return this.valuesArr[id] as unknown as T;
+    return this.valuesMap.get(field as Field<unknown>) as T;
   }
 
   /**
@@ -406,7 +530,7 @@ export class SpinelessRuntime {
    * this before `markDirty`.
    */
   isTracked(field: Field<unknown>): boolean {
-    return this.omNodes.has(field);
+    return this.omNodesArr[field.id] !== undefined;
   }
 
   /**
@@ -422,7 +546,9 @@ export class SpinelessRuntime {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] markAllDirty called before init()');
     }
-    for (const [field, omNode] of this.omNodes) {
+    for (const field of this.fieldRoster) {
+      const omNode = this.omNodesArr[field.id];
+      if (omNode === undefined) continue; // detached — skip
       this.pq.push(field, omNode);
     }
   }
@@ -439,7 +565,7 @@ export class SpinelessRuntime {
     if (!this.initDone) {
       throw new Error('[spineless-runtime] markDirty called before init()');
     }
-    const om = this.omNodes.get(field);
+    const om = this.omNodesArr[field.id];
     if (om === undefined) {
       throw new Error(
         `[spineless-runtime] field "${field.name}" is not in this runtime — call markDirty only on fields reachable from a root at init`,
@@ -468,17 +594,26 @@ export class SpinelessRuntime {
       const f = this.pq.popMin()!;
       this.stats.recomputeVisited++;
       this.stats.totalVisited++;
-      const rule = this.grammar.get(f)!;
-      const prev = this.values.get(f);
+      const rule = this.rulesArr[f.id]!;
+      const id = f.id;
+      const kind = this.valuePresent[id]!;
+      const prev: unknown = kind === 1 ? this.valuesArr[id] : this.valuesMap.get(f);
       const next = this.runCompute(f, rule);
       if (!Object.is(prev, next)) {
-        this.values.set(f, next);
+        if (typeof next === 'number') {
+          this.valuesArr[id] = next;
+          this.valuePresent[id] = 1;
+          if (kind === 2) this.valuesMap.delete(f);
+        } else {
+          this.valuesMap.set(f, next);
+          this.valuePresent[id] = 2;
+        }
         this.stats.recomputeChanged++;
         changed.push(f);
-        const deps = this.dependents.get(f);
+        const deps = this.dependentsArr[f.id];
         if (deps !== undefined) {
           for (const d of deps) {
-            const om = this.omNodes.get(d)!;
+            const om = this.omNodesArr[d.id]!;
             this.pq.push(d, om);
           }
         }
@@ -488,14 +623,31 @@ export class SpinelessRuntime {
   }
 
   private runCompute<T>(field: Field<T>, rule: FieldRule<T>): T {
-    const declaredDeps = new Set<Field<unknown>>(rule.deps);
+    // Zero-dep fields (leaf inputs, constants) can't read anything —
+    // skip the per-compute Set allocation + validating closure.
+    if (rule.deps.length === 0) {
+      return rule.compute(NEVER_READ);
+    }
+    // Look up the cached declared-deps Set for this rule object.
+    // Build and store on first call; reuse on every subsequent call.
+    // `rebindRule` installs a NEW rule object → WeakMap miss → fresh Set.
+    // No manual invalidation needed.
+    const ruleAsUnknown = rule as FieldRule<unknown>;
+    let declaredDeps = depSetCache.get(ruleAsUnknown);
+    if (declaredDeps === undefined) {
+      declaredDeps = new Set<Field<unknown>>(rule.deps);
+      depSetCache.set(ruleAsUnknown, declaredDeps);
+    }
     const read: ReadFn = <U>(dep: Field<U>): U => {
-      if (!declaredDeps.has(dep as Field<unknown>)) {
+      if (!(declaredDeps as Set<Field<unknown>>).has(dep as Field<unknown>)) {
         throw new Error(
           `[spineless-runtime] rule for "${field.name}" reads "${dep.name}" but did not declare it as a dependency`,
         );
       }
-      return this.values.get(dep as Field<unknown>) as U;
+      const depId = (dep as Field<unknown>).id;
+      const depKind = this.valuePresent[depId]!;
+      if (depKind === 1) return this.valuesArr[depId] as unknown as U;
+      return this.valuesMap.get(dep as Field<unknown>) as U;
     };
     return rule.compute(read);
   }
