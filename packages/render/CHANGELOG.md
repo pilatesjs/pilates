@@ -6,6 +6,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
 
+## [1.0.2] — 2026-05-23
+
+Republished pinned against `@pilates/core@2.0.0` so consumers of
+`@pilates/render` get the phase 15–17 engine speedup (every layout
+scenario 1.4–6.3× faster vs `@pilates/core@1.1.0`). No
+`@pilates/render` public API change.
+
+### Changed
+
+- Pin `@pilates/core` dependency from `1.0.1` to `2.0.0`.
+- `VERSION` constant bumped to match `package.json`.
+
 ## [1.0.1] — 2026-05-11
 
 ### Fixed
