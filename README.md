@@ -182,15 +182,16 @@ input handling, animations, scroll containers, style inheritance.
 ## Performance
 
 <p align="center">
-  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 1.3-11× faster across every benchmark scenario, including hot-relayout and structural mutation" width="100%">
+  <img src="./assets/bench-comparison.svg" alt="Pilates vs WASM Yoga: pure-TS Pilates is 1.7-10× faster across the 9-scenario benchmark suite, including hot-relayout and structural mutation" width="100%">
 </p>
 
-Pure-TypeScript layout, validated cell-for-cell against WASM Yoga,
-**faster than WASM Yoga on every benchmark scenario — including the
-structural-mutation workload (append + remove a row per frame) that
-Yoga historically won on.** Numbers are median latency from
-`pnpm bench` (Node 22, win32-x64; relative positions are the
-interesting signal):
+Pure-TypeScript layout, validated cell-for-cell against WASM Yoga.
+Across the 9 scenarios in our bench suite, the pure-TS engine is
+faster than WASM Yoga on each — including the structural-mutation
+workload (append + remove a row per frame) Yoga led on through
+mid-2026. Numbers are median latency from `pnpm bench` (Node 22,
+win32-x64, ~5s tinybench window with bootstrap CI95; a hand-picked
+suite, not a universal claim — real workloads will differ):
 
 | Scenario | Pilates core | yoga-layout (WASM) | Pilates speedup |
 |---|---:|---:|---:|
@@ -262,13 +263,11 @@ flexbox implementation:
 
 ## Status
 
-`@pilates/core@1.0.0` and `@pilates/render@1.0.0` are released.
-Core algorithm + flex pipeline are feature-complete, validated
-cell-for-cell against WASM Yoga, and faster than Yoga on every
-flex-layout workload (see Performance above) including every
-hot-relayout shape — powered by the Spineless incremental engine.
-The React layer ships mouse, scroll, focus management, typed errors,
-and layout devtools.
+`@pilates/core@2.0.1` is on npm. Core algorithm + flex pipeline are
+feature-complete, validated cell-for-cell against WASM Yoga, and faster
+than Yoga on each of the 9 scenarios in the bench suite (see Performance
+above) — powered by the Spineless incremental engine. The React layer
+ships mouse, scroll, focus management, typed errors, and layout devtools.
 
 ## Contributing
 
