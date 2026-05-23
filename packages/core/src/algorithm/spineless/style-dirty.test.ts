@@ -179,7 +179,13 @@ describe('createStyleDirtier — edge props', () => {
 });
 
 describe('createStyleDirtier — defensive', () => {
-  it('throws for a node not in the grammar', () => {
+  it('is a no-op for a node not in the grammar', () => {
+    // The "node not in the grammar's styleInputs" case used to throw,
+    // but phase 17's fold of default-valued inputs produces legitimate
+    // nodes with no styleInputs entry — so the dirtier now treats
+    // missing entries as no-ops (same as missing fields within an
+    // entry). A truly stale stranger node is also benign because
+    // `runtime.isTracked` would reject any field looked up.
     const { root } = rowOfChildren(2);
     const { rt, styleInputs } = buildRuntime(root);
     const markStyleDirty = createStyleDirtier(rt, styleInputs);
@@ -187,7 +193,7 @@ describe('createStyleDirtier — defensive', () => {
     const stranger = Node.create();
     stranger.setWidth(10);
     stranger.setHeight(10);
-    expect(() => markStyleDirty(stranger, 'width')).toThrow(/no style inputs/);
+    expect(() => markStyleDirty(stranger, 'width')).not.toThrow();
   });
 
   it('throws when an edge prop is called without an edge', () => {
@@ -213,5 +219,24 @@ describe('createStyleDirtier — defensive', () => {
 
     // Padding on a childless leaf changes nothing.
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
+
+  it('is a no-op when the grammar has no entry for the node at all', () => {
+    // Regression: phase 17 folds default-valued style inputs out of
+    // the grammar. For a childless root with all-default style, every
+    // input is folded, so styleInputs has no entry for the node at
+    // all. Mutating a folded prop (e.g. gapColumn = 0) used to throw
+    // 'node has no style inputs in this grammar'. The fuzzer
+    // (runtime-incremental.fuzz, seed 1005304606) reproduced it; the
+    // dirtier now treats missing-entry the same as missing-field.
+    const root = Node.create();
+    const { rt, styleInputs } = buildRuntime(root);
+    const markStyleDirty = createStyleDirtier(rt, styleInputs);
+
+    expect(styleInputs.get(root)).toBeUndefined();
+    root.setGap('column', 0);
+    expect(() => markStyleDirty(root, 'gapColumn')).not.toThrow();
+    root.setMargin(Edge.Left, 0);
+    expect(() => markStyleDirty(root, 'margin', Edge.Left)).not.toThrow();
   });
 });
