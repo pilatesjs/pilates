@@ -568,6 +568,142 @@ npm: https://www.npmjs.com/package/@pilates/core
 - **Lobsters** (https://lobste.rs) — invite-only; if you have an account, HN title + body works.
 - **少数派 sspai.com** — Chinese tool-oriented community; tag fit is weak, can skip.
 
+---
+
+## Post-launch promotion (longer-tail)
+
+After the HN / X / Reddit / 掘金 / V2EX / dev.to surge dies down, these channels carry the announcement into long-tail discovery. Effort is small per submission; total reach is comparable to the launch-day burst over a few weeks.
+
+### Boilerplate pitch (use everywhere)
+
+**Short version** (one-line, for awesome-list entries):
+
+```
+[Pilates](https://github.com/pilatesjs/pilates) - Pure-TypeScript flex layout engine for terminal UIs. Zero runtime deps. Faster than WASM Yoga across the 9-scenario benchmark suite.
+```
+
+**Medium version** (2-3 sentences, for newsletter submissions):
+
+```
+Pilates is a pure-TypeScript flex layout engine for terminal UIs (zero runtime deps, MIT). The 2.0 release: across 9 benchmark scenarios, it's now faster than WASM Yoga (the engine Ink uses) on each — including the structural-mutation workload Yoga led on by ~5× until last week. Repo: https://github.com/pilatesjs/pilates (pnpm bench reproduces in ~5 min).
+```
+
+### GitHub Topics (5 min — do first)
+
+Visit https://github.com/pilatesjs/pilates → click ⚙️ next to **About** in the right sidebar → add these topics:
+
+```
+typescript  terminal-ui  flexbox  layout-engine  cli  tui  react  flex-layout  performance  nodejs
+```
+
+Tagged repos surface in GitHub topic landing pages and search. One-time, permanent.
+
+### Newsletter submissions (~30 min total)
+
+Each accepts repo + short pitch. Use the medium-version boilerplate above.
+
+| Newsletter | Submit at | Notes |
+|---|---|---|
+| **JavaScript Weekly** | https://cooperpress.com/publications/javascript-weekly/ → "Send link" form at bottom | Largest JS newsletter (~150k subs); HN trends often surface here |
+| **Node Weekly** | https://cooperpress.com/publications/node-weekly/ | Same publisher; Node devs ship CLIs |
+| **Frontend Focus** | https://cooperpress.com/publications/frontend-focus/ | Same publisher; broader |
+| **Bytes** | https://bytes.dev/submit (or DM @hellouttabox on X) | Irreverent JS newsletter, perf wins resonate |
+| **TLDR Webdev** | https://tldr.tech/webdev — scroll to footer for submission link | Clean perf headlines do well |
+| **Console.dev** | https://console.dev/submit-tool | Curated dev-tools newsletter; strong fit |
+
+### Awesome-list PRs (~1 hour total — permanent placement)
+
+Each is a single-line PR. Use the short-version boilerplate. Read each list's `CONTRIBUTING.md` first.
+
+| List | Repo | Where to add |
+|---|---|---|
+| **awesome-typescript** | https://github.com/dzharii/awesome-typescript | Libraries / Tools section |
+| **awesome-nodejs** | https://github.com/sindresorhus/awesome-nodejs | Command-line apps / Command-line utilities. Strict rules — read CONTRIBUTING |
+| **awesome-cli-apps** | https://github.com/agarrharr/awesome-cli-apps | Developer tooling section |
+| **awesome-react** | https://github.com/enaqx/awesome-react | For `@pilates/react` only — under reconcilers |
+
+### Directories (~15 min)
+
+- **terminaltrove.com** — submit via their form (link on homepage). Curated TUI directory; strong audience fit.
+- **opensource.builders** — "alternative to" listings. Can list as alternative to Yoga or Ink.
+
+### Direct outreach to ecosystem maintainers (~20 min)
+
+Open courteous GitHub issues or send emails. Tone: heads-up, not ask. Don't ask for adoption.
+
+**Vadim Demedes** (Ink maintainer) — open issue on https://github.com/vadimdemedes/ink/discussions/new or email if you can find one.
+
+Template:
+
+```
+Hi Vadim,
+
+Heads-up that I've published Pilates 2.0 — a pure-TypeScript
+flex layout engine validated cell-for-cell against Yoga across
+33 oracle fixtures. It's positioned as an unbundled alternative
+to Ink+Yoga rather than a replacement for Ink itself.
+
+You might find the structural-mutation results interesting:
+across the 9 scenarios in my bench suite, the pure-TS engine
+runs ahead of WASM Yoga on each (hot-structural is the closest
+at 1.7×).
+
+Not asking for anything — just a courtesy note since the
+project sits in territory you've shaped for years. Repo:
+https://github.com/pilatesjs/pilates
+
+Happy to chat about layout semantics, fuzzer setup, or the
+algorithm changes if it's useful to you.
+
+— Zhijie
+```
+
+**OpenTUI team** — they currently use yoga-layout (per STRATEGY.md). Same shape of message via their GitHub Discussions.
+
+**Yoga / Meta** — lower priority; the project moves slowly and casual outreach won't reach maintainers. Skip unless you have a specific contact.
+
+### Podcasts (slow burn — pitch now, record in 4-8 weeks)
+
+Pitch shape:
+
+```
+Subject: Pure-TS layout engine that ran ahead of WASM Yoga — story pitch
+
+Hey [host],
+
+Did a year-long project on a pure-TypeScript flex layout engine
+for terminal UIs. The 2.0 result: across the 9 scenarios in my
+benchmark suite it runs ahead of WASM Yoga (the engine Ink uses)
+on each, including the structural-mutation workload Yoga led on
+by ~5× until last week.
+
+The story has good beats: a research call about whether to rewrite
+in native code (decided not to), a same-day 2.0.0 → 2.0.1 hotfix
+where the property fuzzer caught a bug analysis missed, and an
+attribute-grammar runtime design worth a deeper dive.
+
+Happy to come on if it fits the show. Repo + numbers:
+https://github.com/pilatesjs/pilates
+
+— Zhijie
+```
+
+| Podcast | Contact |
+|---|---|
+| **JS Party** (Changelog) | `tips@changelog.com` |
+| **Syntax.fm** | DM Wes Bos & Scott Tolinski on X |
+| **Devtools FM** | DM Andrew Lisowski / Justin Bennett |
+| **The Changelog** | `tips@changelog.com` |
+
+### Suggested order
+
+1. **GitHub Topics** (5 min, free, permanent — do first)
+2. **6 newsletter submissions in one sitting** (30 min, copy-paste the pitch)
+3. **terminaltrove + Console.dev** (15 min, forms)
+4. **4 awesome-list PRs** (1 hour spread across a few days as you have time)
+5. **Direct outreach to Vadim + OpenTUI** (20 min, one email each)
+6. **Podcast pitches** (slow burn; pitch now, hear back in 1-2 weeks if interested)
+
 ## 中文渠道发布顺序建议
 
 掘金长文 → V2EX(把短文链接到掘金那篇)→ 知乎(可选)。掘金那篇定位「权威长文」,其他渠道用短帖加一句「详细写在掘金这里」作为引流。
