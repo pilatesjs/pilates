@@ -89,15 +89,7 @@ Two insights did the structural-mutation work.
 2. About half the grammar's input fields only ever held their defaults. Folded them out as constants.
 ```
 
-**Tweet 4** (the Rust call):
-
-```
-I considered porting to Rust + WASM.
-
-Research call: don't. Yoga's edge wasn't speed-of-arithmetic; it was algorithmic. The fix worked in TypeScript. "Pure TS is competitive with native code on this workload" was the actually-interesting result.
-```
-
-**Tweet 5** (validation, including the same-day 2.0.0 → 2.0.1):
+**Tweet 4** (validation, including the same-day 2.0.0 → 2.0.1):
 
 ```
 Validated by 1470 tests, structural-differential fuzzer at 3000 runs, 33 Yoga-oracle fixtures, and byte-identical cached-vs-cold differential mode at 833 runs.
@@ -105,7 +97,7 @@ Validated by 1470 tests, structural-differential fuzzer at 3000 runs, 33 Yoga-or
 The fuzzer found a real bug in 2.0.0 within hours of publishing. 2.0.1 shipped same-day; 2.0.0 deprecated.
 ```
 
-**Tweet 6** (the close):
+**Tweet 5** (the close):
 
 ```
 Public API didn't change. calculateLayout() is byte-identical to 1.x; existing consumers benefit on upgrade.
