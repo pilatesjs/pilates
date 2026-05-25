@@ -986,6 +986,37 @@ function makeEmitter(
         compute: (read) => evalWrapped(read).crossSize,
       } satisfies FieldRule<number>);
       allFields.push({ node, width, height, left, top });
+      // Relative-position offsets — wrap path. Same logic as the non-wrap
+      // path below; parentDirection is in scope (computed before both paths
+      // diverge) and applyReverseMainPos has already run above.
+      if (parent !== null && parentDirection !== null) {
+        const positionStyle = node.style.position;
+        const hasAnyPositionEdge =
+          positionStyle[0] !== undefined ||
+          positionStyle[1] !== undefined ||
+          positionStyle[2] !== undefined ||
+          positionStyle[3] !== undefined;
+        if (hasAnyPositionEdge) {
+          const mainStartIdx = mainStartEdge(parentDirection);
+          const mainEndIdx = mainEndEdge(parentDirection);
+          const crossStartIdx = crossStartEdge(parentDirection);
+          const crossEndIdx = crossEndEdge(parentDirection);
+          applyRelativePositionOffset(
+            grammar,
+            node,
+            mainPosField,
+            crossPosField,
+            positionInput(node, mainStartIdx),
+            positionInput(node, mainEndIdx),
+            positionInput(node, crossStartIdx),
+            positionInput(node, crossEndIdx),
+            mainStartIdx,
+            mainEndIdx,
+            crossStartIdx,
+            crossEndIdx,
+          );
+        }
+      }
       // Recurse into children. Absolute children are out-of-flow:
       // they must NOT advance the in-flow index or the priorSiblings
       // list (the same filtering the non-wrap path does below) —
@@ -1413,6 +1444,40 @@ function makeEmitter(
     }
 
     allFields.push({ node, width, height, left, top });
+
+    // Relative-position offsets (matches classic engine's applyRelativeOffset
+    // and CSS spec). Wraps mainPosField / crossPosField AFTER applyReverseMainPos
+    // so the offset is applied to the final flow position. The hasAnyPositionEdge
+    // short-circuit avoids creating 4 Fields per in-flow node when no offsets
+    // are set — the common case.
+    if (parent !== null && parentDirection !== null) {
+      const positionStyle = node.style.position;
+      const hasAnyPositionEdge =
+        positionStyle[0] !== undefined ||
+        positionStyle[1] !== undefined ||
+        positionStyle[2] !== undefined ||
+        positionStyle[3] !== undefined;
+      if (hasAnyPositionEdge) {
+        const mainStartIdx = mainStartEdge(parentDirection);
+        const mainEndIdx = mainEndEdge(parentDirection);
+        const crossStartIdx = crossStartEdge(parentDirection);
+        const crossEndIdx = crossEndEdge(parentDirection);
+        applyRelativePositionOffset(
+          grammar,
+          node,
+          mainPosField,
+          crossPosField,
+          positionInput(node, mainStartIdx),
+          positionInput(node, mainEndIdx),
+          positionInput(node, crossStartIdx),
+          positionInput(node, crossEndIdx),
+          mainStartIdx,
+          mainEndIdx,
+          crossStartIdx,
+          crossEndIdx,
+        );
+      }
+    }
 
     // Recurse into children. Absolute children are out-of-flow: they
     // get visited (so their own subtree emits rules) but they don't
