@@ -129,6 +129,14 @@ export interface StyleInputs {
    * absolute child (the grammar reads all four edges).
    */
   margin?: Array<Field<number> | undefined>;
+  /**
+   * Per-edge `position` input Fields, indexed `[top, right, bottom,
+   * left]`. Present only for in-flow nodes with `positionType:
+   * relative` that have at least one position edge read; absolute
+   * children read `node.style.position` directly via the
+   * non-grammar path. Entries fold to 0 when an edge is unset.
+   */
+  position?: Array<Field<number> | undefined>;
 }
 
 /**
@@ -553,6 +561,25 @@ function makeEmitter(
       const entry = styleInputEntry(n);
       if (entry.margin === undefined) entry.margin = [];
       entry.margin[edge] = f;
+    }
+    return f;
+  }
+
+  // Register (once) the leaf input Field for one `position` edge of a
+  // node (`edge` is a [top, right, bottom, left] index). Defaults to 0
+  // when that edge is unset. Used only for in-flow relative nodes; the
+  // absolute-positioning path reads `node.style.position` directly.
+  function positionInput(n: Node, edge: number): Field<number> {
+    const f = field<number>(n, `style:position:${edge}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
+    if (!grammar.has(f as Field<unknown>)) {
+      grammar.set(f as Field<unknown>, {
+        deps: [],
+        compute: () => n.style.position[edge] ?? 0,
+      } satisfies FieldRule<number>);
+      const entry = styleInputEntry(n);
+      if (entry.position === undefined) entry.position = [];
+      entry.position[edge] = f;
     }
     return f;
   }
