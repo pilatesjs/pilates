@@ -22,6 +22,7 @@ import Yoga, {
   Wrap as YWrap,
 } from 'yoga-layout';
 import { Edge } from '../src/edge.js';
+import { inspectLayout } from '../src/inspect.js';
 import { Node } from '../src/node.js';
 import type {
   Align,
@@ -381,3 +382,40 @@ export function collectBoxes<T>(byId: Map<string, T>, getBox: (n: T) => Box): Re
   for (const [id, node] of byId) out[id] = getBox(node);
   return out;
 }
+
+/**
+ * Pretty-print a got/expected box map for failure messages. Boxes that
+ * match show `ok`; boxes that diverge show `expected=… got=…` per id.
+ */
+export function formatBoxDiff(
+  label: string,
+  expected: Record<string, Box>,
+  got: Record<string, Box>,
+): string {
+  const lines: string[] = [`── ${label} ──`];
+  const ids = [...new Set([...Object.keys(expected), ...Object.keys(got)])].sort();
+  for (const id of ids) {
+    const e = expected[id];
+    const g = got[id];
+    if (!e) {
+      lines.push(`  ${id}: <no expected>  got=${fmtBox(g!)}`);
+      continue;
+    }
+    if (!g) {
+      lines.push(`  ${id}: expected=${fmtBox(e)}  <no got>`);
+      continue;
+    }
+    if (e.left === g.left && e.top === g.top && e.width === g.width && e.height === g.height) {
+      lines.push(`  ${id}: ok  ${fmtBox(e)}`);
+    } else {
+      lines.push(`  ${id}: expected=${fmtBox(e)}  got=${fmtBox(g)}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function fmtBox(b: Box): string {
+  return `${b.left},${b.top} ${b.width}x${b.height}`;
+}
+
+export { inspectLayout };

@@ -6,6 +6,7 @@ import {
   buildPilates,
   buildYoga,
   collectBoxes,
+  formatBoxDiff,
   loadFixtures,
   pilatesBox,
   yogaBox,
@@ -137,5 +138,22 @@ describe('fixture-loader builders', () => {
     expect(collectBoxes(p.byId, pilatesBox)).toEqual(expected);
     expect(collectBoxes(y.byId, yogaBox)).toEqual(expected);
     y.root.freeRecursive();
+  });
+});
+
+describe('formatBoxDiff', () => {
+  it('marks matching ids ok and divergences as expected→got', () => {
+    const expected = {
+      root: { left: 0, top: 0, width: 10, height: 5 },
+      a: { left: 0, top: 0, width: 5, height: 5 },
+    };
+    const got = {
+      root: { left: 0, top: 0, width: 10, height: 5 },
+      a: { left: 1, top: 0, width: 5, height: 5 },
+    };
+    const out = formatBoxDiff('Pilates', expected, got);
+    expect(out).toContain('Pilates');
+    expect(out).toContain('root: ok');
+    expect(out).toContain('a: expected=0,0 5x5  got=1,0 5x5');
   });
 });
