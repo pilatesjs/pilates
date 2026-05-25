@@ -1,0 +1,28 @@
+{
+  "name": "divergent/overflow-x-suppresses-shrink",
+  "tags": ["overflow", "divergent"],
+  "root": {
+    "id": "root",
+    "style": {
+      "flexDirection": "row",
+      "width": 80,
+      "height": 20,
+      "overflowX": "hidden"
+    },
+    "children": [
+      { "id": "c1", "style": { "flexShrink": 1, "flexBasis": 60 } },
+      { "id": "c2", "style": { "flexShrink": 1, "flexBasis": 60 } }
+    ]
+  },
+  "divergenceReason": "Pilates checks overflowX/overflowY per-axis to suppress flex-shrink on the overflow axis. When overflowX='hidden', Pilates suppresses main-axis shrink so children retain their flexBasis (60 each, total 120 overflowing the 80px container). Yoga has no per-axis overflow API; the fixture loader intentionally leaves Yoga's overflow at 'visible', so Yoga applies flex-shrink normally and children shrink to 40 each.",
+  "expectedPilates": {
+    "root": { "left": 0, "top": 0, "width": 80, "height": 20 },
+    "c1": { "left": 0, "top": 0, "width": 60, "height": 20 },
+    "c2": { "left": 60, "top": 0, "width": 60, "height": 20 }
+  },
+  "expectedYoga": {
+    "root": { "left": 0, "top": 0, "width": 80, "height": 20 },
+    "c1": { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "c2": { "left": 40, "top": 0, "width": 40, "height": 20 }
+  }
+}

@@ -261,10 +261,7 @@ export function loadFixtures(dir: string = DEFAULT_FIXTURES_DIR): Fixture[] {
   return out;
 }
 
-function parseAvailable(
-  v: unknown,
-  file: string,
-): { width?: number; height?: number } | undefined {
+function parseAvailable(v: unknown, file: string): { width?: number; height?: number } | undefined {
   if (v === undefined) return undefined;
   if (typeof v !== 'object' || v === null || Array.isArray(v)) {
     throw new Error(`${file}: "available" must be an object if present`);
