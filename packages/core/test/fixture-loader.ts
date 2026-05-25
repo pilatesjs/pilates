@@ -43,7 +43,8 @@ export type FixtureTag =
   | 'aspect-ratio'
   | 'gap'
   | 'overflow'
-  | 'position-edges';
+  | 'position-edges'
+  | 'divergent';
 
 const TAG_VALUES: readonly FixtureTag[] = [
   'flex-direction',
@@ -56,6 +57,7 @@ const TAG_VALUES: readonly FixtureTag[] = [
   'gap',
   'overflow',
   'position-edges',
+  'divergent',
 ];
 
 export interface SpecStyle {
