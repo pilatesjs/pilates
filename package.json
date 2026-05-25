@@ -19,6 +19,7 @@
     "test:unit": "vitest run --exclude 'e2e/**'",
     "test:e2e": "vitest run e2e/",
     "test:differential": "cross-env PILATES_DIFFERENTIAL_LAYOUT=1 vitest run packages/core",
+    "test:memory": "cross-env PILATES_MEMORY_TESTS=1 NODE_OPTIONS=--expose-gc vitest run packages/core/test/memory.stability.test.ts",
     "lint": "biome check .",
     "format": "biome format --write .",
     "typecheck": "pnpm -r --filter \"./packages/*\" run typecheck",

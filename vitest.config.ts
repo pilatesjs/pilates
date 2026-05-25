@@ -31,11 +31,15 @@ export default defineConfig({
         functions: 85,
         branches: 75,
         statements: 85,
-        'packages/core/src/**': { lines: 90, functions: 90, branches: 85, statements: 90 },
-        'packages/diff/src/**': { lines: 95, functions: 90, branches: 90, statements: 95 },
-        'packages/render/src/**': { lines: 80, functions: 80, branches: 65, statements: 80 },
-        'packages/react/src/**': { lines: 78, functions: 75, branches: 65, statements: 78 },
-        'packages/widgets/src/**': { lines: 90, functions: 85, branches: 82, statements: 90 },
+        // Per-package thresholds set 2 points below the current actual.
+        // This locks in the coverage gains from the public-API tests
+        // added in May 2026; a future regression that drops a package
+        // below its floor fails CI. Bump again as coverage climbs.
+        'packages/core/src/**': { lines: 95, functions: 96, branches: 93, statements: 95 },
+        'packages/diff/src/**': { lines: 98, functions: 98, branches: 95, statements: 98 },
+        'packages/render/src/**': { lines: 90, functions: 93, branches: 82, statements: 90 },
+        'packages/react/src/**': { lines: 85, functions: 85, branches: 76, statements: 85 },
+        'packages/widgets/src/**': { lines: 90, functions: 97, branches: 86, statements: 90 },
       },
     },
   },
