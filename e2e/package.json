@@ -6,10 +6,10 @@
   "dependencies": {
     "@pilates/react": "workspace:*",
     "@pilates/widgets": "workspace:*",
-    "react": "^19.0.0"
+    "react": "^19.2.6"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.15",
     "strip-ansi": "^7.2.0"
   }
 }
