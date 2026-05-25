@@ -1,0 +1,17 @@
+{
+  "name": "align-items/stretch-row",
+  "tags": ["align-items"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "alignItems": "stretch", "width": 40, "height": 10 },
+    "children": [
+      { "id": "a", "style": { "width": 10 } },
+      { "id": "b", "style": { "width": 10 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 10 },
+    "a": { "left": 0, "top": 0, "width": 10, "height": 10 },
+    "b": { "left": 10, "top": 0, "width": 10, "height": 10 }
+  }
+}

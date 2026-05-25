@@ -1,0 +1,17 @@
+{
+  "name": "align-self/center-overrides-flex-end",
+  "tags": ["align-self"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "alignItems": "flex-end", "width": 40, "height": 10 },
+    "children": [
+      { "id": "a", "style": { "width": 10, "height": 4 } },
+      { "id": "b", "style": { "width": 10, "height": 4, "alignSelf": "center" } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 10 },
+    "a": { "left": 0, "top": 6, "width": 10, "height": 4 },
+    "b": { "left": 10, "top": 3, "width": 10, "height": 4 }
+  }
+}

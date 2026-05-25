@@ -1,0 +1,17 @@
+{
+  "name": "align-items/stretch-column",
+  "tags": ["align-items"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "column", "alignItems": "stretch", "width": 20, "height": 30 },
+    "children": [
+      { "id": "a", "style": { "height": 5 } },
+      { "id": "b", "style": { "height": 5 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 20, "height": 30 },
+    "a": { "left": 0, "top": 0, "width": 20, "height": 5 },
+    "b": { "left": 0, "top": 5, "width": 20, "height": 5 }
+  }
+}
