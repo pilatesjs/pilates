@@ -8,7 +8,7 @@
  * yoga-oracle.test.ts (which we intentionally duplicate rather than
  * import — that test file's helpers stay inline next to its TS fixtures).
  */
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Yoga, {
@@ -174,11 +174,7 @@ export function loadFixtures(dir: string = DEFAULT_FIXTURES_DIR): Fixture[] {
     if (typeof raw.root !== 'object' || raw.root === null || Array.isArray(raw.root)) {
       throw new Error(`${file}: "root" must be an object`);
     }
-    if (
-      typeof raw.expected !== 'object' ||
-      raw.expected === null ||
-      Array.isArray(raw.expected)
-    ) {
+    if (typeof raw.expected !== 'object' || raw.expected === null || Array.isArray(raw.expected)) {
       throw new Error(`${file}: "expected" must be an object`);
     }
     const tags = validateTags(raw.tags, file);

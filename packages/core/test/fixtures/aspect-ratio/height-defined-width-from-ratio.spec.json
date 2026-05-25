@@ -4,12 +4,10 @@
   "root": {
     "id": "root",
     "style": { "flexDirection": "row", "alignItems": "flex-start", "width": 40, "height": 20 },
-    "children": [
-      { "id": "child", "style": { "height": 10, "aspectRatio": 2 } }
-    ]
+    "children": [{ "id": "child", "style": { "height": 10, "aspectRatio": 2 } }]
   },
   "expected": {
-    "root":  { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "root": { "left": 0, "top": 0, "width": 40, "height": 20 },
     "child": { "left": 0, "top": 0, "width": 20, "height": 10 }
   }
 }

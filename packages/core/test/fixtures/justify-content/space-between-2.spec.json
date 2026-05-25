@@ -3,11 +3,13 @@
   "tags": ["justify-content"],
   "root": {
     "id": "root",
-    "style": { "flexDirection": "row", "justifyContent": "space-between", "width": 60, "height": 5 },
-    "children": [
-      { "id": "a", "style": { "width": 10 } },
-      { "id": "b", "style": { "width": 10 } }
-    ]
+    "style": {
+      "flexDirection": "row",
+      "justifyContent": "space-between",
+      "width": 60,
+      "height": 5
+    },
+    "children": [{ "id": "a", "style": { "width": 10 } }, { "id": "b", "style": { "width": 10 } }]
   },
   "expected": {
     "root": { "left": 0, "top": 0, "width": 60, "height": 5 },

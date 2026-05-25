@@ -10,9 +10,7 @@
       "paddingTop": 3,
       "paddingBottom": 1
     },
-    "children": [
-      { "id": "kid", "style": { "width": 1, "height": 4 } }
-    ]
+    "children": [{ "id": "kid", "style": { "width": 1, "height": 4 } }]
   },
   "expected": {
     "root": { "left": 0, "top": 0, "width": 10, "height": 20 },

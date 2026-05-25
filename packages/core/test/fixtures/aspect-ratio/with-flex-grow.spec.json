@@ -11,7 +11,7 @@
   },
   "expected": {
     "root": { "left": 0, "top": 0, "width": 60, "height": 20 },
-    "a":    { "left": 0, "top": 0, "width": 10, "height": 10 },
-    "b":    { "left": 10, "top": 0, "width": 20, "height": 10 }
+    "a": { "left": 0, "top": 0, "width": 10, "height": 10 },
+    "b": { "left": 10, "top": 0, "width": 20, "height": 10 }
   }
 }

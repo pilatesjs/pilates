@@ -4,10 +4,7 @@
   "root": {
     "id": "root",
     "style": { "flexDirection": "column", "justifyContent": "center", "width": 20, "height": 30 },
-    "children": [
-      { "id": "a", "style": { "height": 5 } },
-      { "id": "b", "style": { "height": 5 } }
-    ]
+    "children": [{ "id": "a", "style": { "height": 5 } }, { "id": "b", "style": { "height": 5 } }]
   },
   "expected": {
     "root": { "left": 0, "top": 0, "width": 20, "height": 30 },

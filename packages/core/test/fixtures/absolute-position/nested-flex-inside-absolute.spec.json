@@ -16,18 +16,15 @@
           "height": 10,
           "flexDirection": "row"
         },
-        "children": [
-          { "id": "k1", "style": { "flex": 1 } },
-          { "id": "k2", "style": { "flex": 1 } }
-        ]
+        "children": [{ "id": "k1", "style": { "flex": 1 } }, { "id": "k2", "style": { "flex": 1 } }]
       }
     ]
   },
   "expected": {
-    "root": { "left": 0,  "top": 0, "width": 80, "height": 24 },
-    "sib":  { "left": 0,  "top": 0, "width": 80, "height": 24 },
-    "abs":  { "left": 10, "top": 5, "width": 40, "height": 10 },
-    "k1":   { "left": 0,  "top": 0, "width": 20, "height": 10 },
-    "k2":   { "left": 20, "top": 0, "width": 20, "height": 10 }
+    "root": { "left": 0, "top": 0, "width": 80, "height": 24 },
+    "sib": { "left": 0, "top": 0, "width": 80, "height": 24 },
+    "abs": { "left": 10, "top": 5, "width": 40, "height": 10 },
+    "k1": { "left": 0, "top": 0, "width": 20, "height": 10 },
+    "k2": { "left": 20, "top": 0, "width": 20, "height": 10 }
   }
 }

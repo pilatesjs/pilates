@@ -19,6 +19,6 @@
   },
   "expected": {
     "root": { "left": 0, "top": 0, "width": 40, "height": 20 },
-    "abs":  { "left": 2, "top": 15, "width": 8, "height": 4 }
+    "abs": { "left": 2, "top": 15, "width": 8, "height": 4 }
   }
 }

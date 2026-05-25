@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -110,7 +110,7 @@ describe('fixture-loader validation', () => {
       expected: { r: { left: 0, top: 0, width: 0, height: 0 } },
     });
     const fx = loadFixtures(dir);
-    expect(fx.map(f => f.name)).toEqual(['flex-direction/a', 'gap/one']);
+    expect(fx.map((f) => f.name)).toEqual(['flex-direction/a', 'gap/one']);
   });
 });
 

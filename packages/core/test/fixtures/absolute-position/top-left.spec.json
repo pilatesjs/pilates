@@ -20,7 +20,7 @@
   },
   "expected": {
     "root": { "left": 0, "top": 0, "width": 40, "height": 20 },
-    "sib":  { "left": 0, "top": 0, "width": 40, "height": 20 },
-    "abs":  { "left": 3, "top": 2, "width": 10, "height": 5 }
+    "sib": { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "abs": { "left": 3, "top": 2, "width": 10, "height": 5 }
   }
 }
