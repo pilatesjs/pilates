@@ -1,0 +1,15 @@
+{
+  "name": "overflow/scroll",
+  "tags": ["overflow"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 20, "height": 5, "overflow": "scroll" },
+    "children": [
+      { "id": "child", "style": { "width": 40, "height": 5 } }
+    ]
+  },
+  "expected": {
+    "root":  { "left": 0, "top": 0, "width": 20, "height": 5 },
+    "child": { "left": 0, "top": 0, "width": 40, "height": 5 }
+  }
+}
