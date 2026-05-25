@@ -1,5 +1,5 @@
 {
-  "name": "divergent/overflow-x-suppresses-shrink",
+  "name": "overflow/overflow-x-suppresses-shrink",
   "tags": ["overflow", "divergent"],
   "root": {
     "id": "root",
