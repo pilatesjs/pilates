@@ -1,0 +1,25 @@
+{
+  "name": "gap/gap-with-justify-space-between",
+  "tags": ["gap"],
+  "root": {
+    "id": "root",
+    "style": {
+      "flexDirection": "row",
+      "justifyContent": "space-between",
+      "gapColumn": 4,
+      "width": 60,
+      "height": 5
+    },
+    "children": [
+      { "id": "a", "style": { "width": 10, "height": 5 } },
+      { "id": "b", "style": { "width": 10, "height": 5 } },
+      { "id": "c", "style": { "width": 10, "height": 5 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 60, "height": 5 },
+    "a": { "left": 0, "top": 0, "width": 10, "height": 5 },
+    "b": { "left": 25, "top": 0, "width": 10, "height": 5 },
+    "c": { "left": 50, "top": 0, "width": 10, "height": 5 }
+  }
+}

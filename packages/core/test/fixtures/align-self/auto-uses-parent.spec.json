@@ -1,0 +1,17 @@
+{
+  "name": "align-self/auto-uses-parent",
+  "tags": ["align-self"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "alignItems": "center", "width": 40, "height": 10 },
+    "children": [
+      { "id": "a", "style": { "width": 10, "height": 4, "alignSelf": "auto" } },
+      { "id": "b", "style": { "width": 10, "height": 4 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 10 },
+    "a": { "left": 0, "top": 3, "width": 10, "height": 4 },
+    "b": { "left": 10, "top": 3, "width": 10, "height": 4 }
+  }
+}

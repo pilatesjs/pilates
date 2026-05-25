@@ -1,0 +1,26 @@
+{
+  "name": "flex-wrap/wrap-with-gap",
+  "tags": ["flex-wrap"],
+  "root": {
+    "id": "root",
+    "style": {
+      "flexDirection": "row",
+      "flexWrap": "wrap",
+      "gapColumn": 2,
+      "gapRow": 1,
+      "width": 30,
+      "height": 15
+    },
+    "children": [
+      { "id": "a", "style": { "width": 12, "height": 5 } },
+      { "id": "b", "style": { "width": 12, "height": 5 } },
+      { "id": "c", "style": { "width": 12, "height": 5 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 30, "height": 15 },
+    "a": { "left": 0, "top": 0, "width": 12, "height": 5 },
+    "b": { "left": 14, "top": 0, "width": 12, "height": 5 },
+    "c": { "left": 0, "top": 6, "width": 12, "height": 5 }
+  }
+}

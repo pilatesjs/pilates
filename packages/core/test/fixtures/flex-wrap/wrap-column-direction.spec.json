@@ -1,0 +1,19 @@
+{
+  "name": "flex-wrap/wrap-column-direction",
+  "tags": ["flex-wrap"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "column", "flexWrap": "wrap", "width": 30, "height": 10 },
+    "children": [
+      { "id": "a", "style": { "width": 15, "height": 5 } },
+      { "id": "b", "style": { "width": 15, "height": 5 } },
+      { "id": "c", "style": { "width": 15, "height": 5 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 30, "height": 10 },
+    "a": { "left": 0, "top": 0, "width": 15, "height": 5 },
+    "b": { "left": 0, "top": 5, "width": 15, "height": 5 },
+    "c": { "left": 15, "top": 0, "width": 15, "height": 5 }
+  }
+}

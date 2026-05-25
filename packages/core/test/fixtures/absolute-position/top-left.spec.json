@@ -1,0 +1,26 @@
+{
+  "name": "absolute-position/top-left",
+  "tags": ["absolute-position"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 40, "height": 20 },
+    "children": [
+      { "id": "sib", "style": { "flex": 1 } },
+      {
+        "id": "abs",
+        "style": {
+          "positionType": "absolute",
+          "positionTop": 2,
+          "positionLeft": 3,
+          "width": 10,
+          "height": 5
+        }
+      }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "sib": { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "abs": { "left": 3, "top": 2, "width": 10, "height": 5 }
+  }
+}

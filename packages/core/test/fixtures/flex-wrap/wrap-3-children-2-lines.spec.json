@@ -1,0 +1,19 @@
+{
+  "name": "flex-wrap/wrap-3-children-2-lines",
+  "tags": ["flex-wrap"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "flexWrap": "wrap", "width": 40, "height": 15 },
+    "children": [
+      { "id": "a", "style": { "width": 15, "height": 5 } },
+      { "id": "b", "style": { "width": 15, "height": 5 } },
+      { "id": "c", "style": { "width": 15, "height": 5 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 15 },
+    "a": { "left": 0, "top": 0, "width": 15, "height": 5 },
+    "b": { "left": 15, "top": 0, "width": 15, "height": 5 },
+    "c": { "left": 0, "top": 5, "width": 15, "height": 5 }
+  }
+}

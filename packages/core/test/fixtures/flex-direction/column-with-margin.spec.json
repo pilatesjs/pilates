@@ -1,0 +1,18 @@
+{
+  "name": "flex-direction/column-with-margin",
+  "tags": ["flex-direction"],
+  "available": { "width": 20, "height": 30 },
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "column", "width": 20, "height": 30 },
+    "children": [
+      { "id": "a", "style": { "height": 10, "marginBottom": 3 } },
+      { "id": "b", "style": { "height": 8, "marginTop": 2 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 20, "height": 30 },
+    "a": { "left": 0, "top": 0, "width": 20, "height": 10 },
+    "b": { "left": 0, "top": 15, "width": 20, "height": 8 }
+  }
+}

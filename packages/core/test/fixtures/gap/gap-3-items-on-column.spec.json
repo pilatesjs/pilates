@@ -1,0 +1,19 @@
+{
+  "name": "gap/gap-3-items-on-column",
+  "tags": ["gap"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "column", "gapRow": 2, "width": 20, "height": 30 },
+    "children": [
+      { "id": "a", "style": { "width": 20, "height": 8 } },
+      { "id": "b", "style": { "width": 20, "height": 8 } },
+      { "id": "c", "style": { "width": 20, "height": 8 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 20, "height": 30 },
+    "a": { "left": 0, "top": 0, "width": 20, "height": 8 },
+    "b": { "left": 0, "top": 10, "width": 20, "height": 8 },
+    "c": { "left": 0, "top": 20, "width": 20, "height": 8 }
+  }
+}

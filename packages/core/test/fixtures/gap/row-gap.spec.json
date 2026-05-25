@@ -1,0 +1,17 @@
+{
+  "name": "gap/row-gap",
+  "tags": ["gap"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "gapColumn": 4, "width": 40, "height": 5 },
+    "children": [
+      { "id": "a", "style": { "width": 10, "height": 5 } },
+      { "id": "b", "style": { "width": 10, "height": 5 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 5 },
+    "a": { "left": 0, "top": 0, "width": 10, "height": 5 },
+    "b": { "left": 14, "top": 0, "width": 10, "height": 5 }
+  }
+}
