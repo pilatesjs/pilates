@@ -2,9 +2,15 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildPilates, buildYoga, collectBoxes, pilatesBox, yogaBox } from './fixture-loader.js';
+import {
+  buildPilates,
+  buildYoga,
+  collectBoxes,
+  loadFixtures,
+  pilatesBox,
+  yogaBox,
+} from './fixture-loader.js';
 import type { SpecNode } from './fixture-loader.js';
-import { loadFixtures } from './fixture-loader.js';
 
 describe('fixture-loader validation', () => {
   let dir: string;
