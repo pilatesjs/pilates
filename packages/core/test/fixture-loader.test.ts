@@ -2,6 +2,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { buildPilates, buildYoga, collectBoxes, pilatesBox, yogaBox } from './fixture-loader.js';
+import type { SpecNode } from './fixture-loader.js';
 import { loadFixtures } from './fixture-loader.js';
 
 describe('fixture-loader validation', () => {
@@ -102,5 +104,32 @@ describe('fixture-loader validation', () => {
     });
     const fx = loadFixtures(dir);
     expect(fx.map(f => f.name)).toEqual(['flex-direction/a', 'gap/one']);
+  });
+});
+
+describe('fixture-loader builders', () => {
+  it('builds equivalent Pilates and Yoga trees from a spec', () => {
+    const spec: SpecNode = {
+      id: 'root',
+      style: { flexDirection: 'row', width: 60, height: 5, justifyContent: 'space-between' },
+      children: [
+        { id: 'a', style: { width: 10 } },
+        { id: 'b', style: { width: 10 } },
+        { id: 'c', style: { width: 10 } },
+      ],
+    };
+    const p = buildPilates(spec);
+    p.root.calculateLayout();
+    const y = buildYoga(spec);
+    y.root.calculateLayout(undefined, undefined);
+    const expected = {
+      root: { left: 0, top: 0, width: 60, height: 5 },
+      a: { left: 0, top: 0, width: 10, height: 5 },
+      b: { left: 25, top: 0, width: 10, height: 5 },
+      c: { left: 50, top: 0, width: 10, height: 5 },
+    };
+    expect(collectBoxes(p.byId, pilatesBox)).toEqual(expected);
+    expect(collectBoxes(y.byId, yogaBox)).toEqual(expected);
+    y.root.freeRecursive();
   });
 });
