@@ -151,20 +151,40 @@ function collectIds(node: SpecNode, into: Set<string>, sourcePath: string): void
 export function loadFixtures(dir: string = DEFAULT_FIXTURES_DIR): Fixture[] {
   const out: Fixture[] = [];
   for (const file of listSpecFiles(dir)) {
-    const raw = JSON.parse(readFileSync(file, 'utf8')) as Partial<Fixture>;
+    const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`${file}: top-level value must be a JSON object`);
+    }
+    const raw = parsed as Record<string, unknown>;
+
     if (typeof raw.name !== 'string') throw new Error(`${file}: missing "name"`);
-    if (!raw.root) throw new Error(`${file}: missing "root"`);
-    if (!raw.expected) throw new Error(`${file}: missing "expected"`);
+    if (typeof raw.root !== 'object' || raw.root === null || Array.isArray(raw.root)) {
+      throw new Error(`${file}: "root" must be an object`);
+    }
+    if (
+      typeof raw.expected !== 'object' ||
+      raw.expected === null ||
+      Array.isArray(raw.expected)
+    ) {
+      throw new Error(`${file}: "expected" must be an object`);
+    }
     const tags = validateTags(raw.tags, file);
 
+    const root = raw.root as SpecNode;
+    const expected = raw.expected as Record<string, Box>;
+    const available =
+      typeof raw.available === 'object' && raw.available !== null && !Array.isArray(raw.available)
+        ? (raw.available as Fixture['available'])
+        : undefined;
+
     const ids = new Set<string>();
-    collectIds(raw.root, ids, file);
+    collectIds(root, ids, file);
     for (const id of ids) {
-      if (!(id in raw.expected)) {
+      if (!(id in expected)) {
         throw new Error(`${file}: id ${JSON.stringify(id)} in tree has no expected box`);
       }
     }
-    for (const id of Object.keys(raw.expected)) {
+    for (const id of Object.keys(expected)) {
       if (!ids.has(id)) {
         throw new Error(`${file}: expected id ${JSON.stringify(id)} not in tree`);
       }
@@ -173,9 +193,9 @@ export function loadFixtures(dir: string = DEFAULT_FIXTURES_DIR): Fixture[] {
     out.push({
       name: raw.name,
       tags,
-      available: raw.available,
-      root: raw.root,
-      expected: raw.expected,
+      ...(available !== undefined ? { available } : {}),
+      root,
+      expected,
       sourcePath: file,
     });
   }
