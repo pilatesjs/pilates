@@ -9,6 +9,8 @@ the fixture; file an issue tracking the divergence instead).
 
 ## position-edges — relative position offsets (Pilates missing feature)
 
+**Tracking issue**: [#150](https://github.com/pilatesjs/pilates/issues/150)
+
 **Root cause**: Pilates does not apply `position` edge offsets for
 `positionType: relative` nodes. Yoga 3.x does honor them (relative offsets
 shift the node's painted position without affecting the flow of siblings).
