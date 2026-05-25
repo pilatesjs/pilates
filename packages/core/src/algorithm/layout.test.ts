@@ -484,3 +484,46 @@ describe('layout — dirty bit', () => {
     expect(child.isDirty()).toBe(false);
   });
 });
+
+describe('relative-position offsets', () => {
+  it('do not displace siblings', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setWidth(40);
+    root.setHeight(10);
+
+    const a = Node.create();
+    a.setWidth(10);
+    a.setHeight(5);
+    a.setPosition(Edge.Left, 5);
+
+    const b = Node.create();
+    b.setWidth(10);
+    b.setHeight(5);
+
+    root.insertChild(a, 0);
+    root.insertChild(b, 1);
+    root.calculateLayout();
+
+    expect(a.getComputedLayout()).toMatchObject({ left: 5, top: 0, width: 10, height: 5 });
+    expect(b.getComputedLayout()).toMatchObject({ left: 10, top: 0, width: 10, height: 5 });
+  });
+
+  it('positionTop wins over positionBottom when both set', () => {
+    const root = Node.create();
+    root.setFlexDirection('column');
+    root.setWidth(10);
+    root.setHeight(20);
+
+    const a = Node.create();
+    a.setWidth(10);
+    a.setHeight(5);
+    a.setPosition(Edge.Top, 3);
+    a.setPosition(Edge.Bottom, 2);
+
+    root.insertChild(a, 0);
+    root.calculateLayout();
+
+    expect(a.getComputedLayout()).toMatchObject({ top: 3 });
+  });
+});
