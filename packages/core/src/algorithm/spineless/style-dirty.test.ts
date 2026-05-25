@@ -176,6 +176,22 @@ describe('createStyleDirtier — edge props', () => {
 
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
   });
+
+  it('drives a position-edge mutation on a relative child', () => {
+    // Pre-set a non-zero position edge so buildFlexGrammar emits the
+    // leaf input Field (the grammar only emits positionInput when the
+    // style has at least one defined edge at grammar-build time).
+    const { root, children } = rowOfChildren(3);
+    children[1]!.setPosition(Edge.Left, 5);
+    const { rt, allFields, styleInputs } = buildRuntime(root);
+    const markStyleDirty = createStyleDirtier(rt, styleInputs);
+
+    children[1]!.setPosition(Edge.Left, 12);
+    markStyleDirty(children[1]!, 'position', Edge.Left);
+    rt.recompute();
+
+    expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
+  });
 });
 
 describe('createStyleDirtier — defensive', () => {
