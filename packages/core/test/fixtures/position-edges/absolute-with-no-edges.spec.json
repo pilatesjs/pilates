@@ -1,0 +1,22 @@
+{
+  "name": "position-edges/absolute-with-no-edges",
+  "tags": ["position-edges"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 40, "height": 20 },
+    "children": [
+      {
+        "id": "abs",
+        "style": {
+          "positionType": "absolute",
+          "width": 10,
+          "height": 5
+        }
+      }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "abs":  { "left": 0, "top": 0, "width": 10, "height": 5 }
+  }
+}

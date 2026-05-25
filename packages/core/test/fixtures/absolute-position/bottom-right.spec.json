@@ -1,0 +1,24 @@
+{
+  "name": "absolute-position/bottom-right",
+  "tags": ["absolute-position"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 40, "height": 20 },
+    "children": [
+      {
+        "id": "abs",
+        "style": {
+          "positionType": "absolute",
+          "positionBottom": 0,
+          "positionRight": 0,
+          "width": 5,
+          "height": 5
+        }
+      }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "abs":  { "left": 35, "top": 15, "width": 5, "height": 5 }
+  }
+}
