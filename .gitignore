@@ -14,6 +14,10 @@ docs/api/
 # Bench history JSON — machine-local; can be large (raw samples)
 bench/history/
 
+# Ad-hoc command output captures at repo root (e.g. `pnpm test > test-out.txt`)
+/*-out.txt
+/test-*.txt
+
 # Python build artefacts (placeholder/pilates-py/)
 __pycache__/
 *.egg-info/
