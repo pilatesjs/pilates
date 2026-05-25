@@ -1,0 +1,22 @@
+{
+  "name": "aspect-ratio/nested-in-flex-row",
+  "tags": ["aspect-ratio"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 80, "height": 30 },
+    "children": [
+      {
+        "id": "sub",
+        "style": { "flexDirection": "row", "alignItems": "flex-start", "width": 40, "height": 15 },
+        "children": [
+          { "id": "kid", "style": { "height": 12, "aspectRatio": 1.5 } }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 80, "height": 30 },
+    "sub":  { "left": 0, "top": 0, "width": 40, "height": 15 },
+    "kid":  { "left": 0, "top": 0, "width": 18, "height": 12 }
+  }
+}

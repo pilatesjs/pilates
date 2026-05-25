@@ -1,0 +1,15 @@
+{
+  "name": "aspect-ratio/width-defined-height-from-ratio",
+  "tags": ["aspect-ratio"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 30, "height": 20 },
+    "children": [
+      { "id": "child", "style": { "width": 20, "aspectRatio": 2 } }
+    ]
+  },
+  "expected": {
+    "root":  { "left": 0, "top": 0, "width": 30, "height": 20 },
+    "child": { "left": 0, "top": 0, "width": 20, "height": 10 }
+  }
+}
