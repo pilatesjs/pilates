@@ -1,0 +1,21 @@
+{
+  "name": "flex-direction/column-reverse-asymmetric-padding",
+  "tags": ["flex-direction"],
+  "root": {
+    "id": "root",
+    "style": {
+      "flexDirection": "column-reverse",
+      "width": 10,
+      "height": 20,
+      "paddingTop": 3,
+      "paddingBottom": 1
+    },
+    "children": [
+      { "id": "kid", "style": { "width": 1, "height": 4 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 10, "height": 20 },
+    "kid": { "left": 0, "top": 15, "width": 1, "height": 4 }
+  }
+}

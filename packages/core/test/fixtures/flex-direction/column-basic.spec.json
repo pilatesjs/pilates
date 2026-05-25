@@ -1,0 +1,20 @@
+{
+  "name": "flex-direction/column-basic",
+  "tags": ["flex-direction"],
+  "available": { "width": 20, "height": 30 },
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "column", "width": 20, "height": 30 },
+    "children": [
+      { "id": "a", "style": { "height": 10 } },
+      { "id": "b", "style": { "height": 8 } },
+      { "id": "c", "style": { "height": 12 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 20, "height": 30 },
+    "a": { "left": 0, "top": 0, "width": 20, "height": 10 },
+    "b": { "left": 0, "top": 10, "width": 20, "height": 8 },
+    "c": { "left": 0, "top": 18, "width": 20, "height": 12 }
+  }
+}
