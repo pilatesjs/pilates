@@ -51,7 +51,7 @@ export type ScalarStyleProp =
   | 'maxHeight';
 
 /** Style props addressed per `[top, right, bottom, left]` edge. */
-export type EdgeStyleProp = 'padding' | 'margin';
+export type EdgeStyleProp = 'padding' | 'margin' | 'position';
 
 /**
  * A bound `(node, prop[, edge])` callback that marks the input
@@ -88,7 +88,7 @@ export function createStyleDirtier(
     const entry = styleInputs.get(node);
 
     let f: Field<number> | undefined;
-    if (prop === 'padding' || prop === 'margin') {
+    if (prop === 'padding' || prop === 'margin' || prop === 'position') {
       if (edge === undefined) {
         throw new Error(`[spineless] markStyleDirty: '${prop}' requires an edge index`);
       }

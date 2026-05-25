@@ -1,0 +1,18 @@
+{
+  "name": "position-edges/relative-offset-bottom",
+  "tags": ["position-edges"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 40, "height": 10 },
+    "children": [
+      {
+        "id": "kid",
+        "style": { "width": 10, "height": 5, "positionBottom": 2 }
+      }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 10 },
+    "kid": { "left": 0, "top": -2, "width": 10, "height": 5 }
+  }
+}

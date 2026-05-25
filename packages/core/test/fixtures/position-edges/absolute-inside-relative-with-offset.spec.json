@@ -1,0 +1,31 @@
+{
+  "name": "position-edges/absolute-inside-relative-with-offset",
+  "tags": ["position-edges", "absolute-position"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 40, "height": 20 },
+    "children": [
+      {
+        "id": "parent",
+        "style": { "flexDirection": "row", "width": 20, "height": 10, "positionLeft": 5 },
+        "children": [
+          {
+            "id": "abs",
+            "style": {
+              "positionType": "absolute",
+              "positionTop": 1,
+              "positionLeft": 2,
+              "width": 4,
+              "height": 3
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 20 },
+    "parent": { "left": 5, "top": 0, "width": 20, "height": 10 },
+    "abs": { "left": 2, "top": 1, "width": 4, "height": 3 }
+  }
+}

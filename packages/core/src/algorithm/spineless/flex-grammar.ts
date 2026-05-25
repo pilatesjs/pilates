@@ -129,6 +129,14 @@ export interface StyleInputs {
    * absolute child (the grammar reads all four edges).
    */
   margin?: Array<Field<number> | undefined>;
+  /**
+   * Per-edge `position` input Fields, indexed `[top, right, bottom,
+   * left]`. Present only for in-flow nodes with `positionType:
+   * relative` that have at least one position edge read; absolute
+   * children read `node.style.position` directly via the
+   * non-grammar path. Entries fold to 0 when an edge is unset.
+   */
+  position?: Array<Field<number> | undefined>;
 }
 
 /**
@@ -557,6 +565,25 @@ function makeEmitter(
     return f;
   }
 
+  // Register (once) the leaf input Field for one `position` edge of a
+  // node (`edge` is a [top, right, bottom, left] index). Defaults to 0
+  // when that edge is unset. Used only for in-flow relative nodes; the
+  // absolute-positioning path reads `node.style.position` directly.
+  function positionInput(n: Node, edge: number): Field<number> {
+    const f = field<number>(n, `style:position:${edge}`);
+    if (boundary?.has(f as Field<unknown>)) return f;
+    if (!grammar.has(f as Field<unknown>)) {
+      grammar.set(f as Field<unknown>, {
+        deps: [],
+        compute: () => n.style.position[edge] ?? 0,
+      } satisfies FieldRule<number>);
+      const entry = styleInputEntry(n);
+      if (entry.position === undefined) entry.position = [];
+      entry.position[edge] = f;
+    }
+    return f;
+  }
+
   // ─── Phase 17: fold default-valued inputs ─────────────────────────────
   //
   // A grammar input field that is at its DEFAULT value contributes a
@@ -958,7 +985,33 @@ function makeEmitter(
         deps: wrapDeps,
         compute: (read) => evalWrapped(read).crossSize,
       } satisfies FieldRule<number>);
-      allFields.push({ node, width, height, left, top });
+      // Relative-position offsets — wrap path. Renders to NEW fields so
+      // sibling chaining can continue to read the unshifted left/top.
+      let pubLeft: Field<number> = left;
+      let pubTop: Field<number> = top;
+      if (parent !== null) {
+        const positionStyle = node.style.position;
+        const hasAnyPositionEdge =
+          positionStyle[0] !== undefined ||
+          positionStyle[1] !== undefined ||
+          positionStyle[2] !== undefined ||
+          positionStyle[3] !== undefined;
+        if (hasAnyPositionEdge) {
+          const rendered = applyRelativePositionOffset(
+            grammar,
+            node,
+            left,
+            top,
+            positionInput(node, 0),
+            positionInput(node, 1),
+            positionInput(node, 2),
+            positionInput(node, 3),
+          );
+          pubLeft = rendered.renderedLeft;
+          pubTop = rendered.renderedTop;
+        }
+      }
+      allFields.push({ node, width, height, left: pubLeft, top: pubTop });
       // Recurse into children. Absolute children are out-of-flow:
       // they must NOT advance the in-flow index or the priorSiblings
       // list (the same filtering the non-wrap path does below) —
@@ -1385,7 +1438,33 @@ function makeEmitter(
       } satisfies FieldRule<number>);
     }
 
-    allFields.push({ node, width, height, left, top });
+    // Relative-position offsets (non-wrap path). Renders to NEW fields so
+    // sibling chaining can continue to read the unshifted left/top.
+    let pubLeft: Field<number> = left;
+    let pubTop: Field<number> = top;
+    if (parent !== null) {
+      const positionStyle = node.style.position;
+      const hasAnyPositionEdge =
+        positionStyle[0] !== undefined ||
+        positionStyle[1] !== undefined ||
+        positionStyle[2] !== undefined ||
+        positionStyle[3] !== undefined;
+      if (hasAnyPositionEdge) {
+        const rendered = applyRelativePositionOffset(
+          grammar,
+          node,
+          left,
+          top,
+          positionInput(node, 0),
+          positionInput(node, 1),
+          positionInput(node, 2),
+          positionInput(node, 3),
+        );
+        pubLeft = rendered.renderedLeft;
+        pubTop = rendered.renderedTop;
+      }
+    }
+    allFields.push({ node, width, height, left: pubLeft, top: pubTop });
 
     // Recurse into children. Absolute children are out-of-flow: they
     // get visited (so their own subtree emits rules) but they don't
@@ -2432,6 +2511,72 @@ function applyReverseMainPos(
       return padStart + innerMain - innerPos - childMain;
     },
   } satisfies FieldRule<number>);
+}
+
+/**
+ * Emit CSS relative-position offsets for an in-flow node as NEW
+ * `renderedLeft` / `renderedTop` Fields that depend on the unshifted
+ * `left` / `top` plus the position input Fields. Returns the rendered
+ * Fields so the caller can publish them via `allFields` (the surface
+ * read by the layout writer and the v17 differential fuzzer).
+ *
+ * Why two field pairs: siblings chain on the unshifted `left` / `top`
+ * inside the flex grammar. A wrap that altered THOSE rules would bleed
+ * the offset into the next sibling's flow position — the
+ * sibling-flow-invariant bug the v19 fuzzer caught at seed
+ * -1865257739. Keeping the unshifted fields intact and routing the
+ * offset through fresh `renderedLeft` / `renderedTop` preserves
+ * chaining while exposing the offset-included position to consumers.
+ *
+ * Tiebreak (matches CSS / Yoga 3.x and the classic engine's
+ * `applyRelativeOffset`): when both opposing edges are set, the start
+ * edge wins. The tiebreak must read `node.style.position` LIVE
+ * because the `positionInput` Field returns
+ * `style.position[edge] ?? 0`, conflating "unset" with "set to 0".
+ *
+ * @internal
+ */
+function applyRelativePositionOffset(
+  grammar: Grammar,
+  node: Node,
+  leftField: Field<number>,
+  topField: Field<number>,
+  positionTopF: Field<number>,
+  positionRightF: Field<number>,
+  positionBottomF: Field<number>,
+  positionLeftF: Field<number>,
+): { renderedLeft: Field<number>; renderedTop: Field<number> } {
+  const renderedLeft = field<number>(node, 'renderedLeft');
+  const renderedTop = field<number>(node, 'renderedTop');
+  grammar.set(renderedLeft, {
+    deps: [
+      leftField as Field<unknown>,
+      positionLeftF as Field<unknown>,
+      positionRightF as Field<unknown>,
+    ],
+    compute: (read) => {
+      const base = read(leftField);
+      const pos = node.style.position;
+      if (pos[3] !== undefined) return base + read(positionLeftF);
+      if (pos[1] !== undefined) return base - read(positionRightF);
+      return base;
+    },
+  } satisfies FieldRule<number>);
+  grammar.set(renderedTop, {
+    deps: [
+      topField as Field<unknown>,
+      positionTopF as Field<unknown>,
+      positionBottomF as Field<unknown>,
+    ],
+    compute: (read) => {
+      const base = read(topField);
+      const pos = node.style.position;
+      if (pos[0] !== undefined) return base + read(positionTopF);
+      if (pos[2] !== undefined) return base - read(positionBottomF);
+      return base;
+    },
+  } satisfies FieldRule<number>);
+  return { renderedLeft, renderedTop };
 }
 
 /**

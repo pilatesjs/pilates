@@ -1,5 +1,5 @@
 /**
- * Incremental differential fuzzer (phase 7, v18): the
+ * Incremental differential fuzzer (phase 7, v19): the
  * `SpinelessRuntime` incremental path vs the imperative
  * `calculateLayout`.
  *
@@ -13,8 +13,10 @@
  *
  * Only VALUE mutations are generated: `setWidth` / `setHeight` (on an
  * already-numeric axis — an `'auto'` → numeric flip is structural),
- * `setMin*` / `setMax*`, `setGap`, `setPadding`, `setMargin`. Flex
- * weights, `flexBasis`, direction / wrap / align and `positionType`
+ * `setMin*` / `setMax*`, `setGap`, `setPadding`, `setMargin`,
+ * `setPosition` (relative offsets, on edges already defined at
+ * grammar-build time — an undefined → any-value flip is structural).
+ * Flex weights, `flexBasis`, direction / wrap / align and `positionType`
  * can reshape the dependency graph and need a fresh
  * `buildFlexGrammar()`, so they are left to the static fuzzer.
  */
@@ -53,6 +55,8 @@ interface NodeSpec {
   maxHeight?: number;
   padding?: Edges;
   margin?: Edges;
+  /** Relative-position offsets; only applied when `absolute` is false. */
+  position?: Edges;
   gapRow: number;
   gapColumn: number;
   flexDirection: Dir;
@@ -99,6 +103,9 @@ const baseProps = {
   maxHeight: optInt(1, 60),
   padding: fc.option(edges(), { nil: undefined }),
   margin: fc.option(edges(), { nil: undefined }),
+  // Relative-position offsets; absent ~80% of the time to keep most
+  // nodes position-free. Only applied when `absolute` is false.
+  position: fc.option(edges(), { nil: undefined, freq: 4 }),
   gapRow: fc.integer({ min: 0, max: 5 }),
   gapColumn: fc.integer({ min: 0, max: 5 }),
   flexDirection: fc.constantFrom<Dir>('row', 'column', 'row-reverse', 'column-reverse'),
@@ -147,6 +154,12 @@ function buildTree(spec: NodeSpec): Node {
   if (spec.margin !== undefined) {
     for (let e = 0; e < 4; e++) n.setMargin(e as Edge, spec.margin[e]!);
   }
+  // Relative-position offsets only apply to non-absolute children.
+  // Absolute children use position edges differently (no positionInput
+  // field emitted) and would be a structural change here.
+  if (spec.position !== undefined && !spec.absolute) {
+    for (let e = 0; e < 4; e++) n.setPosition(e as Edge, spec.position[e]!);
+  }
   n.setGap('row', spec.gapRow);
   n.setGap('column', spec.gapColumn);
   n.setFlexDirection(spec.flexDirection);
@@ -182,7 +195,7 @@ type ScalarKind =
 
 type Mutation =
   | { kind: ScalarKind; path: number[]; value: number }
-  | { kind: 'padding' | 'margin'; path: number[]; edge: number; value: number };
+  | { kind: 'padding' | 'margin' | 'position'; path: number[]; edge: number; value: number };
 
 const path = () => fc.array(fc.nat({ max: 3 }), { maxLength: 4 });
 
@@ -202,7 +215,7 @@ const mutationArbitrary: fc.Arbitrary<Mutation> = fc.oneof(
     value: fc.integer({ min: 0, max: 60 }),
   }),
   fc.record({
-    kind: fc.constantFrom<'padding' | 'margin'>('padding', 'margin'),
+    kind: fc.constantFrom<'padding' | 'margin' | 'position'>('padding', 'margin', 'position'),
     path: path(),
     edge: fc.nat({ max: 3 }),
     value: fc.integer({ min: 0, max: 5 }),
@@ -285,6 +298,21 @@ function applyMutation(root: Node, m: Mutation, markStyleDirty: StyleDirtier): v
       t.setMargin(m.edge as Edge, m.value);
       markStyleDirty(t, 'margin', m.edge);
       return;
+    case 'position':
+      // The grammar only emits positionInput fields when the edge is
+      // DEFINED (non-undefined) at grammar-build time. Any undefined →
+      // any-value flip is structural (the grammar gains a new input
+      // Field), so skip it regardless of the target value — even 0 is
+      // a structural change from "unset". Only mutate within-regime:
+      // edge already defined → new numeric value.
+      if (t.style.position[m.edge] === undefined) return;
+      // Also skip for absolute children — those read position edges
+      // directly (no positionInput leaf) and the grammar doesn't track
+      // them as live inputs.
+      if (t.style.positionType === 'absolute') return;
+      t.setPosition(m.edge as Edge, m.value);
+      markStyleDirty(t, 'position', m.edge);
+      return;
   }
 }
 
@@ -336,7 +364,7 @@ function expectClose(runtime: Box[], imperative: Box[]): void {
 
 // ─── the property ───────────────────────────────────────────────────────
 
-describe('SpinelessRuntime incremental fuzzer (phase 7, v18)', () => {
+describe('SpinelessRuntime incremental fuzzer (phase 7, v19)', () => {
   it('recompute() after random value mutations stays in step with the imperative', () => {
     fc.assert(
       fc.property(

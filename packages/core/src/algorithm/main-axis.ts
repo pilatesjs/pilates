@@ -181,6 +181,7 @@ export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, par
 
   if (flowChildren.length > 0) {
     layoutFlexFlow(node, flowChildren);
+    for (const c of flowChildren) applyRelativeOffset(c);
   }
 
   if (absoluteList.length > 0) {
@@ -445,6 +446,41 @@ function layoutAbsoluteChild(child: Node, parentOuterW: number, parentOuterH: nu
   child._layout.height = height;
   child._floatLeft = left;
   child._floatTop = top;
+}
+
+/**
+ * Apply CSS relative-position offsets to an in-flow child's final box.
+ *
+ * Called once per flow child after `layoutFlexFlow` finalized the box's
+ * `left/top`. The offset is added to both the rounded and float positions;
+ * width / height are untouched.
+ *
+ * Edge tiebreak (matches CSS): if both opposing edges are set, the start
+ * edge wins — `positionLeft` over `positionRight`, `positionTop` over
+ * `positionBottom`. Yoga 3.x has the same tiebreak.
+ *
+ * No-op for absolute children (they are positioned by `layoutAbsoluteChild`
+ * against the parent's outer box and never reach this helper).
+ */
+function applyRelativeOffset(child: Node): void {
+  const pos = child.style.position;
+  const dx =
+    pos[POS_LEFT] !== undefined
+      ? pos[POS_LEFT]
+      : pos[POS_RIGHT] !== undefined
+        ? -pos[POS_RIGHT]
+        : 0;
+  const dy =
+    pos[POS_TOP] !== undefined
+      ? pos[POS_TOP]
+      : pos[POS_BOTTOM] !== undefined
+        ? -pos[POS_BOTTOM]
+        : 0;
+  if (dx === 0 && dy === 0) return;
+  child._layout.left += dx;
+  child._layout.top += dy;
+  child._floatLeft += dx;
+  child._floatTop += dy;
 }
 
 // A frozen empty tuple lets the no-children case avoid allocating a
