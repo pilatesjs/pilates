@@ -1,0 +1,33 @@
+name: Nightly
+
+on:
+  schedule:
+    # 07:00 UTC daily — well outside US business hours so failures aren't
+    # noticed mid-stream; well before EU morning so the signal is fresh.
+    - cron: '0 7 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  stability:
+    runs-on: ubuntu-latest
+    # Don't gate PRs on this — nightly probes are signal, not gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      # Heap-leak probes: 50k layout calls + 1k tree create/destroy cycles,
+      # gated behind PILATES_MEMORY_TESTS=1, run under --expose-gc.
+      - name: Memory stability
+        run: pnpm test:memory
+
+      # Long-form bench: 20 runs per scenario with CI95 confidence intervals.
+      # The PR-gating bench in perf-budgets.yml runs a single-shot variant.
+      - name: Bench variance
+        run: pnpm bench:variance
