@@ -2462,6 +2462,62 @@ function applyReverseMainPos(
 }
 
 /**
+ * Apply CSS relative-position offsets to an in-flow child's
+ * `mainPosField` / `crossPosField` by wrapping their already-emitted
+ * rules with an additive transform. Pattern mirrors
+ * `applyReverseMainPos`.
+ *
+ * Tiebreak (matches CSS / Yoga 3.x and the classic engine's
+ * `applyRelativeOffset`): when both opposing edges are set, the start
+ * edge wins — `positionTop` over `positionBottom`, `positionLeft`
+ * over `positionRight`. The tiebreak must read `node.style.position`
+ * LIVE because the `positionInput` Field returns
+ * `style.position[edge] ?? 0`, conflating "unset" with "set to 0".
+ *
+ * Must run AFTER any other rule that finalizes `mainPosField` /
+ * `crossPosField` for this node (e.g. `applyReverseMainPos` for
+ * row-reverse parents) so the offset is applied to the final flow
+ * position.
+ *
+ * @internal
+ */
+function applyRelativePositionOffset(
+  grammar: Grammar,
+  node: Node,
+  mainPosField: Field<unknown>,
+  crossPosField: Field<unknown>,
+  positionMainStartF: Field<number>,
+  positionMainEndF: Field<number>,
+  positionCrossStartF: Field<number>,
+  positionCrossEndF: Field<number>,
+  mainStartEdgeIdx: number,
+  mainEndEdgeIdx: number,
+  crossStartEdgeIdx: number,
+  crossEndEdgeIdx: number,
+): void {
+  const pairs = [
+    [mainPosField, positionMainStartF, positionMainEndF, mainStartEdgeIdx, mainEndEdgeIdx],
+    [crossPosField, positionCrossStartF, positionCrossEndF, crossStartEdgeIdx, crossEndEdgeIdx],
+  ] as const;
+  for (const [posField, startF, endF, startEdge, endEdge] of pairs) {
+    const forward = grammar.get(posField) as FieldRule<number>;
+    const deps = [...forward.deps];
+    for (const d of [startF as Field<unknown>, endF as Field<unknown>]) {
+      if (!deps.includes(d)) deps.push(d);
+    }
+    grammar.set(posField, {
+      deps,
+      compute: (read) => {
+        const base = forward.compute(read);
+        if (node.style.position[startEdge] !== undefined) return base + read(startF);
+        if (node.style.position[endEdge] !== undefined) return base - read(endF);
+        return base;
+      },
+    } satisfies FieldRule<number>);
+  }
+}
+
+/**
  * True iff a parent's children carry any flex property that lets a
  * child's main size differ from its raw `style.{width|height}`: a
  * positive grow weight, a positive shrink weight, or a numeric
