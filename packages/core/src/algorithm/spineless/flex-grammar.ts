@@ -985,11 +985,11 @@ function makeEmitter(
         deps: wrapDeps,
         compute: (read) => evalWrapped(read).crossSize,
       } satisfies FieldRule<number>);
-      allFields.push({ node, width, height, left, top });
-      // Relative-position offsets — wrap path. Same logic as the non-wrap
-      // path below; parentDirection is in scope (computed before both paths
-      // diverge) and applyReverseMainPos has already run above.
-      if (parent !== null && parentDirection !== null) {
+      // Relative-position offsets — wrap path. Renders to NEW fields so
+      // sibling chaining can continue to read the unshifted left/top.
+      let pubLeft: Field<number> = left;
+      let pubTop: Field<number> = top;
+      if (parent !== null) {
         const positionStyle = node.style.position;
         const hasAnyPositionEdge =
           positionStyle[0] !== undefined ||
@@ -997,26 +997,21 @@ function makeEmitter(
           positionStyle[2] !== undefined ||
           positionStyle[3] !== undefined;
         if (hasAnyPositionEdge) {
-          const mainStartIdx = mainStartEdge(parentDirection);
-          const mainEndIdx = mainEndEdge(parentDirection);
-          const crossStartIdx = crossStartEdge(parentDirection);
-          const crossEndIdx = crossEndEdge(parentDirection);
-          applyRelativePositionOffset(
+          const rendered = applyRelativePositionOffset(
             grammar,
             node,
-            mainPosField,
-            crossPosField,
-            positionInput(node, mainStartIdx),
-            positionInput(node, mainEndIdx),
-            positionInput(node, crossStartIdx),
-            positionInput(node, crossEndIdx),
-            mainStartIdx,
-            mainEndIdx,
-            crossStartIdx,
-            crossEndIdx,
+            left,
+            top,
+            positionInput(node, 0),
+            positionInput(node, 1),
+            positionInput(node, 2),
+            positionInput(node, 3),
           );
+          pubLeft = rendered.renderedLeft;
+          pubTop = rendered.renderedTop;
         }
       }
+      allFields.push({ node, width, height, left: pubLeft, top: pubTop });
       // Recurse into children. Absolute children are out-of-flow:
       // they must NOT advance the in-flow index or the priorSiblings
       // list (the same filtering the non-wrap path does below) —
@@ -1443,14 +1438,11 @@ function makeEmitter(
       } satisfies FieldRule<number>);
     }
 
-    allFields.push({ node, width, height, left, top });
-
-    // Relative-position offsets (matches classic engine's applyRelativeOffset
-    // and CSS spec). Wraps mainPosField / crossPosField AFTER applyReverseMainPos
-    // so the offset is applied to the final flow position. The hasAnyPositionEdge
-    // short-circuit avoids creating 4 Fields per in-flow node when no offsets
-    // are set — the common case.
-    if (parent !== null && parentDirection !== null) {
+    // Relative-position offsets (non-wrap path). Renders to NEW fields so
+    // sibling chaining can continue to read the unshifted left/top.
+    let pubLeft: Field<number> = left;
+    let pubTop: Field<number> = top;
+    if (parent !== null) {
       const positionStyle = node.style.position;
       const hasAnyPositionEdge =
         positionStyle[0] !== undefined ||
@@ -1458,26 +1450,21 @@ function makeEmitter(
         positionStyle[2] !== undefined ||
         positionStyle[3] !== undefined;
       if (hasAnyPositionEdge) {
-        const mainStartIdx = mainStartEdge(parentDirection);
-        const mainEndIdx = mainEndEdge(parentDirection);
-        const crossStartIdx = crossStartEdge(parentDirection);
-        const crossEndIdx = crossEndEdge(parentDirection);
-        applyRelativePositionOffset(
+        const rendered = applyRelativePositionOffset(
           grammar,
           node,
-          mainPosField,
-          crossPosField,
-          positionInput(node, mainStartIdx),
-          positionInput(node, mainEndIdx),
-          positionInput(node, crossStartIdx),
-          positionInput(node, crossEndIdx),
-          mainStartIdx,
-          mainEndIdx,
-          crossStartIdx,
-          crossEndIdx,
+          left,
+          top,
+          positionInput(node, 0),
+          positionInput(node, 1),
+          positionInput(node, 2),
+          positionInput(node, 3),
         );
+        pubLeft = rendered.renderedLeft;
+        pubTop = rendered.renderedTop;
       }
     }
+    allFields.push({ node, width, height, left: pubLeft, top: pubTop });
 
     // Recurse into children. Absolute children are out-of-flow: they
     // get visited (so their own subtree emits rules) but they don't
@@ -2527,59 +2514,69 @@ function applyReverseMainPos(
 }
 
 /**
- * Apply CSS relative-position offsets to an in-flow child's
- * `mainPosField` / `crossPosField` by wrapping their already-emitted
- * rules with an additive transform. Pattern mirrors
- * `applyReverseMainPos`.
+ * Emit CSS relative-position offsets for an in-flow node as NEW
+ * `renderedLeft` / `renderedTop` Fields that depend on the unshifted
+ * `left` / `top` plus the position input Fields. Returns the rendered
+ * Fields so the caller can publish them via `allFields` (the surface
+ * read by the layout writer and the v17 differential fuzzer).
+ *
+ * Why two field pairs: siblings chain on the unshifted `left` / `top`
+ * inside the flex grammar. A wrap that altered THOSE rules would bleed
+ * the offset into the next sibling's flow position — the
+ * sibling-flow-invariant bug the v19 fuzzer caught at seed
+ * -1865257739. Keeping the unshifted fields intact and routing the
+ * offset through fresh `renderedLeft` / `renderedTop` preserves
+ * chaining while exposing the offset-included position to consumers.
  *
  * Tiebreak (matches CSS / Yoga 3.x and the classic engine's
  * `applyRelativeOffset`): when both opposing edges are set, the start
- * edge wins — `positionTop` over `positionBottom`, `positionLeft`
- * over `positionRight`. The tiebreak must read `node.style.position`
- * LIVE because the `positionInput` Field returns
+ * edge wins. The tiebreak must read `node.style.position` LIVE
+ * because the `positionInput` Field returns
  * `style.position[edge] ?? 0`, conflating "unset" with "set to 0".
- *
- * Must run AFTER any other rule that finalizes `mainPosField` /
- * `crossPosField` for this node (e.g. `applyReverseMainPos` for
- * row-reverse parents) so the offset is applied to the final flow
- * position.
  *
  * @internal
  */
 function applyRelativePositionOffset(
   grammar: Grammar,
   node: Node,
-  mainPosField: Field<unknown>,
-  crossPosField: Field<unknown>,
-  positionMainStartF: Field<number>,
-  positionMainEndF: Field<number>,
-  positionCrossStartF: Field<number>,
-  positionCrossEndF: Field<number>,
-  mainStartEdgeIdx: number,
-  mainEndEdgeIdx: number,
-  crossStartEdgeIdx: number,
-  crossEndEdgeIdx: number,
-): void {
-  const pairs = [
-    [mainPosField, positionMainStartF, positionMainEndF, mainStartEdgeIdx, mainEndEdgeIdx],
-    [crossPosField, positionCrossStartF, positionCrossEndF, crossStartEdgeIdx, crossEndEdgeIdx],
-  ] as const;
-  for (const [posField, startF, endF, startEdge, endEdge] of pairs) {
-    const forward = grammar.get(posField) as FieldRule<number>;
-    const deps = [...forward.deps];
-    for (const d of [startF as Field<unknown>, endF as Field<unknown>]) {
-      if (!deps.includes(d)) deps.push(d);
-    }
-    grammar.set(posField, {
-      deps,
-      compute: (read) => {
-        const base = forward.compute(read);
-        if (node.style.position[startEdge] !== undefined) return base + read(startF);
-        if (node.style.position[endEdge] !== undefined) return base - read(endF);
-        return base;
-      },
-    } satisfies FieldRule<number>);
-  }
+  leftField: Field<number>,
+  topField: Field<number>,
+  positionTopF: Field<number>,
+  positionRightF: Field<number>,
+  positionBottomF: Field<number>,
+  positionLeftF: Field<number>,
+): { renderedLeft: Field<number>; renderedTop: Field<number> } {
+  const renderedLeft = field<number>(node, 'renderedLeft');
+  const renderedTop = field<number>(node, 'renderedTop');
+  grammar.set(renderedLeft, {
+    deps: [
+      leftField as Field<unknown>,
+      positionLeftF as Field<unknown>,
+      positionRightF as Field<unknown>,
+    ],
+    compute: (read) => {
+      const base = read(leftField);
+      const pos = node.style.position;
+      if (pos[3] !== undefined) return base + read(positionLeftF);
+      if (pos[1] !== undefined) return base - read(positionRightF);
+      return base;
+    },
+  } satisfies FieldRule<number>);
+  grammar.set(renderedTop, {
+    deps: [
+      topField as Field<unknown>,
+      positionTopF as Field<unknown>,
+      positionBottomF as Field<unknown>,
+    ],
+    compute: (read) => {
+      const base = read(topField);
+      const pos = node.style.position;
+      if (pos[0] !== undefined) return base + read(positionTopF);
+      if (pos[2] !== undefined) return base - read(positionBottomF);
+      return base;
+    },
+  } satisfies FieldRule<number>);
+  return { renderedLeft, renderedTop };
 }
 
 /**

@@ -925,7 +925,15 @@ export class SpinelessLayout {
   }
 }
 
-/** Write one node's evaluated float layout into `_layout`. */
+/**
+ * Write one node's evaluated float layout into `_layout`. The
+ * `f.left` / `f.top` fields are the RENDERED positions: for an in-flow
+ * `positionType: relative` node with `position*` edges set, the grammar
+ * routes `f.left`/`f.top` through a wrapper that adds the offset (see
+ * `applyRelativePositionOffset` in `flex-grammar.ts`). Sibling
+ * chaining continues to use the underlying unshifted `left`/`top`
+ * fields, so a relative offset does not displace this node's siblings.
+ */
 function writeNode(node: Node, runtime: SpinelessRuntime, f: LayoutFields): void {
   const left = runtime.evaluate(f.left);
   const top = runtime.evaluate(f.top);
