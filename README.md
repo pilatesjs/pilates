@@ -249,6 +249,24 @@ flexbox implementation:
   non-overflow, sibling non-overlap, reproducibility — across randomly
   generated trees
 
+### Reducing fuzzer counterexamples to fixtures
+
+When a fast-check fuzz test fails it emits a JSON counterexample —
+typically 100+ lines of nested style objects. Convert it to a
+hand-readable `.spec.json` fixture with:
+
+```bash
+pnpm tsx tools/reduce-fixture.ts counterexample.json --fast-check \
+  --out packages/core/test/fixtures/<bucket>/<name>.spec.json \
+  --name "<bucket>/<name>"
+```
+
+If Pilates and Yoga agree on the layout the tool emits a consensus
+fixture (`expected` map). If they diverge it emits a divergent fixture
+(`expectedPilates` + `expectedYoga` + `divergenceReason: "<TODO: fill
+in>"`) and prints a warning; fill in the reason and add the `divergent`
+tag before committing.
+
 ## Notable design choices
 
 - **Default `flexShrink: 0` in core** (React Native convention, not CSS's 1)
