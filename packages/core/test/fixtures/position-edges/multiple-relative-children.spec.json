@@ -1,0 +1,17 @@
+{
+  "name": "position-edges/multiple-relative-children",
+  "tags": ["position-edges"],
+  "root": {
+    "id": "root",
+    "style": { "flexDirection": "row", "width": 40, "height": 10 },
+    "children": [
+      { "id": "a", "style": { "width": 10, "height": 5 } },
+      { "id": "b", "style": { "width": 10, "height": 5, "positionLeft": 5 } }
+    ]
+  },
+  "expected": {
+    "root": { "left": 0, "top": 0, "width": 40, "height": 10 },
+    "a": { "left": 0, "top": 0, "width": 10, "height": 5 },
+    "b": { "left": 15, "top": 0, "width": 10, "height": 5 }
+  }
+}
