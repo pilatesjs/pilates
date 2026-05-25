@@ -16,6 +16,7 @@ import {
   collectBoxes,
   formatBoxDiff,
   inspectLayout,
+  isDivergent,
   loadFixtures,
   pilatesBox,
   yogaBox,
@@ -32,7 +33,8 @@ describe('declarative fixtures', () => {
   }
 
   for (const fixture of FIXTURES) {
-    const display = `[${fixture.tags.join(',')}] ${fixture.name}`;
+    const divergentLabel = isDivergent(fixture) ? ' [divergent]' : '';
+    const display = `[${fixture.tags.join(',')}] ${fixture.name}${divergentLabel}`;
     it(display, () => {
       const p = buildPilates(fixture.root);
       p.root.calculateLayout(fixture.available?.width, fixture.available?.height);
@@ -43,14 +45,24 @@ describe('declarative fixtures', () => {
       const yBoxes = collectBoxes(y.byId, yogaBox);
 
       try {
-        expect(pBoxes).toEqual(fixture.expected);
-        expect(yBoxes).toEqual(fixture.expected);
+        if (isDivergent(fixture)) {
+          expect(pBoxes).toEqual(fixture.expectedPilates);
+          expect(yBoxes).toEqual(fixture.expectedYoga);
+        } else {
+          expect(pBoxes).toEqual(fixture.expected);
+          expect(yBoxes).toEqual(fixture.expected);
+        }
       } catch (err) {
-        const message =
-          `\n${formatBoxDiff('Pilates vs expected', fixture.expected, pBoxes)}\n` +
-          `${formatBoxDiff('Yoga vs expected', fixture.expected, yBoxes)}\n` +
-          `── Pilates inspectLayout ──\n${inspectLayout(p.root)}\n` +
-          `── source: ${fixture.sourcePath} ──`;
+        const message = isDivergent(fixture)
+          ? `\n${formatBoxDiff('Pilates vs expectedPilates', fixture.expectedPilates, pBoxes)}\n` +
+            `${formatBoxDiff('Yoga vs expectedYoga', fixture.expectedYoga, yBoxes)}\n` +
+            `── divergenceReason: ${fixture.divergenceReason} ──\n` +
+            `── Pilates inspectLayout ──\n${inspectLayout(p.root)}\n` +
+            `── source: ${fixture.sourcePath} ──`
+          : `\n${formatBoxDiff('Pilates vs expected', fixture.expected, pBoxes)}\n` +
+            `${formatBoxDiff('Yoga vs expected', fixture.expected, yBoxes)}\n` +
+            `── Pilates inspectLayout ──\n${inspectLayout(p.root)}\n` +
+            `── source: ${fixture.sourcePath} ──`;
         (err as Error).message = `${(err as Error).message}\n${message}`;
         throw err;
       } finally {

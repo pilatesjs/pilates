@@ -113,15 +113,31 @@ export interface Box {
   height: number;
 }
 
-export interface Fixture {
+interface FixtureBase {
   /** "<tag>/<short-slug>"; used as the test display name. */
   name: string;
   tags: FixtureTag[];
   available?: { width?: number; height?: number };
   root: SpecNode;
-  expected: Record<string, Box>;
   /** Absolute path on disk — included for failure messages. */
   sourcePath: string;
+}
+
+export interface ConsensusFixture extends FixtureBase {
+  expected: Record<string, Box>;
+}
+
+export interface DivergentFixture extends FixtureBase {
+  divergenceReason: string;
+  expectedPilates: Record<string, Box>;
+  expectedYoga: Record<string, Box>;
+}
+
+export type Fixture = ConsensusFixture | DivergentFixture;
+
+/** True iff the fixture encodes a known Pilates ↔ Yoga divergence. */
+export function isDivergent(f: Fixture): f is DivergentFixture {
+  return 'divergenceReason' in f;
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -176,41 +192,114 @@ export function loadFixtures(dir: string = DEFAULT_FIXTURES_DIR): Fixture[] {
     if (typeof raw.root !== 'object' || raw.root === null || Array.isArray(raw.root)) {
       throw new Error(`${file}: "root" must be an object`);
     }
-    if (typeof raw.expected !== 'object' || raw.expected === null || Array.isArray(raw.expected)) {
-      throw new Error(`${file}: "expected" must be an object`);
-    }
     const tags = validateTags(raw.tags, file);
 
+    const hasConsensus = raw.expected !== undefined;
+    const hasDivergent =
+      raw.expectedPilates !== undefined ||
+      raw.expectedYoga !== undefined ||
+      raw.divergenceReason !== undefined;
+    if (hasConsensus && hasDivergent) {
+      throw new Error(
+        `${file}: cannot mix "expected" with "expectedPilates"/"expectedYoga"/"divergenceReason"`,
+      );
+    }
+    if (!hasConsensus && !hasDivergent) {
+      throw new Error(`${file}: must have "expected" OR the divergent triple`);
+    }
+
     const root = raw.root as SpecNode;
-    const expected = raw.expected as Record<string, Box>;
-    const available =
-      typeof raw.available === 'object' && raw.available !== null && !Array.isArray(raw.available)
-        ? (raw.available as Fixture['available'])
-        : undefined;
+    const available = parseAvailable(raw.available, file);
 
     const ids = new Set<string>();
     collectIds(root, ids, file);
-    for (const id of ids) {
-      if (!(id in expected)) {
-        throw new Error(`${file}: id ${JSON.stringify(id)} in tree has no expected box`);
-      }
-    }
-    for (const id of Object.keys(expected)) {
-      if (!ids.has(id)) {
-        throw new Error(`${file}: expected id ${JSON.stringify(id)} not in tree`);
-      }
-    }
 
-    out.push({
-      name: raw.name,
-      tags,
-      ...(available !== undefined ? { available } : {}),
-      root,
-      expected,
-      sourcePath: file,
-    });
+    const hasDivergentTag = tags.includes('divergent');
+
+    if (hasConsensus) {
+      if (hasDivergentTag) {
+        throw new Error(
+          `${file}: "divergent" tag requires the divergent shape (expectedPilates/expectedYoga/divergenceReason)`,
+        );
+      }
+      validateExpectedShape(raw.expected, file, 'expected');
+      const expected = raw.expected as Record<string, Box>;
+      assertIdMatch(ids, expected, file, 'expected');
+      out.push({
+        name: raw.name,
+        tags,
+        ...(available !== undefined ? { available } : {}),
+        root,
+        expected,
+        sourcePath: file,
+      });
+    } else {
+      if (!hasDivergentTag) {
+        throw new Error(`${file}: divergent shape requires the "divergent" tag`);
+      }
+      if (typeof raw.divergenceReason !== 'string' || raw.divergenceReason.length === 0) {
+        throw new Error(`${file}: "divergenceReason" must be a non-empty string`);
+      }
+      validateExpectedShape(raw.expectedPilates, file, 'expectedPilates');
+      validateExpectedShape(raw.expectedYoga, file, 'expectedYoga');
+      const expectedPilates = raw.expectedPilates as Record<string, Box>;
+      const expectedYoga = raw.expectedYoga as Record<string, Box>;
+      assertIdMatch(ids, expectedPilates, file, 'expectedPilates');
+      assertIdMatch(ids, expectedYoga, file, 'expectedYoga');
+      out.push({
+        name: raw.name,
+        tags,
+        ...(available !== undefined ? { available } : {}),
+        root,
+        divergenceReason: raw.divergenceReason,
+        expectedPilates,
+        expectedYoga,
+        sourcePath: file,
+      });
+    }
   }
   return out;
+}
+
+function parseAvailable(
+  v: unknown,
+  file: string,
+): { width?: number; height?: number } | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    throw new Error(`${file}: "available" must be an object if present`);
+  }
+  return v as { width?: number; height?: number };
+}
+
+function validateExpectedShape(v: unknown, file: string, key: string): void {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) {
+    throw new Error(`${file}: "${key}" must be an object`);
+  }
+}
+
+function assertIdMatch(
+  ids: Set<string>,
+  expected: Record<string, Box>,
+  file: string,
+  key: string,
+): void {
+  for (const id of ids) {
+    if (!(id in expected)) {
+      if (key === 'expected') {
+        throw new Error(`${file}: id ${JSON.stringify(id)} in tree has no expected box`);
+      }
+      throw new Error(`${file}: id ${JSON.stringify(id)} in tree has no box in "${key}"`);
+    }
+  }
+  for (const id of Object.keys(expected)) {
+    if (!ids.has(id)) {
+      if (key === 'expected') {
+        throw new Error(`${file}: expected id ${JSON.stringify(id)} not in tree`);
+      }
+      throw new Error(`${file}: id ${JSON.stringify(id)} in "${key}" not in tree`);
+    }
+  }
 }
 
 // ─── tree builders ─────────────────────────────────────────────────────
