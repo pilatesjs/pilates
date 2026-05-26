@@ -801,6 +801,19 @@ function makeEmitter(
     const crossKey: 'width' | 'height' = parentDirection === 'column' ? 'width' : 'height';
     const crossIsContentAuto =
       typeof node.style[crossKey] !== 'number' && !aspectDerivable(node, crossKey);
+    // wrap-reverse flips per-item cross alignment within each line. The
+    // SIZE branches below still use `align` (stretch-with-explicit is a
+    // no-resize size branch driven by `crossIsContentAuto` being false),
+    // but the POSITION branches use `posAlign` which has the
+    // flex-start ↔ flex-end flip applied. For wrap-reverse + stretch +
+    // explicit cross the position behaves like flex-end. Mirrors the
+    // imperative `crossAlignItemsInLine`. (#159)
+    let posAlign: Align = align;
+    if (parent !== null && parent.style.flexWrap === 'wrap-reverse') {
+      if (posAlign === 'flex-start') posAlign = 'flex-end';
+      else if (posAlign === 'flex-end') posAlign = 'flex-start';
+      else if (posAlign === 'stretch' && !crossIsContentAuto) posAlign = 'flex-end';
+    }
     const crossSizeInput = preferredSizeInput(node, crossKey, 'cross', parent);
     // Phase 17: fold min/max cross inputs when at default (0 / undefined→∞).
     const fMinCross = foldMinMax(node, crossKey === 'width' ? 'minWidth' : 'minHeight');
@@ -1367,8 +1380,8 @@ function makeEmitter(
     // cross size, and any other value the imperative doesn't special-
     // case) is a constant offset. flex-end and center derive an offset
     // from the parent's cross-axis size, gaining a dep edge on it.
-    if (parent === null || align === 'flex-end') {
-      if (parent !== null && align === 'flex-end') {
+    if (parent === null || posAlign === 'flex-end') {
+      if (parent !== null && posAlign === 'flex-end') {
         const parentCrossField = field<number>(
           parent,
           parentDirection === 'column' ? 'width' : 'height',
@@ -1399,7 +1412,7 @@ function makeEmitter(
           compute: () => 0,
         } satisfies FieldRule<number>);
       }
-    } else if (align === 'center') {
+    } else if (posAlign === 'center') {
       const parentCrossField = field<number>(
         parent,
         parentDirection === 'column' ? 'width' : 'height',
@@ -3264,10 +3277,19 @@ function evaluateWrappedChild(
   const mainPos = cursor;
 
   // Cross-axis position via align-items / align-self within line.
+  // wrap-reverse flips per-item cross alignment within each line (mirrors
+  // the imperative `crossAlignItemsInLine`). Use `posAlignItem` for the
+  // position branches; keep `me.align` for the size (stretch-resize) branch.
+  let posAlignItem: Align = me.align;
+  if (reverse) {
+    if (posAlignItem === 'flex-start') posAlignItem = 'flex-end';
+    else if (posAlignItem === 'flex-end') posAlignItem = 'flex-start';
+    else if (posAlignItem === 'stretch' && !me.crossIsContentAuto) posAlignItem = 'flex-end';
+  }
   let withinLineCross = me.crossMarginStart;
-  if (me.align === 'flex-end') {
+  if (posAlignItem === 'flex-end') {
     withinLineCross = myLineCrossSize - me.crossSize - me.crossMarginEnd;
-  } else if (me.align === 'center') {
+  } else if (posAlignItem === 'center') {
     const innerLine = myLineCrossSize - me.crossMarginStart - me.crossMarginEnd;
     withinLineCross = me.crossMarginStart + Math.max(0, (innerLine - me.crossSize) / 2);
   }
