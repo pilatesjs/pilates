@@ -914,6 +914,24 @@ export class SpinelessLayout {
       if (subtreeRoot === this.root) rootIsInMoved = true;
     }
 
+    // Refresh root's direct in-flow children from the grammar before the
+    // post-step. `autoSizeRootFromContent` applies a uniform shift to root's
+    // direct children for wrap-reverse auto-cross (#157 follow-up); if some
+    // direct children weren't in `roots`, their `_layout` still holds the
+    // PRIOR shift from the previous pass, and the fresh shift would compound
+    // on top. Re-writing direct children from grammar values restores the
+    // unshifted baseline every pass — idempotent and cheap (O(direct
+    // children)). Subtrees deeper than root's direct children don't need
+    // refreshing because the shift only translates root's direct children;
+    // descendants read positions relative to their parent.
+    for (let i = 0; i < this.root.getChildCount(); i++) {
+      const c = this.root.getChild(i)!;
+      if (c.style.positionType === 'absolute') continue;
+      if (c.style.display === 'none') continue;
+      const f = fields.get(c);
+      if (f !== undefined) writeNode(c, runtime, f);
+    }
+
     // Apply the auto-size post-step for the tree root whenever any children
     // moved — the grammar computes 0 for bare-zero auto axes and the content-
     // derived size must be recomputed after children positions are written.
