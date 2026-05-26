@@ -124,7 +124,12 @@ describe('packAttrs', () => {
   });
 
   it('treats false / undefined flags as absent', () => {
-    expect(packAttrs({ bold: false, italic: undefined })).toBe(0);
+    // exactOptionalPropertyTypes forbids `italic: undefined` literal at the
+    // type level, but the runtime contract covers callers that produce
+    // `undefined` via `obj?.italic` access. Cast through unknown to assert
+    // the runtime fallback.
+    const input = { bold: false, italic: undefined } as unknown as Parameters<typeof packAttrs>[0];
+    expect(packAttrs(input)).toBe(0);
   });
 
   it('packs all flags into a single bitmask', () => {
