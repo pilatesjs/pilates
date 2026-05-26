@@ -87,8 +87,10 @@ function evaluateGrammar(
     const roundedR = Math.round(absX + f.width);
     const roundedB = Math.round(absY + f.height);
     out.push({
-      left: roundedX - parentRoundedX,
-      top: roundedY - parentRoundedY,
+      // `+ 0` normalizes -0 to +0, matching the production `applyRounding` in
+      // round.ts (see comment there about Math.round(-0.4) producing -0).
+      left: roundedX - parentRoundedX + 0,
+      top: roundedY - parentRoundedY + 0,
       width: Math.max(0, roundedR - roundedX),
       height: Math.max(0, roundedB - roundedY),
     });

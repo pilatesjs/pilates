@@ -103,8 +103,12 @@ function applyRounding(node: Node, parentRoundedX: number, parentRoundedY: numbe
   const roundedR = Math.round(absX + node.layout.width);
   const roundedB = Math.round(absY + node.layout.height);
 
-  node._layout.left = roundedX - parentRoundedX;
-  node._layout.top = roundedY - parentRoundedY;
+  // Math.round(-0.4) returns -0; `-0 - 0 = -0`. Normalize so consumers and
+  // structural fuzzers see +0 uniformly across cold and incremental paths
+  // (caught by spineless-structural.fuzz.test.ts seed 750969864 on CI).
+  // `+ 0` exploits IEEE 754: (-0) + (+0) = +0.
+  node._layout.left = roundedX - parentRoundedX + 0;
+  node._layout.top = roundedY - parentRoundedY + 0;
   node._layout.width = Math.max(0, roundedR - roundedX);
   node._layout.height = Math.max(0, roundedB - roundedY);
 
