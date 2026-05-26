@@ -33,7 +33,7 @@
 
 import { MeasureMode } from '../measure-func.js';
 import type { Node } from '../node.js';
-import type { Align, Justify, Style } from '../style.js';
+import type { Align, FlexWrap, Justify, Style } from '../style.js';
 import {
   type Axis,
   clampSize,
@@ -317,7 +317,7 @@ function layoutFlexFlow(node: Node, visible: readonly Node[]): void {
   // Step 6 & 7: per-line item positioning and cross-alignment.
   for (const line of lines) {
     positionItemsInLine(line, node.style.justifyContent, innerMain, gapMain);
-    crossAlignItemsInLine(line, node.style.alignItems);
+    crossAlignItemsInLine(line, node.style.alignItems, node.style.flexWrap);
   }
 
   // Step 8: write to layout boxes (translating line + item to absolute).
@@ -822,9 +822,21 @@ function positionItemsInLine(
 
 // ─── step 7: align-items / align-self per item ──────────────────────────
 
-function crossAlignItemsInLine(line: FlexLine, alignItems: Align): void {
+function crossAlignItemsInLine(line: FlexLine, alignItems: Align, wrap: FlexWrap): void {
+  const reverseCross = wrap === 'wrap-reverse';
   for (const item of line.items) {
-    const align = effectiveAlign(item.node.style.alignSelf, alignItems);
+    let align = effectiveAlign(item.node.style.alignSelf, alignItems);
+    // wrap-reverse flips per-item cross alignment within each line:
+    // flex-start ↔ flex-end. The line-stack flip is handled separately
+    // by reverseLineStack; this is the per-line item flip. center is
+    // symmetric; stretch with auto cross fills the line and the position
+    // is moot; stretch with explicit cross needs the explicit flex-end
+    // formula (handled inside the stretch branch below). Mirrors Yoga 3.x
+    // and the CSS reversed-axis flex model. (#159)
+    if (reverseCross) {
+      if (align === 'flex-start') align = 'flex-end';
+      else if (align === 'flex-end') align = 'flex-start';
+    }
     const innerLine = line.crossSize - item.marginCrossStart - item.marginCrossEnd;
     const cross = inferCrossAxisFromContext(item, line);
 
@@ -835,10 +847,16 @@ function crossAlignItemsInLine(line: FlexLine, alignItems: Align): void {
       const explicit = effectivePreferredSize(item.node.style, cross);
       if (typeof explicit === 'number') {
         item.finalCross = clampSize(item.node.style, cross, explicit);
+        // wrap-reverse + stretch + explicit cross: explicit wins on size
+        // (no resize), so the position behaves like flex-end on the line.
+        item.crossPos = reverseCross
+          ? line.crossSize - item.finalCross - item.marginCrossEnd
+          : item.marginCrossStart;
       } else {
         item.finalCross = clampSize(item.node.style, cross, Math.max(0, innerLine));
+        // stretch + auto cross: child fills the line; position is moot.
+        item.crossPos = item.marginCrossStart;
       }
-      item.crossPos = item.marginCrossStart;
       continue;
     }
 

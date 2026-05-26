@@ -640,3 +640,99 @@ describe('wrap-reverse root auto cross-axis sizing (#157)', () => {
     expect(root.getChild(3)!.getComputedLayout().top).toBe(30);
   });
 });
+
+describe('wrap-reverse per-line cross alignment (#159)', () => {
+  it('default alignItems anchors children to line bottom (flex-start flipped to flex-end)', () => {
+    // Single-line wrap-reverse: width=300 fits 5*30=150 on one line.
+    // Children heights 10/20/30/40/50; line cross = 50 (max).
+    // wrap-reverse flips the default (effectively flex-end), so each child
+    // shares the BOTTOM edge of the 50-px line: top = lineCross - height.
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap-reverse');
+    root.setWidth(300);
+    const heights = [10, 20, 30, 40, 50];
+    for (let i = 0; i < heights.length; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(heights[i]!);
+      root.insertChild(c, i);
+    }
+    root.calculateLayout();
+    expect(root.getChild(0)!.getComputedLayout().top).toBe(40);
+    expect(root.getChild(1)!.getComputedLayout().top).toBe(30);
+    expect(root.getChild(2)!.getComputedLayout().top).toBe(20);
+    expect(root.getChild(3)!.getComputedLayout().top).toBe(10);
+    expect(root.getChild(4)!.getComputedLayout().top).toBe(0);
+  });
+
+  it('explicit alignItems: flex-end on wrap-reverse anchors children to line top', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap-reverse');
+    root.setAlignItems('flex-end');
+    root.setWidth(300);
+    const heights = [10, 20, 30, 40, 50];
+    for (let i = 0; i < heights.length; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(heights[i]!);
+      root.insertChild(c, i);
+    }
+    root.calculateLayout();
+    for (let i = 0; i < 5; i++) {
+      expect(root.getChild(i)!.getComputedLayout().top).toBe(0);
+    }
+  });
+
+  it('alignItems: center on wrap-reverse stays center', () => {
+    // Explicit container height = 100 so single-line mode's line cross is
+    // also 100 (single-line uses innerCross). Center: top = (100 - h) / 2.
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap-reverse');
+    root.setAlignItems('center');
+    root.setWidth(300);
+    root.setHeight(100);
+    const heights = [10, 20, 30, 40, 50];
+    for (let i = 0; i < heights.length; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(heights[i]!);
+      root.insertChild(c, i);
+    }
+    root.calculateLayout();
+    expect(root.getChild(0)!.getComputedLayout().top).toBe(45); // (100-10)/2
+    expect(root.getChild(2)!.getComputedLayout().top).toBe(35); // (100-30)/2
+    expect(root.getChild(4)!.getComputedLayout().top).toBe(25); // (100-50)/2
+  });
+
+  it('wrap-reverse + auto-height children + stretch fills the line', () => {
+    // Explicit container height = 30 so single-line crossSize = 30.
+    // alignItems defaults to stretch. Auto children stretch to 30. Sized
+    // child uses its explicit height = 30 and the wrap-reverse flex-end
+    // position formula: 30 - 30 - 0 = 0.
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap-reverse');
+    root.setWidth(100);
+    root.setHeight(30);
+    const sized = Node.create();
+    sized.setWidth(30);
+    sized.setHeight(30);
+    root.insertChild(sized, 0);
+    const auto1 = Node.create();
+    auto1.setWidth(30);
+    root.insertChild(auto1, 1);
+    const auto2 = Node.create();
+    auto2.setWidth(30);
+    root.insertChild(auto2, 2);
+    root.calculateLayout();
+    expect(root.getChild(0)!.getComputedLayout().height).toBe(30);
+    expect(root.getChild(1)!.getComputedLayout().height).toBe(30);
+    expect(root.getChild(2)!.getComputedLayout().height).toBe(30);
+    expect(root.getChild(0)!.getComputedLayout().top).toBe(0);
+    expect(root.getChild(1)!.getComputedLayout().top).toBe(0);
+    expect(root.getChild(2)!.getComputedLayout().top).toBe(0);
+  });
+});
