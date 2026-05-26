@@ -15,8 +15,8 @@
  * catch any cache-correctness regression as soon as it lands.
  */
 
-import type { Node } from '../node.js';
 import { Edge } from '../edge.js';
+import type { Node } from '../node.js';
 import {
   LayoutCache,
   clearAllCaches,

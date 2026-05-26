@@ -84,10 +84,10 @@
  * @internal
  */
 
+import { Edge } from '../../edge.js';
 import { MeasureMode } from '../../measure-func.js';
 import type { Node } from '../../node.js';
 import type { Align, Justify } from '../../style.js';
-import { Edge } from '../../edge.js';
 import { isReverse, mainAxis } from '../axis.js';
 import { type Field, type FieldRule, type Grammar, type ReadFn, field } from './grammar.js';
 
