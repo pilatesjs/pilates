@@ -1,0 +1,37 @@
+{
+  "name": "justify-content/column-max-height-and-margin",
+  "tags": ["justify-content"],
+  "root": {
+    "id": "n0",
+    "style": {
+      "height": 100,
+      "maxHeight": 80,
+      "marginTop": 100,
+      "justifyContent": "center",
+      "flexDirection": "column"
+    },
+    "children": [
+      {
+        "id": "n1",
+        "style": {
+          "height": 20,
+          "width": 20
+        }
+      }
+    ]
+  },
+  "expected": {
+    "n0": {
+      "left": 0,
+      "top": 100,
+      "width": 20,
+      "height": 80
+    },
+    "n1": {
+      "left": 0,
+      "top": 30,
+      "width": 20,
+      "height": 20
+    }
+  }
+}
