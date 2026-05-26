@@ -25,6 +25,7 @@
 
 import type { MeasureFunc } from '../../measure-func.js';
 import type { Node } from '../../node.js';
+import { autoSizeRootFromContent } from '../main-axis.js';
 import { roundLayout, roundLayoutFrom } from '../round.js';
 import {
   type AvailableSize,
@@ -847,10 +848,11 @@ export class SpinelessLayout {
 
   /** Write-back + round + scroll the whole tree (after a build / graft). */
   private finishWhole(): void {
-    const { runtime, output } = this.built!;
+    const { runtime, output, available } = this.built!;
     for (const f of output.allFields) {
       writeNode(f.node, runtime, { width: f.width, height: f.height, left: f.left, top: f.top });
     }
+    autoSizeRootFromContent(this.root, available);
     roundLayout(this.root);
     recordScrollSizes(this.root);
     clearDirtyDeep(this.root);
@@ -893,11 +895,12 @@ export class SpinelessLayout {
    * the surviving parent of a removed or reordered subtree.
    */
   private finishMoved(roots: Node[], extraScrollParents: Node[]): void {
-    const { runtime, fields } = this.built!;
-    for (const root of roots) {
+    const { runtime, fields, available } = this.built!;
+    let rootIsInMoved = false;
+    for (const subtreeRoot of roots) {
       // Write the float layout for the whole moved subtree, so the
       // re-round below has float values throughout.
-      const stack: Node[] = [root];
+      const stack: Node[] = [subtreeRoot];
       while (stack.length > 0) {
         const n = stack.pop()!;
         // A `display: 'none'` node has no grammar fields — the
@@ -908,16 +911,37 @@ export class SpinelessLayout {
         writeNode(n, runtime, f);
         for (let i = 0; i < n.getChildCount(); i++) stack.push(n.getChild(i)!);
       }
-      const pos = ancestorPositions(root);
-      roundLayoutFrom(root, pos.floatX, pos.floatY, pos.roundedX, pos.roundedY);
-      recordScrollSizes(root);
+      if (subtreeRoot === this.root) rootIsInMoved = true;
     }
-    // A moved root's parent did not move, so `recordScrollSizes`
+
+    // Apply the auto-size post-step for the tree root whenever any children
+    // moved — the grammar computes 0 for bare-zero auto axes and the content-
+    // derived size must be recomputed after children positions are written.
+    // This mirrors `finishWhole`'s post-step and covers ALL fast-paths (graft,
+    // detach, reorder, value-relayout), not just the case where the root is
+    // the moved subtree root. (#157)
+    autoSizeRootFromContent(this.root, available);
+
+    for (const subtreeRoot of roots) {
+      const pos = ancestorPositions(subtreeRoot);
+      roundLayoutFrom(subtreeRoot, pos.floatX, pos.floatY, pos.roundedX, pos.roundedY);
+      recordScrollSizes(subtreeRoot);
+    }
+
+    // If the root is bare-zero auto and NOT already in the moved set, its
+    // `_layout` width/height may have changed via `autoSizeRootFromContent`
+    // above — re-round and re-record scroll for the root as well.
+    if (!rootIsInMoved) {
+      roundLayoutFrom(this.root, 0, 0, 0, 0);
+      recordScrollSizes(this.root);
+    }
+
+    // A moved subtree root's parent did not move, so `recordScrollSizes`
     // above never touched it — but one of its children's box did
     // change, so its own scroll extent needs a recompute.
     const scrollParents = new Set<Node>();
-    for (const root of roots) {
-      const p = root.getParent();
+    for (const sr of roots) {
+      const p = sr.getParent();
       if (p !== null) scrollParents.add(p);
     }
     for (const p of extraScrollParents) scrollParents.add(p);

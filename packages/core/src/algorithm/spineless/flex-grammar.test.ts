@@ -2210,15 +2210,20 @@ describe("buildFlexGrammar — 'auto' main-axis sizing (slice v13)", () => {
     );
   });
 
-  it("an 'auto' root with no available resolves to 0", () => {
-    matches(() => {
-      const root = Node.create();
-      const c = Node.create();
-      c.setWidth(20);
-      c.setHeight(20);
-      root.insertChild(c, 0);
-      return root;
-    });
+  it("an 'auto' root with no available sizes from content post-step (#157)", () => {
+    // The raw grammar computes 0 for bare-zero auto axes; `autoSizeRootFromContent`
+    // patches the root after both engines write children's `_layout`. This test
+    // verifies the imperative result (the SpinelessLayout path agrees via finishWhole).
+    // `evaluateGrammar` bypasses the post-step so `matches()` cannot be used here.
+    const root = Node.create();
+    const c = Node.create();
+    c.setWidth(20);
+    c.setHeight(20);
+    root.insertChild(c, 0);
+    expect(evaluateImperative(root)).toEqual([
+      { left: 0, top: 0, width: 20, height: 20 },
+      { left: 0, top: 0, width: 20, height: 20 },
+    ]);
   });
 
   it("an 'auto' root with one explicit axis sizes the other from available", () => {
@@ -3146,17 +3151,27 @@ describe('buildFlexGrammar — fuzzer-found regressions (slice v17)', () => {
     });
   });
 
-  it("an 'auto' root with no available is a bare 0 — min size is not clamped in", () => {
-    matches(() => {
-      const root = Node.create(); // both axes 'auto'
-      root.setMinWidth(5);
-      root.setMinHeight(5); // resolveRootAxisSize returns bare 0, unclamped
-      const c = Node.create();
-      c.setWidth(8);
-      c.setHeight(8);
-      root.insertChild(c, 0);
-      return root;
-    });
+  it("an 'auto' root with no available sizes from content (post-step, #157)", () => {
+    // Prior to #157 the root returned bare 0 for auto axes when no `available`
+    // was passed. The fix adds `autoSizeRootFromContent` as a post-step after
+    // both engines write children's `_layout`. The raw grammar fields for the
+    // root still evaluate to 0 (resolveRootAxisSize returns 0 for bare-zero
+    // auto), but the post-step — applied in `calculateLayoutImpl` and in
+    // `SpinelessLayout.finishWhole` — patches the root size to the
+    // content-derived value. `evaluateGrammar` bypasses the post-step and
+    // therefore does NOT match here; this test verifies the imperative result.
+    const root = Node.create(); // both axes 'auto'
+    root.setMinWidth(5);
+    root.setMinHeight(5);
+    const c = Node.create();
+    c.setWidth(8);
+    c.setHeight(8);
+    root.insertChild(c, 0);
+    // Content-derived size: child 8×8, clamped to min 5 → 8 wins.
+    expect(evaluateImperative(root)).toEqual([
+      { left: 0, top: 0, width: 8, height: 8 },
+      { left: 0, top: 0, width: 8, height: 8 },
+    ]);
   });
 });
 

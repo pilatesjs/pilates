@@ -1076,3 +1076,60 @@ export function resolveRootAxisSize(node: Node, axis: Axis, available: number | 
   }
   return 0;
 }
+
+/**
+ * After `layoutChildren(root)` has positioned the root's children but before
+ * rounding, write the content-derived size into the root's auto axes.
+ *
+ * Fires only when both:
+ *   - `root.style[axis]` is `'auto'` AND not derivable from aspectRatio, AND
+ *   - the caller passed no `available` size for that axis.
+ *
+ * For each such axis, sums in-flow children's outer edges (skipping absolute
+ * and `display:'none'`) and adds the root's padding-end. Children's
+ * positions already include padding-start from the flex pipeline's step 8,
+ * so the sum measured from the root's outer corner already covers padStart +
+ * inner content. Result is clamped via `clampSize` so min/max styles apply.
+ *
+ * Engine-agnostic: both the classic engine and the spineless engine write
+ * children's positions/sizes into `node._layout` before this runs, so a
+ * single post-step covers both.
+ *
+ * Partial fix for issue #157 — root path only. The inner-container case
+ * (a non-root container with auto cross reporting 0 to its parent via
+ * `naturalCrossSize`) requires a two-phase recursion model and stays open
+ * as a separate milestone.
+ */
+export function autoSizeRootFromContent(
+  root: Node,
+  available: { width?: number; height?: number } | undefined,
+): void {
+  if (axisIsBareZero(root, 'row', available?.width)) {
+    root._layout.width = sumChildExtent(root, 'row');
+  }
+  if (axisIsBareZero(root, 'column', available?.height)) {
+    root._layout.height = sumChildExtent(root, 'column');
+  }
+}
+
+/** True iff `axis`'s size on `root` will fall through to the zero default. */
+function axisIsBareZero(root: Node, axis: Axis, available: number | undefined): boolean {
+  if (available !== undefined) return false;
+  const sizeStyle = effectivePreferredSize(root.style, axis);
+  return typeof sizeStyle !== 'number';
+}
+
+/** Max outer-edge of in-flow children + padEnd, clamped to root's min/max. */
+function sumChildExtent(root: Node, axis: Axis): number {
+  let maxEdge = 0;
+  for (let i = 0; i < root.getChildCount(); i++) {
+    const c = root.getChild(i)!;
+    if (c.style.display === 'none') continue;
+    if (c.style.positionType === 'absolute') continue;
+    const edge =
+      axis === 'row' ? c.layout.left + c.layout.width : c.layout.top + c.layout.height;
+    if (edge > maxEdge) maxEdge = edge;
+  }
+  const padEnd = readEnd(root.style.padding, axis);
+  return clampSize(root.style, axis, maxEdge + padEnd);
+}

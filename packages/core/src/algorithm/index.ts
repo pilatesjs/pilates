@@ -25,7 +25,7 @@ import {
   snapshotForCache,
   snapshotTreeLayouts,
 } from './cache.js';
-import { layoutChildren, resolveRootAxisSize } from './main-axis.js';
+import { autoSizeRootFromContent, layoutChildren, resolveRootAxisSize } from './main-axis.js';
 import { roundLayout } from './round.js';
 import { type LayoutTrace, SpinelessLayout } from './spineless/layout.js';
 
@@ -228,6 +228,10 @@ function calculateLayoutImpl(
   root._layout.height = resolveRootAxisSize(root, 'column', availableHeight);
 
   layoutChildren(root);
+  autoSizeRootFromContent(root, {
+    ...(availableWidth !== undefined && { width: availableWidth }),
+    ...(availableHeight !== undefined && { height: availableHeight }),
+  });
   roundLayout(root);
   computeScrollSizes(root, populateCache);
   markClean(root);
