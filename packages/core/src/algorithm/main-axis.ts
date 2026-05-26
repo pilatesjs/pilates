@@ -1126,8 +1126,7 @@ function sumChildExtent(root: Node, axis: Axis): number {
     const c = root.getChild(i)!;
     if (c.style.display === 'none') continue;
     if (c.style.positionType === 'absolute') continue;
-    const edge =
-      axis === 'row' ? c.layout.left + c.layout.width : c.layout.top + c.layout.height;
+    const edge = axis === 'row' ? c.layout.left + c.layout.width : c.layout.top + c.layout.height;
     if (edge > maxEdge) maxEdge = edge;
   }
   const padEnd = readEnd(root.style.padding, axis);
