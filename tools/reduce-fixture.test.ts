@@ -5,6 +5,7 @@ import {
   emitConsensus,
   emitDivergent,
   mapsEqual,
+  parseArgs,
 } from './reduce-fixture.js';
 
 describe('reduce-fixture helpers', () => {
@@ -57,20 +58,51 @@ describe('reduce-fixture helpers', () => {
   describe('emit shapes', () => {
     const tree = { id: 'r', style: { width: 1, height: 1 } };
     const box = { r: { left: 0, top: 0, width: 1, height: 1 } };
-    it('consensus has expected, no divergent fields', () => {
-      const out = emitConsensus('x', undefined, tree, box) as Record<string, unknown>;
+    it('consensus emits the caller-supplied tags', () => {
+      const out = emitConsensus('x', undefined, ['gap'], tree, box) as Record<string, unknown>;
       expect(out.expected).toEqual(box);
       expect(out.expectedPilates).toBeUndefined();
       expect(out.expectedYoga).toBeUndefined();
       expect(out.divergenceReason).toBeUndefined();
+      expect(out.tags).toEqual(['gap']);
     });
-    it('divergent has the triple + divergent tag', () => {
-      const out = emitDivergent('x', undefined, tree, box, box) as Record<string, unknown>;
+    it('consensus rejects empty tags', () => {
+      expect(() => emitConsensus('x', undefined, [], tree, box)).toThrow(/at least one --tag/);
+    });
+    it('divergent auto-appends the divergent tag if absent', () => {
+      const out = emitDivergent('x', undefined, ['overflow'], tree, box, box) as Record<
+        string,
+        unknown
+      >;
       expect(out.expected).toBeUndefined();
       expect(out.expectedPilates).toEqual(box);
       expect(out.expectedYoga).toEqual(box);
       expect(out.divergenceReason).toBe('<TODO: fill in>');
-      expect((out.tags as string[]).includes('divergent')).toBe(true);
+      expect(out.tags).toEqual(['overflow', 'divergent']);
+    });
+    it('divergent keeps tags as-is if divergent already present', () => {
+      const out = emitDivergent('x', undefined, ['divergent', 'gap'], tree, box, box) as Record<
+        string,
+        unknown
+      >;
+      expect(out.tags).toEqual(['divergent', 'gap']);
+    });
+  });
+
+  describe('parseArgs --tag', () => {
+    it('collects multiple tags', () => {
+      const opts = parseArgs(['input.json', '--tag', 'gap', '--tag', 'overflow']);
+      expect(opts.tags).toEqual(['gap', 'overflow']);
+    });
+    it('rejects unknown tags', () => {
+      expect(() => parseArgs(['input.json', '--tag', 'bogus'])).toThrow(/not in:/);
+    });
+    it('dedupes repeated tags', () => {
+      const opts = parseArgs(['input.json', '--tag', 'gap', '--tag', 'gap']);
+      expect(opts.tags).toEqual(['gap']);
+    });
+    it('requires a value after --tag', () => {
+      expect(() => parseArgs(['input.json', '--tag'])).toThrow(/--tag requires a value/);
     });
   });
 });

@@ -257,15 +257,18 @@ hand-readable `.spec.json` fixture with:
 
 ```bash
 pnpm tsx tools/reduce-fixture.ts counterexample.json --fast-check \
+  --tag <bucket> \
   --out packages/core/test/fixtures/<bucket>/<name>.spec.json \
   --name "<bucket>/<name>"
 ```
 
-If Pilates and Yoga agree on the layout the tool emits a consensus
-fixture (`expected` map). If they diverge it emits a divergent fixture
-(`expectedPilates` + `expectedYoga` + `divergenceReason: "<TODO: fill
-in>"`) and prints a warning; fill in the reason and add the `divergent`
-tag before committing.
+`--tag` is required (and validates against the known bucket list);
+repeat the flag to add multiple tags. If Pilates and Yoga agree on the
+layout the tool emits a consensus fixture (`expected` map). If they
+diverge it emits a divergent fixture (`expectedPilates` +
+`expectedYoga` + `divergenceReason: "<TODO: fill in>"`) and prints a
+warning; the `divergent` tag is auto-appended for divergent emissions
+so you only need to fill in the reason before committing.
 
 ## Notable design choices
 

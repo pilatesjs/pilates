@@ -20,23 +20,38 @@ import {
   pilatesBox,
   yogaBox,
 } from '../packages/core/test/fixture-loader.js';
-import type { Box, SpecNode } from '../packages/core/test/fixture-loader.js';
+import type { Box, FixtureTag, SpecNode } from '../packages/core/test/fixture-loader.js';
 
-interface CliOpts {
+const KNOWN_TAGS: readonly FixtureTag[] = [
+  'flex-direction',
+  'justify-content',
+  'align-items',
+  'align-self',
+  'flex-wrap',
+  'absolute-position',
+  'aspect-ratio',
+  'gap',
+  'overflow',
+  'position-edges',
+  'divergent',
+];
+
+export interface CliOpts {
   inputPath: string;
   available?: { width?: number; height?: number };
   outPath?: string;
   name: string;
   fastCheck: boolean;
+  tags: FixtureTag[];
 }
 
-function parseArgs(argv: string[]): CliOpts {
+export function parseArgs(argv: string[]): CliOpts {
   if (argv.length < 1) {
     throw new Error(
-      'usage: reduce-fixture.ts <input.json> [--available WxH] [--out <path>] [--name <name>] [--fast-check]',
+      'usage: reduce-fixture.ts <input.json> --tag <bucket> [--tag <bucket>...] [--available WxH] [--out <path>] [--name <name>] [--fast-check]',
     );
   }
-  const out: CliOpts = { inputPath: '', name: 'tmp/<unnamed>', fastCheck: false };
+  const out: CliOpts = { inputPath: '', name: 'tmp/<unnamed>', fastCheck: false, tags: [] };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg === '--available') {
@@ -53,6 +68,14 @@ function parseArgs(argv: string[]): CliOpts {
       const v = argv[++i];
       if (v === undefined) throw new Error('--name requires a string');
       out.name = v;
+    } else if (arg === '--tag') {
+      const v = argv[++i];
+      if (v === undefined) throw new Error('--tag requires a value');
+      if (!(KNOWN_TAGS as readonly string[]).includes(v)) {
+        throw new Error(`--tag ${JSON.stringify(v)} not in: ${KNOWN_TAGS.join(', ')}`);
+      }
+      const tag = v as FixtureTag;
+      if (!out.tags.includes(tag)) out.tags.push(tag);
     } else if (arg === '--fast-check') {
       out.fastCheck = true;
     } else if (out.inputPath === '') {
@@ -116,13 +139,18 @@ export function mapsEqual(a: Record<string, Box>, b: Record<string, Box>): boole
 export function emitConsensus(
   name: string,
   available: CliOpts['available'],
+  tags: FixtureTag[],
   tree: SpecNode,
   boxes: Record<string, Box>,
 ): unknown {
+  if (tags.length === 0) {
+    throw new Error(
+      'emitConsensus: at least one --tag is required for a consensus fixture (non-empty tags is a loader invariant)',
+    );
+  }
   return {
     name,
-    // NOTE: tags must be non-empty for loadFixtures; edit this before committing.
-    tags: ['flex-direction'],
+    tags,
     ...(available !== undefined ? { available } : {}),
     root: tree,
     expected: boxes,
@@ -132,13 +160,18 @@ export function emitConsensus(
 export function emitDivergent(
   name: string,
   available: CliOpts['available'],
+  tags: FixtureTag[],
   tree: SpecNode,
   pBoxes: Record<string, Box>,
   yBoxes: Record<string, Box>,
 ): unknown {
+  // Divergent fixtures need the 'divergent' marker. Auto-append if the
+  // user forgot — the tag is a loader-enforced invariant, not a choice.
+  const outTags: FixtureTag[] = [...tags];
+  if (!outTags.includes('divergent')) outTags.push('divergent');
   return {
     name,
-    tags: ['divergent'],
+    tags: outTags,
     divergenceReason: '<TODO: fill in>',
     ...(available !== undefined ? { available } : {}),
     root: tree,
@@ -180,8 +213,8 @@ function main(): void {
 
   const agree = mapsEqual(pActual, yActual);
   const fixture = agree
-    ? emitConsensus(opts.name, opts.available, tree, pActual)
-    : emitDivergent(opts.name, opts.available, tree, pActual, yActual);
+    ? emitConsensus(opts.name, opts.available, opts.tags, tree, pActual)
+    : emitDivergent(opts.name, opts.available, opts.tags, tree, pActual, yActual);
 
   roundTrip(fixture, opts.inputPath);
 
