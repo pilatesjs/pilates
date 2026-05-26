@@ -1,0 +1,49 @@
+{
+  "name": "flex-wrap/wrap-with-max-cross-axis",
+  "tags": ["flex-wrap"],
+  "root": {
+    "id": "n0",
+    "style": {
+      "flexDirection": "row",
+      "flexWrap": "wrap",
+      "width": 500,
+      "maxHeight": 500
+    },
+    "children": [
+      {
+        "id": "n1",
+        "style": {
+          "width": 400,
+          "height": 200
+        }
+      },
+      {
+        "id": "n2",
+        "style": {
+          "width": 400,
+          "height": 200
+        }
+      }
+    ]
+  },
+  "expected": {
+    "n0": {
+      "left": 0,
+      "top": 0,
+      "width": 500,
+      "height": 400
+    },
+    "n1": {
+      "left": 0,
+      "top": 0,
+      "width": 400,
+      "height": 200
+    },
+    "n2": {
+      "left": 0,
+      "top": 200,
+      "width": 400,
+      "height": 200
+    }
+  }
+}

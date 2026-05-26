@@ -1,0 +1,75 @@
+{
+  "name": "flex-wrap/wrap-row-align-items-flex-end",
+  "tags": ["flex-wrap"],
+  "root": {
+    "id": "n0",
+    "style": {
+      "flexDirection": "row",
+      "flexWrap": "wrap",
+      "width": 100,
+      "alignItems": "flex-end"
+    },
+    "children": [
+      {
+        "id": "n1",
+        "style": {
+          "width": 30,
+          "height": 10
+        }
+      },
+      {
+        "id": "n2",
+        "style": {
+          "width": 30,
+          "height": 20
+        }
+      },
+      {
+        "id": "n3",
+        "style": {
+          "width": 30,
+          "height": 30
+        }
+      },
+      {
+        "id": "n4",
+        "style": {
+          "width": 30,
+          "height": 30
+        }
+      }
+    ]
+  },
+  "expected": {
+    "n0": {
+      "left": 0,
+      "top": 0,
+      "width": 100,
+      "height": 60
+    },
+    "n1": {
+      "left": 0,
+      "top": 20,
+      "width": 30,
+      "height": 10
+    },
+    "n2": {
+      "left": 30,
+      "top": 10,
+      "width": 30,
+      "height": 20
+    },
+    "n3": {
+      "left": 60,
+      "top": 0,
+      "width": 30,
+      "height": 30
+    },
+    "n4": {
+      "left": 0,
+      "top": 30,
+      "width": 30,
+      "height": 30
+    }
+  }
+}

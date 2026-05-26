@@ -1,0 +1,50 @@
+{
+  "name": "flex-wrap/wrap-min-main-overrides-flex-basis",
+  "tags": ["flex-wrap"],
+  "root": {
+    "id": "n0",
+    "style": {
+      "flexDirection": "row",
+      "flexWrap": "wrap",
+      "width": 100
+    },
+    "children": [
+      {
+        "id": "n1",
+        "style": {
+          "flexBasis": 50,
+          "height": 50,
+          "minWidth": 55
+        }
+      },
+      {
+        "id": "n2",
+        "style": {
+          "flexBasis": 50,
+          "height": 50,
+          "minWidth": 55
+        }
+      }
+    ]
+  },
+  "expected": {
+    "n0": {
+      "left": 0,
+      "top": 0,
+      "width": 100,
+      "height": 100
+    },
+    "n1": {
+      "left": 0,
+      "top": 0,
+      "width": 55,
+      "height": 50
+    },
+    "n2": {
+      "left": 0,
+      "top": 50,
+      "width": 55,
+      "height": 50
+    }
+  }
+}
