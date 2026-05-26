@@ -527,3 +527,71 @@ describe('relative-position offsets', () => {
     expect(a.getComputedLayout()).toMatchObject({ top: 3 });
   });
 });
+
+describe('root auto cross-axis sizing (#157)', () => {
+  it('non-wrap row sums child height into auto root height', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setWidth(100);
+    const kid = Node.create();
+    kid.setWidth(30);
+    kid.setHeight(30);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout()).toMatchObject({ width: 100, height: 30 });
+    expect(kid.getComputedLayout()).toMatchObject({ width: 30, height: 30 });
+  });
+
+  it('non-wrap column sums child width into auto root width', () => {
+    const root = Node.create();
+    root.setFlexDirection('column');
+    root.setHeight(100);
+    const kid = Node.create();
+    kid.setWidth(30);
+    kid.setHeight(30);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout()).toMatchObject({ width: 30, height: 100 });
+  });
+
+  it('wrap row sums all wrapped lines into auto root height', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    root.setWidth(100);
+    for (let i = 0; i < 4; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    root.calculateLayout();
+    expect(root.getComputedLayout().height).toBe(60);
+  });
+
+  it('root padding is included in auto-sum', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setWidth(100);
+    root.setPadding(Edge.All, 5);
+    const kid = Node.create();
+    kid.setWidth(30);
+    kid.setHeight(30);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().height).toBe(40);
+  });
+
+  it('minHeight clamps auto-sum upward when content is smaller', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setWidth(100);
+    root.setMinHeight(50);
+    const kid = Node.create();
+    kid.setWidth(30);
+    kid.setHeight(10);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().height).toBe(50);
+  });
+});
