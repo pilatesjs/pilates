@@ -595,3 +595,48 @@ describe('root auto cross-axis sizing (#157)', () => {
     expect(root.getComputedLayout().height).toBe(50);
   });
 });
+
+describe('wrap-reverse root auto cross-axis sizing (#157)', () => {
+  it('shifts in-flow children to non-negative positions and sets root cross to content sum', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap-reverse');
+    root.setWidth(100);
+    for (let i = 0; i < 4; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    root.calculateLayout();
+    expect(root.getComputedLayout().height).toBe(60);
+    for (let i = 0; i < 4; i++) {
+      expect(root.getChild(i)!.getComputedLayout().top).toBeGreaterThanOrEqual(0);
+    }
+    // 4th child is alone on the topmost (post-flip) line at top=0;
+    // the first 3 share the next line at top=30.
+    expect(root.getChild(3)!.getComputedLayout().top).toBe(0);
+    expect(root.getChild(0)!.getComputedLayout().top).toBe(30);
+    expect(root.getChild(1)!.getComputedLayout().top).toBe(30);
+    expect(root.getChild(2)!.getComputedLayout().top).toBe(30);
+  });
+
+  it('forward-wrap auto-cross stays unshifted (regression pin for PR #158 behavior)', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setFlexWrap('wrap');
+    root.setWidth(100);
+    for (let i = 0; i < 4; i++) {
+      const c = Node.create();
+      c.setWidth(30);
+      c.setHeight(30);
+      root.insertChild(c, i);
+    }
+    root.calculateLayout();
+    expect(root.getComputedLayout().height).toBe(60);
+    expect(root.getChild(0)!.getComputedLayout().top).toBe(0);
+    expect(root.getChild(1)!.getComputedLayout().top).toBe(0);
+    expect(root.getChild(2)!.getComputedLayout().top).toBe(0);
+    expect(root.getChild(3)!.getComputedLayout().top).toBe(30);
+  });
+});

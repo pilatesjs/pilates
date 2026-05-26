@@ -1104,11 +1104,15 @@ export function autoSizeRootFromContent(
   root: Node,
   available: { width?: number; height?: number } | undefined,
 ): void {
-  if (axisIsBareZero(root, 'row', available?.width)) {
-    root._layout.width = sumChildExtent(root, 'row');
-  }
-  if (axisIsBareZero(root, 'column', available?.height)) {
-    root._layout.height = sumChildExtent(root, 'column');
+  for (const axis of ['row', 'column'] as const) {
+    const avail = axis === 'row' ? available?.width : available?.height;
+    if (!axisIsBareZero(root, axis, avail)) continue;
+    const { extent, shift } = childExtent(root, axis);
+    const padEnd = readEnd(root.style.padding, axis);
+    const total = clampSize(root.style, axis, extent + padEnd);
+    if (axis === 'row') root._layout.width = total;
+    else root._layout.height = total;
+    if (shift > 0) shiftChildren(root, axis, shift);
   }
 }
 
@@ -1119,16 +1123,61 @@ function axisIsBareZero(root: Node, axis: Axis, available: number | undefined): 
   return typeof sizeStyle !== 'number';
 }
 
-/** Max outer-edge of in-flow children + padEnd, clamped to root's min/max. */
-function sumChildExtent(root: Node, axis: Axis): number {
+/**
+ * Walk in-flow children to compute the natural cross-axis extent:
+ *
+ *   extent = max(child.{end edge}) - min(child.{start edge})
+ *   shift  = -min(child.{start edge})  (or 0 if no child has a negative start)
+ *
+ * For forward-wrap and non-wrap, all child starts are ≥ 0 so `shift = 0` and
+ * `extent = max edge`, matching PR #158's behavior.
+ *
+ * For wrap-reverse with a bare-zero auto cross, `layoutFlexFlow` flipped lines
+ * about `containerCross = 0` and left children at negative cross positions.
+ * `extent` recovers the true span; `shift` is the translation that brings the
+ * topmost child to 0.
+ */
+function childExtent(root: Node, axis: Axis): { extent: number; shift: number } {
   let maxEdge = 0;
+  let minStart = 0;
   for (let i = 0; i < root.getChildCount(); i++) {
     const c = root.getChild(i)!;
     if (c.style.display === 'none') continue;
     if (c.style.positionType === 'absolute') continue;
-    const edge = axis === 'row' ? c.layout.left + c.layout.width : c.layout.top + c.layout.height;
-    if (edge > maxEdge) maxEdge = edge;
+    const start = axis === 'row' ? c.layout.left : c.layout.top;
+    const size = axis === 'row' ? c.layout.width : c.layout.height;
+    if (start < minStart) minStart = start;
+    const end = start + size;
+    if (end > maxEdge) maxEdge = end;
   }
-  const padEnd = readEnd(root.style.padding, axis);
-  return clampSize(root.style, axis, maxEdge + padEnd);
+  return { extent: maxEdge - minStart, shift: -minStart };
+}
+
+/**
+ * Translate every in-flow child of `root` by `shift` on `axis`. Used by
+ * `autoSizeRootFromContent` to bring wrap-reverse children with negative
+ * cross positions to non-negative positions after the post-step computes the
+ * true content extent. Updates both the rounded and float position fields.
+ *
+ * Descendants don't need shifting — child positions are read relative to
+ * their parent, so translating direct children moves their entire subtrees.
+ *
+ * Absolute children are NOT shifted: they were positioned against the root's
+ * outer box during `layoutAbsoluteChildren` and stay anchored to that box.
+ * (For an auto-cross root with absolutes, the absolute positions remain
+ * partially wrong; the architectural Path B fix on #157 covers that.)
+ */
+function shiftChildren(root: Node, axis: Axis, shift: number): void {
+  for (let i = 0; i < root.getChildCount(); i++) {
+    const c = root.getChild(i)!;
+    if (c.style.display === 'none') continue;
+    if (c.style.positionType === 'absolute') continue;
+    if (axis === 'row') {
+      c._layout.left += shift;
+      c._floatLeft += shift;
+    } else {
+      c._layout.top += shift;
+      c._floatTop += shift;
+    }
+  }
 }
