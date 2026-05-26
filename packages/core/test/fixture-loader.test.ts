@@ -11,7 +11,7 @@ import {
   pilatesBox,
   yogaBox,
 } from './fixture-loader.js';
-import type { SpecNode } from './fixture-loader.js';
+import type { Box, SpecNode } from './fixture-loader.js';
 
 describe('fixture-loader validation', () => {
   let dir: string;
@@ -155,5 +155,101 @@ describe('formatBoxDiff', () => {
     expect(out).toContain('Pilates');
     expect(out).toContain('root: ok');
     expect(out).toContain('a: expected=0,0 5x5  got=1,0 5x5');
+  });
+});
+
+describe('divergent fixture shape', () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'pilates-fixtures-div-'));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+  function writeSpec(name: string, body: unknown): void {
+    writeFileSync(join(dir, name), JSON.stringify(body));
+  }
+  const tinyRoot: SpecNode = { id: 'root', style: { width: 1, height: 1 } };
+  const tinyBox: Box = { left: 0, top: 0, width: 1, height: 1 };
+
+  it('loads a valid divergent fixture', () => {
+    writeSpec('a.spec.json', {
+      name: 'x/divergent',
+      tags: ['gap', 'divergent'],
+      divergenceReason: 'reason',
+      root: tinyRoot,
+      expectedPilates: { root: tinyBox },
+      expectedYoga: { root: { ...tinyBox, left: 1 } },
+    });
+    const fx = loadFixtures(dir);
+    expect(fx).toHaveLength(1);
+    expect('divergenceReason' in fx[0]!).toBe(true);
+  });
+
+  it('rejects mixing expected with the divergent triple', () => {
+    writeSpec('a.spec.json', {
+      name: 'x',
+      tags: ['gap', 'divergent'],
+      divergenceReason: 'reason',
+      root: tinyRoot,
+      expected: { root: tinyBox },
+      expectedPilates: { root: tinyBox },
+      expectedYoga: { root: tinyBox },
+    });
+    expect(() => loadFixtures(dir)).toThrow(/cannot mix/);
+  });
+
+  it('rejects partial divergent shape (missing expectedYoga)', () => {
+    writeSpec('a.spec.json', {
+      name: 'x',
+      tags: ['gap', 'divergent'],
+      divergenceReason: 'r',
+      root: tinyRoot,
+      expectedPilates: { root: tinyBox },
+    });
+    expect(() => loadFixtures(dir)).toThrow(/expectedYoga/);
+  });
+
+  it('rejects empty divergenceReason', () => {
+    writeSpec('a.spec.json', {
+      name: 'x',
+      tags: ['gap', 'divergent'],
+      divergenceReason: '',
+      root: tinyRoot,
+      expectedPilates: { root: tinyBox },
+      expectedYoga: { root: tinyBox },
+    });
+    expect(() => loadFixtures(dir)).toThrow(/non-empty string/);
+  });
+
+  it('rejects divergent tag without divergent shape', () => {
+    writeSpec('a.spec.json', {
+      name: 'x',
+      tags: ['gap', 'divergent'],
+      root: tinyRoot,
+      expected: { root: tinyBox },
+    });
+    expect(() => loadFixtures(dir)).toThrow(/requires the divergent shape/);
+  });
+
+  it('rejects divergent shape without divergent tag', () => {
+    writeSpec('a.spec.json', {
+      name: 'x',
+      tags: ['gap'],
+      divergenceReason: 'r',
+      root: tinyRoot,
+      expectedPilates: { root: tinyBox },
+      expectedYoga: { root: tinyBox },
+    });
+    expect(() => loadFixtures(dir)).toThrow(/requires the "divergent" tag/);
+  });
+
+  it('rejects neither expected nor divergent', () => {
+    writeSpec('a.spec.json', {
+      name: 'x',
+      tags: ['gap'],
+      root: tinyRoot,
+    });
+    expect(() => loadFixtures(dir)).toThrow(/must have "expected" OR/);
   });
 });

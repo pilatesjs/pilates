@@ -11,6 +11,7 @@ export default defineConfig({
       'packages/*/test/**/*.test.{ts,tsx}',
       'e2e/**/*.test.{ts,tsx}',
       'bench/**/*.test.{ts,tsx}',
+      'tools/**/*.test.{ts,tsx}',
     ],
     coverage: {
       provider: 'v8',
