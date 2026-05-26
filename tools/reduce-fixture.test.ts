@@ -81,14 +81,10 @@ describe('reduce-fixture helpers', () => {
       expect(out.tags).toEqual(['overflow', 'divergent']);
     });
     it('divergent keeps tags as-is if divergent already present', () => {
-      const out = emitDivergent(
-        'x',
-        undefined,
-        ['divergent', 'gap'],
-        tree,
-        box,
-        box,
-      ) as Record<string, unknown>;
+      const out = emitDivergent('x', undefined, ['divergent', 'gap'], tree, box, box) as Record<
+        string,
+        unknown
+      >;
       expect(out.tags).toEqual(['divergent', 'gap']);
     });
   });
