@@ -23,7 +23,7 @@
 
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import type { Edge } from '../../edge.js';
+import { Edge } from '../../edge.js';
 import type { MeasureMode } from '../../measure-func.js';
 import { Node } from '../../node.js';
 import { layoutChildren, resolveRootAxisSize } from '../main-axis.js';
@@ -328,8 +328,10 @@ function applyMutation(root: Node, m: Mutation, markStyleDirty: StyleDirtier): v
  * Re-runs from scratch (no cache), so it is correct after a mutation.
  */
 function imperativeFloats(root: Node, available: { width?: number; height?: number }): Box[] {
-  root._layout.left = 0;
-  root._layout.top = 0;
+  // Root margin offsets the root from the world origin (#163), mirroring
+  // the cold-path logic in algorithm/index.ts.
+  root._layout.left = root.style.margin[Edge.Left];
+  root._layout.top = root.style.margin[Edge.Top];
   root._layout.width = resolveRootAxisSize(root, 'row', available.width);
   root._layout.height = resolveRootAxisSize(root, 'column', available.height);
   layoutChildren(root);

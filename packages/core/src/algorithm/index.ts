@@ -16,6 +16,7 @@
  */
 
 import type { Node } from '../node.js';
+import { Edge } from '../edge.js';
 import {
   LayoutCache,
   clearAllCaches,
@@ -184,10 +185,15 @@ function calculateLayoutImpl(
   if (!root.isDirty() && root._layoutCache !== undefined) {
     const hit = root._layoutCache.lookup(key);
     if (hit !== undefined) {
-      root._layout.left = 0;
-      root._layout.top = 0;
-      root._floatLeft = 0;
-      root._floatTop = 0;
+      // Apply root margin offset on cache-hit path too (#163). The margin
+      // is not stored in the LayoutCacheValue (only width/height/scroll are),
+      // so we must re-derive it from the live style each time.
+      const cachedRootMarginLeft = root.style.margin[Edge.Left];
+      const cachedRootMarginTop = root.style.margin[Edge.Top];
+      root._layout.left = cachedRootMarginLeft;
+      root._layout.top = cachedRootMarginTop;
+      root._floatLeft = cachedRootMarginLeft;
+      root._floatTop = cachedRootMarginTop;
       restoreFromCache(root, hit);
       // Children may have their own caches; recurse to either hit those
       // or fall back to recompute on miss. Pass useCache=true so inner nodes
@@ -219,11 +225,18 @@ function calculateLayoutImpl(
     }
   }
 
-  // Cold path
-  root._layout.left = 0;
-  root._layout.top = 0;
-  root._floatLeft = 0;
-  root._floatTop = 0;
+  // Cold path. The root's own margins offset it from the implicit world
+  // origin (Yoga 3.x semantics; matches issue #163). For non-root nodes
+  // the flex pipeline handles margins via step 8; the root has no parent
+  // pipeline, so the offset is applied here directly. Edge.Left and
+  // Edge.Top are always the relevant edges for the root — its own
+  // flex-direction doesn't change which margin pushes the world origin.
+  const rootMarginLeft = root.style.margin[Edge.Left];
+  const rootMarginTop = root.style.margin[Edge.Top];
+  root._layout.left = rootMarginLeft;
+  root._layout.top = rootMarginTop;
+  root._floatLeft = rootMarginLeft;
+  root._floatTop = rootMarginTop;
   root._layout.width = resolveRootAxisSize(root, 'row', availableWidth);
   root._layout.height = resolveRootAxisSize(root, 'column', availableHeight);
 

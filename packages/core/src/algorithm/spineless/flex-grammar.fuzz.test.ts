@@ -277,8 +277,10 @@ function grammarFloats(root: Node, available: { width?: number; height?: number 
  * with no `roundLayout` pass, so `_layout` holds the raw float result.
  */
 function imperativeFloats(root: Node, available: { width?: number; height?: number }): Box[] {
-  root._layout.left = 0;
-  root._layout.top = 0;
+  // Root margin offsets the root from the world origin (#163), mirroring
+  // the cold-path logic in algorithm/index.ts.
+  root._layout.left = root.style.margin[Edge.Left];
+  root._layout.top = root.style.margin[Edge.Top];
   root._layout.width = resolveRootAxisSize(root, 'row', available.width);
   root._layout.height = resolveRootAxisSize(root, 'column', available.height);
   layoutChildren(root);
