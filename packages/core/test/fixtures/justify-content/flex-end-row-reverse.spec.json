@@ -1,0 +1,59 @@
+{
+  "name": "justify-content/flex-end-row-reverse",
+  "tags": ["justify-content"],
+  "root": {
+    "id": "root",
+    "style": {
+      "width": 100,
+      "height": 100,
+      "flexDirection": "row-reverse",
+      "justifyContent": "flex-start"
+    },
+    "children": [
+      {
+        "id": "a",
+        "style": {
+          "width": 20
+        }
+      },
+      {
+        "id": "b",
+        "style": {
+          "width": 20
+        }
+      },
+      {
+        "id": "c",
+        "style": {
+          "width": 20
+        }
+      }
+    ]
+  },
+  "expected": {
+    "root": {
+      "left": 0,
+      "top": 0,
+      "width": 100,
+      "height": 100
+    },
+    "a": {
+      "left": 80,
+      "top": 0,
+      "width": 20,
+      "height": 100
+    },
+    "b": {
+      "left": 60,
+      "top": 0,
+      "width": 20,
+      "height": 100
+    },
+    "c": {
+      "left": 40,
+      "top": 0,
+      "width": 20,
+      "height": 100
+    }
+  }
+}

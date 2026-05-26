@@ -1,0 +1,59 @@
+{
+  "name": "justify-content/overflow-row-reverse-space-around",
+  "tags": ["justify-content"],
+  "root": {
+    "id": "root",
+    "style": {
+      "width": 102,
+      "height": 102,
+      "flexDirection": "row-reverse",
+      "justifyContent": "space-around"
+    },
+    "children": [
+      {
+        "id": "a",
+        "style": {
+          "width": 40
+        }
+      },
+      {
+        "id": "b",
+        "style": {
+          "width": 40
+        }
+      },
+      {
+        "id": "c",
+        "style": {
+          "width": 40
+        }
+      }
+    ]
+  },
+  "expected": {
+    "root": {
+      "left": 0,
+      "top": 0,
+      "width": 102,
+      "height": 102
+    },
+    "a": {
+      "left": 62,
+      "top": 0,
+      "width": 40,
+      "height": 102
+    },
+    "b": {
+      "left": 22,
+      "top": 0,
+      "width": 40,
+      "height": 102
+    },
+    "c": {
+      "left": -18,
+      "top": 0,
+      "width": 40,
+      "height": 102
+    }
+  }
+}
