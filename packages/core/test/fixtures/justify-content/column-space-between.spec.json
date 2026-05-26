@@ -1,0 +1,58 @@
+{
+  "name": "justify-content/column-space-between",
+  "tags": ["justify-content"],
+  "root": {
+    "id": "root",
+    "style": {
+      "width": 102,
+      "height": 102,
+      "justifyContent": "space-between"
+    },
+    "children": [
+      {
+        "id": "a",
+        "style": {
+          "height": 10
+        }
+      },
+      {
+        "id": "b",
+        "style": {
+          "height": 10
+        }
+      },
+      {
+        "id": "c",
+        "style": {
+          "height": 10
+        }
+      }
+    ]
+  },
+  "expected": {
+    "root": {
+      "left": 0,
+      "top": 0,
+      "width": 102,
+      "height": 102
+    },
+    "a": {
+      "left": 0,
+      "top": 0,
+      "width": 102,
+      "height": 10
+    },
+    "b": {
+      "left": 0,
+      "top": 46,
+      "width": 102,
+      "height": 10
+    },
+    "c": {
+      "left": 0,
+      "top": 92,
+      "width": 102,
+      "height": 10
+    }
+  }
+}
