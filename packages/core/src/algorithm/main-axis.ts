@@ -779,7 +779,11 @@ function positionItemsInLine(
     usedMain += it.finalMain + it.marginMainStart + it.marginMainEnd;
     if (i < n - 1) usedMain += gapMain;
   }
-  const leftover = Math.max(0, innerMain - usedMain);
+  // Signed leftover — negative on overflow. `flex-end` and `center` honor
+  // the negative value (items spill leftward / both sides); `space-*` modes
+  // clamp to 0 (degrading to flex-start on overflow, matching CSS and Yoga).
+  const leftover = innerMain - usedMain;
+  const leftoverPositive = leftover > 0 ? leftover : 0;
 
   let cursor = 0;
   let extraGap = 0;
@@ -792,16 +796,16 @@ function positionItemsInLine(
       cursor = leftover / 2;
       break;
     case 'space-between':
-      if (n > 1) extraGap = leftover / (n - 1);
+      if (n > 1) extraGap = leftoverPositive / (n - 1);
       break;
     case 'space-around': {
-      const slot = leftover / n;
+      const slot = leftoverPositive / n;
       cursor = slot / 2;
       extraGap = slot;
       break;
     }
     case 'space-evenly': {
-      const slot = leftover / (n + 1);
+      const slot = leftoverPositive / (n + 1);
       cursor = slot;
       extraGap = slot;
       break;
