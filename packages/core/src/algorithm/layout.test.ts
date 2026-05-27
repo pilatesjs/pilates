@@ -736,3 +736,48 @@ describe('wrap-reverse per-line cross alignment (#159)', () => {
     expect(root.getChild(2)!.getComputedLayout().top).toBe(0);
   });
 });
+
+describe('justifyContent on main-axis overflow (#164)', () => {
+  it('flex-end with overflow places children at negative left', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('flex-end');
+    root.setWidth(40);
+    const a = Node.create();
+    a.setWidth(30);
+    a.setHeight(10);
+    a.setFlexShrink(0);
+    const b = Node.create();
+    b.setWidth(30);
+    b.setHeight(10);
+    b.setFlexShrink(0);
+    root.insertChild(a, 0);
+    root.insertChild(b, 1);
+    root.calculateLayout();
+    // Used = 60, container = 40, leftover = -20.
+    // flex-end: cursor = -20, a at -20, b at 10.
+    expect(a.getComputedLayout().left).toBe(-20);
+    expect(b.getComputedLayout().left).toBe(10);
+  });
+
+  it('center with overflow places children spilling both sides', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    root.setWidth(40);
+    const a = Node.create();
+    a.setWidth(30);
+    a.setHeight(10);
+    a.setFlexShrink(0);
+    const b = Node.create();
+    b.setWidth(30);
+    b.setHeight(10);
+    b.setFlexShrink(0);
+    root.insertChild(a, 0);
+    root.insertChild(b, 1);
+    root.calculateLayout();
+    // leftover = -20, cursor = -10. a at -10, b at 20.
+    expect(a.getComputedLayout().left).toBe(-10);
+    expect(b.getComputedLayout().left).toBe(20);
+  });
+});
