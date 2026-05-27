@@ -2436,7 +2436,11 @@ function emitJustifiedMainPos(
         usedMain += read(allSizes[i]!) + read(marginStarts[i]!) + read(marginEnds[i]!);
       }
       if (n > 1) usedMain += (n - 1) * gap;
-      const leftover = Math.max(0, innerMain - usedMain);
+      // Signed leftover — negative on overflow. flex-end/center honor; space-*
+      // clamp to 0 (degrades to flex-start on overflow). Mirrors imperative
+      // `positionItemsInLine`. (#164)
+      const leftover = innerMain - usedMain;
+      const leftoverPositive = leftover > 0 ? leftover : 0;
       let leadingOffset = 0;
       let extraGap = 0;
       switch (justify) {
@@ -2447,16 +2451,16 @@ function emitJustifiedMainPos(
           leadingOffset = leftover / 2;
           break;
         case 'space-between':
-          if (n > 1) extraGap = leftover / (n - 1);
+          if (n > 1) extraGap = leftoverPositive / (n - 1);
           break;
         case 'space-around': {
-          const slot = leftover / n;
+          const slot = leftoverPositive / n;
           leadingOffset = slot / 2;
           extraGap = slot;
           break;
         }
         case 'space-evenly': {
-          const slot = leftover / (n + 1);
+          const slot = leftoverPositive / (n + 1);
           leadingOffset = slot;
           extraGap = slot;
           break;
@@ -3235,7 +3239,11 @@ function evaluateWrappedChild(
     usedMain += finalMainSizes[idx]! + s.mainMarginStart + s.mainMarginEnd;
   }
   if (myLineCount > 1) usedMain += (myLineCount - 1) * mainGap;
-  const leftover = Math.max(0, innerMain - usedMain);
+  // Signed leftover — negative on overflow. flex-end/center honor; space-*
+  // clamp to 0 (degrades to flex-start on overflow). Wrap-path mirror of
+  // the above no-wrap site. (#164)
+  const leftover = innerMain - usedMain;
+  const leftoverPositive = leftover > 0 ? leftover : 0;
   let leadingOffset = 0;
   let extraGap = 0;
   switch (justify) {
@@ -3246,16 +3254,16 @@ function evaluateWrappedChild(
       leadingOffset = leftover / 2;
       break;
     case 'space-between':
-      if (myLineCount > 1) extraGap = leftover / (myLineCount - 1);
+      if (myLineCount > 1) extraGap = leftoverPositive / (myLineCount - 1);
       break;
     case 'space-around': {
-      const slot = leftover / myLineCount;
+      const slot = leftoverPositive / myLineCount;
       leadingOffset = slot / 2;
       extraGap = slot;
       break;
     }
     case 'space-evenly': {
-      const slot = leftover / (myLineCount + 1);
+      const slot = leftoverPositive / (myLineCount + 1);
       leadingOffset = slot;
       extraGap = slot;
       break;
