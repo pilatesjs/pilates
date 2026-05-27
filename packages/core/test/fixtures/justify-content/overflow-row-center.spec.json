@@ -1,0 +1,59 @@
+{
+  "name": "justify-content/overflow-row-center",
+  "tags": ["justify-content"],
+  "root": {
+    "id": "n0",
+    "style": {
+      "flexDirection": "row",
+      "width": 102,
+      "height": 102,
+      "justifyContent": "center"
+    },
+    "children": [
+      {
+        "id": "n1",
+        "style": {
+          "width": 40
+        }
+      },
+      {
+        "id": "n2",
+        "style": {
+          "width": 40
+        }
+      },
+      {
+        "id": "n3",
+        "style": {
+          "width": 40
+        }
+      }
+    ]
+  },
+  "expected": {
+    "n0": {
+      "left": 0,
+      "top": 0,
+      "width": 102,
+      "height": 102
+    },
+    "n1": {
+      "left": -9,
+      "top": 0,
+      "width": 40,
+      "height": 102
+    },
+    "n2": {
+      "left": 31,
+      "top": 0,
+      "width": 40,
+      "height": 102
+    },
+    "n3": {
+      "left": 71,
+      "top": 0,
+      "width": 40,
+      "height": 102
+    }
+  }
+}
