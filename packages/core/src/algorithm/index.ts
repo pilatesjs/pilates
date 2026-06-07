@@ -17,6 +17,7 @@
 
 import { Edge } from '../edge.js';
 import type { Node } from '../node.js';
+import { mainAxis } from './axis.js';
 import {
   LayoutCache,
   clearAllCaches,
@@ -26,7 +27,6 @@ import {
   snapshotForCache,
   snapshotTreeLayouts,
 } from './cache.js';
-import { mainAxis } from './axis.js';
 import {
   autoSizeRootFromContent,
   axisIsBareZero,
