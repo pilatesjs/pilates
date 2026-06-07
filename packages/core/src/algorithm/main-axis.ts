@@ -327,16 +327,23 @@ function layoutFlexFlow(node: Node, visible: readonly Node[], rootMainAuto = fal
   // autoSizeRootFromContent clamps it up AFTER this runs). Mirror the non-root
   // path — a parent resolves a child's min-clamped main size before the child
   // distributes — by positioning against clamp(content, min, max) instead of 0.
-  // Single-line only: a bare-auto main axis hugs content and never wraps, and
-  // this keeps the classic and spineless engines differential-identical.
+  //
+  // Gated to: single-line (a bare-auto main axis hugs content and never wraps)
+  // AND forward direction. Reverse directions reflect positions about innerMain
+  // in `flipMainAxis` below; substituting a larger main size into forward
+  // positioning while the reflection still uses innerMain would desync the two,
+  // and the spineless reverse path (`applyReverseMainPos`) reflects about the
+  // same unresolved 0 — so reverse + bare-auto stays deferred and identical
+  // across both engines (tracked with the cross-axis follow-up). The 2 target
+  // fixtures are forward (row / column).
   let positionMain = innerMain;
-  if (rootMainAuto && lines.length === 1) {
+  if (rootMainAuto && lines.length === 1 && !isReverse(node.style.flexDirection)) {
     let usedMain = 0;
-    const items = lines[0]!.items;
-    for (let i = 0; i < items.length; i++) {
-      const it = items[i]!;
+    const lineItems = lines[0]!.items;
+    for (let i = 0; i < lineItems.length; i++) {
+      const it = lineItems[i]!;
       usedMain += it.finalMain + it.marginMainStart + it.marginMainEnd;
-      if (i < items.length - 1) usedMain += gapMain;
+      if (i < lineItems.length - 1) usedMain += gapMain;
     }
     const clamped =
       clampSize(node.style, main, usedMain + padMainStart + padMainEnd) - padMainStart - padMainEnd;
