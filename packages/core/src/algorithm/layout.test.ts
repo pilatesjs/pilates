@@ -781,3 +781,21 @@ describe('justifyContent on main-axis overflow (#164)', () => {
     expect(b.getComputedLayout().left).toBe(20);
   });
 });
+
+describe('root margin offset (#163)', () => {
+  it('root layout offsets by its own margin', () => {
+    const root = Node.create();
+    root.setMargin(Edge.Left, 10);
+    root.setMargin(Edge.Top, 5);
+    root.setWidth(50);
+    root.setHeight(40);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout()).toMatchObject({ left: 10, top: 5, width: 50, height: 40 });
+    // Child position is relative to root's corner — unchanged by root margin.
+    expect(kid.getComputedLayout()).toMatchObject({ left: 0, top: 0, width: 20, height: 20 });
+  });
+});

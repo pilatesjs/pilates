@@ -237,19 +237,21 @@ describe('createStyleDirtier — defensive', () => {
     expect(readLayout(rt, allFields)).toEqual(freshLayout(root));
   });
 
-  it('is a no-op when the grammar has no entry for the node at all', () => {
-    // Regression: phase 17 folds default-valued style inputs out of
-    // the grammar. For a childless root with all-default style, every
-    // input is folded, so styleInputs has no entry for the node at
-    // all. Mutating a folded prop (e.g. gapColumn = 0) used to throw
-    // 'node has no style inputs in this grammar'. The fuzzer
-    // (runtime-incremental.fuzz, seed 1005304606) reproduced it; the
-    // dirtier now treats missing-entry the same as missing-field.
+  it('is a no-op for missing fields and handles default-value mutations without throwing', () => {
+    // Regression (phase 17): for a childless root with all-default style,
+    // most inputs are folded out of the grammar. Mutating a folded prop
+    // (e.g. gapColumn = 0) used to throw 'node has no style inputs in this
+    // grammar'. The dirtier now treats missing-field the same as a no-op.
+    //
+    // Since #163, root always has margin[Left] and margin[Top] inputs, so
+    // styleInputs.get(root) is no longer undefined — but other props like
+    // gapColumn remain folded and the dirtier must still handle them safely.
     const root = Node.create();
     const { rt, styleInputs } = buildRuntime(root);
     const markStyleDirty = createStyleDirtier(rt, styleInputs);
 
-    expect(styleInputs.get(root)).toBeUndefined();
+    // root now has margin inputs (#163), so styleInputs.get(root) is defined.
+    expect(styleInputs.get(root)).toBeDefined();
     root.setGap('column', 0);
     expect(() => markStyleDirty(root, 'gapColumn')).not.toThrow();
     root.setMargin(Edge.Left, 0);
