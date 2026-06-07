@@ -854,4 +854,19 @@ describe('root auto main-size from min-constraint (#165)', () => {
     expect(root.getComputedLayout().width).toBe(20);
     expect(kid.getComputedLayout().left).toBe(0); // free space 0 → flush
   });
+
+  it('spineless engine (2nd layout) matches: center within min-width root', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    root.setMinWidth(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout(); // 1st: classic
+    root.calculateLayout(); // 2nd: spineless
+    expect(root.getComputedLayout().width).toBe(50);
+    expect(kid.getComputedLayout().left).toBe(15);
+  });
 });
