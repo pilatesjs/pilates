@@ -1,0 +1,36 @@
+{
+  "name": "justify-content/column-min-height-and-margin",
+  "tags": ["justify-content"],
+  "root": {
+    "id": "n0",
+    "style": {
+      "minHeight": 50,
+      "marginTop": 100,
+      "justifyContent": "center",
+      "flexDirection": "column"
+    },
+    "children": [
+      {
+        "id": "n1",
+        "style": {
+          "width": 20,
+          "height": 20
+        }
+      }
+    ]
+  },
+  "expected": {
+    "n0": {
+      "left": 0,
+      "top": 100,
+      "width": 20,
+      "height": 50
+    },
+    "n1": {
+      "left": 0,
+      "top": 15,
+      "width": 20,
+      "height": 20
+    }
+  }
+}
