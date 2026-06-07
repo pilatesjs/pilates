@@ -1,0 +1,36 @@
+{
+  "name": "justify-content/row-min-width-and-margin",
+  "tags": ["justify-content"],
+  "root": {
+    "id": "n0",
+    "style": {
+      "minWidth": 50,
+      "marginLeft": 100,
+      "justifyContent": "center",
+      "flexDirection": "row"
+    },
+    "children": [
+      {
+        "id": "n1",
+        "style": {
+          "width": 20,
+          "height": 20
+        }
+      }
+    ]
+  },
+  "expected": {
+    "n0": {
+      "left": 100,
+      "top": 0,
+      "width": 50,
+      "height": 20
+    },
+    "n1": {
+      "left": 15,
+      "top": 0,
+      "width": 20,
+      "height": 20
+    }
+  }
+}

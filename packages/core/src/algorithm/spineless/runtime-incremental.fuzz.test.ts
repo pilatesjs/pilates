@@ -26,7 +26,8 @@ import { describe, expect, it } from 'vitest';
 import { Edge } from '../../edge.js';
 import type { MeasureMode } from '../../measure-func.js';
 import { Node } from '../../node.js';
-import { layoutChildren, resolveRootAxisSize } from '../main-axis.js';
+import { mainAxis } from '../axis.js';
+import { axisIsBareZero, layoutChildren, resolveRootAxisSize } from '../main-axis.js';
 import { buildFlexGrammar } from './flex-grammar.js';
 import type { Field } from './grammar.js';
 import { SpinelessRuntime } from './runtime.js';
@@ -334,7 +335,15 @@ function imperativeFloats(root: Node, available: { width?: number; height?: numb
   root._layout.top = root.style.margin[Edge.Top];
   root._layout.width = resolveRootAxisSize(root, 'row', available.width);
   root._layout.height = resolveRootAxisSize(root, 'column', available.height);
-  layoutChildren(root);
+  // Mirror index.ts: tell the pipeline when the root's main axis is bare-auto
+  // so justify-content positions against clamp(content, min, max) (#165).
+  const rootMain = mainAxis(root.style.flexDirection);
+  const rootMainAuto = axisIsBareZero(
+    root,
+    rootMain,
+    rootMain === 'row' ? available.width : available.height,
+  );
+  layoutChildren(root, false, 0, 0, rootMainAuto);
   const out: Box[] = [];
   function visit(n: Node): void {
     out.push({

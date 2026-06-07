@@ -799,3 +799,130 @@ describe('root margin offset (#163)', () => {
     expect(kid.getComputedLayout()).toMatchObject({ left: 0, top: 0, width: 20, height: 20 });
   });
 });
+
+describe('root auto main-size from min-constraint (#165)', () => {
+  it('justify-content center distributes within min-width-resolved main size', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    root.setMinWidth(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().width).toBe(50);
+    expect(kid.getComputedLayout().left).toBe(15); // (50 - 20) / 2
+  });
+
+  it('justify-content flex-end on a min-width-resolved root', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('flex-end');
+    root.setMinWidth(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(kid.getComputedLayout().left).toBe(30); // 50 - 20
+  });
+
+  it('column main axis: min-height-resolved root centers on the main axis', () => {
+    const root = Node.create();
+    root.setFlexDirection('column');
+    root.setJustifyContent('center');
+    root.setMinHeight(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().height).toBe(50);
+    expect(kid.getComputedLayout().top).toBe(15);
+  });
+
+  it('no min: bare-auto root still shrink-wraps (no spurious free space)', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().width).toBe(20);
+    expect(kid.getComputedLayout().left).toBe(0); // free space 0 → flush
+  });
+
+  it('spineless engine (2nd layout) matches: center within min-width root', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    root.setMinWidth(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout(); // 1st: classic
+    root.calculateLayout(); // 2nd: spineless
+    expect(root.getComputedLayout().width).toBe(50);
+    expect(kid.getComputedLayout().left).toBe(15);
+  });
+
+  it('multi-child space-between within a min-width-resolved root (both engines)', () => {
+    // root content = 40 (two 20px kids), minWidth 100 → free space 60.
+    // space-between: kid0 at 0, kid1 at 20 + 60 = 80.
+    const build = () => {
+      const root = Node.create();
+      root.setFlexDirection('row');
+      root.setJustifyContent('space-between');
+      root.setMinWidth(100);
+      const a = Node.create();
+      a.setWidth(20);
+      a.setHeight(20);
+      const b = Node.create();
+      b.setWidth(20);
+      b.setHeight(20);
+      root.insertChild(a, 0);
+      root.insertChild(b, 1);
+      return { root, a, b };
+    };
+    const classic = build();
+    classic.root.calculateLayout();
+    expect(classic.root.getComputedLayout().width).toBe(100);
+    expect(classic.a.getComputedLayout().left).toBe(0);
+    expect(classic.b.getComputedLayout().left).toBe(80);
+    const spineless = build();
+    spineless.root.calculateLayout();
+    spineless.root.calculateLayout(); // 2nd: spineless
+    expect(spineless.a.getComputedLayout().left).toBe(0);
+    expect(spineless.b.getComputedLayout().left).toBe(80);
+  });
+
+  it('wrap bare-auto root: both engines defer identically (justify not applied)', () => {
+    // flexWrap deliberately excludes the #165 substitution (the spineless wrap
+    // path does not apply it), so a wrapping bare-auto root keeps the pre-fix
+    // collapse — left 0, NOT the 15 Yoga would give. The point of this test is
+    // that the classic (1st) and spineless (2nd) layouts AGREE on that deferral.
+    const build = () => {
+      const root = Node.create();
+      root.setFlexDirection('row');
+      root.setJustifyContent('center');
+      root.setFlexWrap('wrap');
+      root.setMinWidth(50);
+      const kid = Node.create();
+      kid.setWidth(20);
+      kid.setHeight(20);
+      root.insertChild(kid, 0);
+      return { root, kid };
+    };
+    const a = build();
+    a.root.calculateLayout(); // classic
+    const b = build();
+    b.root.calculateLayout();
+    b.root.calculateLayout(); // spineless
+    expect(a.kid.getComputedLayout().left).toBe(0);
+    expect(b.kid.getComputedLayout().left).toBe(a.kid.getComputedLayout().left);
+  });
+});

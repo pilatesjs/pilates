@@ -236,6 +236,8 @@ interface EmitContext {
   availableInputs: { width?: Field<number>; height?: Field<number> };
   /** Phase-12: per-parent mainDistribution Fields, populated during emission. */
   mainDistributionByParent: Map<Node, Field<MainAxisDistribution>>;
+  /** The tree root — used to gate bare-auto-root justify-content fixes (#165). */
+  root: Node;
 }
 
 /**
@@ -262,7 +264,7 @@ function isInFlow(node: Node): boolean {
 function makeEmitter(
   ctx: EmitContext,
 ): (node: Node, parent: Node | null, indexInParent: number, priorSiblings: Node[]) => void {
-  const { grammar, allFields, styleInputs, boundary, mainDistributionByParent } = ctx;
+  const { grammar, allFields, styleInputs, boundary, mainDistributionByParent, root } = ctx;
 
   // Register (once) the input Field for the root's caller-supplied
   // `available` size on one axis. Its `compute` reads `ctx.available`
@@ -1263,19 +1265,33 @@ function makeEmitter(
         // First child but parent uses non-default justify. Leading
         // offset still depends on leftover, which depends on every
         // sibling's main size.
-        emitJustifiedMainPos(
-          grammar,
-          parent,
-          mainPosField,
-          mainSizeName,
-          justify,
-          indexInParent,
-          parentDirection!,
-          gapInput(parent, parentDirection === 'column' ? 'row' : 'column'),
-          padMainStartF!,
-          padMainEndF!,
-          marginInput,
-        );
+        {
+          // Forward direction only — mirror the classic `!isReverse` gate so
+          // reverse + bare-auto stays deferred and identical across engines.
+          const rootMainAuto =
+            parent === root && rootAxisIsBareZero(parent, mainSizeName) && !parentReverse;
+          const rootMinMain = rootMainAuto
+            ? minMaxInput(parent, mainSizeName === 'width' ? 'minWidth' : 'minHeight')
+            : null;
+          const rootMaxMain = rootMainAuto
+            ? minMaxInput(parent, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight')
+            : null;
+          emitJustifiedMainPos(
+            grammar,
+            parent,
+            mainPosField,
+            mainSizeName,
+            justify,
+            indexInParent,
+            parentDirection!,
+            gapInput(parent, parentDirection === 'column' ? 'row' : 'column'),
+            padMainStartF!,
+            padMainEndF!,
+            marginInput,
+            rootMinMain,
+            rootMaxMain,
+          );
+        }
       }
     } else if (justify === 'flex-start') {
       // Phase 12: read directly from the parent's mainDistribution if it
@@ -1352,6 +1368,16 @@ function makeEmitter(
         } satisfies FieldRule<number>);
       }
     } else {
+      // Forward direction only — mirror the classic `!isReverse` gate so
+      // reverse + bare-auto stays deferred and identical across engines.
+      const rootMainAuto =
+        parent === root && rootAxisIsBareZero(parent, mainSizeName) && !parentReverse;
+      const rootMinMain = rootMainAuto
+        ? minMaxInput(parent, mainSizeName === 'width' ? 'minWidth' : 'minHeight')
+        : null;
+      const rootMaxMain = rootMainAuto
+        ? minMaxInput(parent, mainSizeName === 'width' ? 'maxWidth' : 'maxHeight')
+        : null;
       emitJustifiedMainPos(
         grammar,
         parent,
@@ -1364,6 +1390,8 @@ function makeEmitter(
         padMainStartF!,
         padMainEndF!,
         marginInput,
+        rootMinMain,
+        rootMaxMain,
       );
     }
 
@@ -1534,6 +1562,7 @@ export function buildFlexGrammar(root: Node, available: AvailableSize = {}): Fle
     available,
     availableInputs,
     mainDistributionByParent,
+    root,
   })(root, null, 0, []);
 
   return {
@@ -1713,6 +1742,7 @@ export function buildAppendFragment(
       available: {},
       availableInputs: {},
       mainDistributionByParent: new Map(),
+      root,
     };
     const priors: Node[] = [];
     for (let i = 0; i < childIndex; i++) {
@@ -2410,6 +2440,8 @@ function emitJustifiedMainPos(
   padStartField: Field<number>,
   padEndField: Field<number>,
   marginInput: (n: Node, edge: number) => Field<number>,
+  rootMinMain: Field<number> | null,
+  rootMaxMain: Field<number> | null,
 ): void {
   // In-flow siblings only — absolute and `display: 'none'` children
   // don't contribute to justify-content's leftover calculation.
@@ -2435,16 +2467,33 @@ function emitJustifiedMainPos(
       ...(allSizes as Field<unknown>[]),
       ...(marginStarts as Field<unknown>[]),
       ...(marginEnds as Field<unknown>[]),
+      ...(rootMinMain !== null ? [rootMinMain as Field<unknown>] : []),
+      ...(rootMaxMain !== null ? [rootMaxMain as Field<unknown>] : []),
     ],
     compute: (read) => {
       const padStart = read(padStartField);
       const gap = read(gapField);
-      const innerMain = Math.max(0, read(parentMainField) - padStart - read(padEndField));
+      const padEnd = read(padEndField);
+      let innerMain = Math.max(0, read(parentMainField) - padStart - padEnd);
       let usedMain = 0;
       for (let i = 0; i < n; i++) {
         usedMain += read(allSizes[i]!) + read(marginStarts[i]!) + read(marginEnds[i]!);
       }
       if (n > 1) usedMain += (n - 1) * gap;
+      // Bare-auto root main axis (#165): the root's main size is the
+      // unresolved 0 here (autoSizeRootFromContent clamps it up later). Mirror
+      // the imperative fix — position against clamp(content, min, max) instead
+      // of 0. Only emitted when the parent is the FORWARD-direction bare-auto
+      // root (rootMinMain non-null), so non-root, reverse, and concrete-size
+      // paths are byte-identical to before.
+      if (rootMinMain !== null) {
+        const clamped = clampMinMax(
+          usedMain + padStart + padEnd,
+          read(rootMinMain),
+          rootMaxMain !== null ? read(rootMaxMain) : Number.POSITIVE_INFINITY,
+        );
+        innerMain = Math.max(innerMain, clamped - padStart - padEnd);
+      }
       // Signed leftover — negative on overflow. flex-end/center honor; space-*
       // clamp to 0 (degrades to flex-start on overflow). Mirrors imperative
       // `positionItemsInLine`. (#164)
