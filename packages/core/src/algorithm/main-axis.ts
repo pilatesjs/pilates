@@ -328,16 +328,21 @@ function layoutFlexFlow(node: Node, visible: readonly Node[], rootMainAuto = fal
   // path — a parent resolves a child's min-clamped main size before the child
   // distributes — by positioning against clamp(content, min, max) instead of 0.
   //
-  // Gated to: single-line (a bare-auto main axis hugs content and never wraps)
-  // AND forward direction. Reverse directions reflect positions about innerMain
-  // in `flipMainAxis` below; substituting a larger main size into forward
-  // positioning while the reflection still uses innerMain would desync the two,
-  // and the spineless reverse path (`applyReverseMainPos`) reflects about the
-  // same unresolved 0 — so reverse + bare-auto stays deferred and identical
-  // across both engines (tracked with the cross-axis follow-up). The 2 target
-  // fixtures are forward (row / column).
+  // Gated to no-wrap AND forward direction:
+  //  - No-wrap: the spineless engine applies this substitution only in its
+  //    no-wrap justify rule (`emitJustifiedMainPos`); a wrapping root takes a
+  //    different path (`evaluateWrappedChild`) that does NOT substitute, so the
+  //    classic engine must also defer wrap to stay differential-identical. A
+  //    no-wrap container is always a single line, so this also bounds us to one
+  //    line. (wrap + bare-auto-root + min is deferred alongside the cross-axis.)
+  //  - Forward: reverse directions reflect positions about innerMain in
+  //    `flipMainAxis` below, and the spineless reverse path
+  //    (`applyReverseMainPos`) reflects about the same unresolved 0 — so reverse
+  //    + bare-auto stays deferred and identical across both engines.
+  // The 2 target fixtures are forward, no-wrap (row / column).
+  const noWrap = node.style.flexWrap === undefined || node.style.flexWrap === 'nowrap';
   let positionMain = innerMain;
-  if (rootMainAuto && lines.length === 1 && !isReverse(node.style.flexDirection)) {
+  if (rootMainAuto && noWrap && !isReverse(node.style.flexDirection)) {
     let usedMain = 0;
     const lineItems = lines[0]!.items;
     for (let i = 0; i < lineItems.length; i++) {
