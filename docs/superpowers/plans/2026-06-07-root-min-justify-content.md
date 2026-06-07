@@ -368,7 +368,10 @@ At `packages/core/src/algorithm/spineless/flex-grammar.ts:1266` (the `else` bran
 with:
 ```ts
         {
-          const rootMainAuto = parent === root && rootAxisIsBareZero(parent, mainSizeName);
+          // Forward direction only — mirror the classic `!isReverse` gate so
+          // reverse + bare-auto stays deferred and identical across engines.
+          const rootMainAuto =
+            parent === root && rootAxisIsBareZero(parent, mainSizeName) && !parentReverse;
           const rootMinMain = rootMainAuto
             ? minMaxInput(parent, mainSizeName === 'width' ? 'minWidth' : 'minHeight')
             : null;
@@ -417,7 +420,10 @@ At `packages/core/src/algorithm/spineless/flex-grammar.ts:1355` (the final `else
 with:
 ```ts
     } else {
-      const rootMainAuto = parent === root && rootAxisIsBareZero(parent, mainSizeName);
+      // Forward direction only — mirror the classic `!isReverse` gate so
+      // reverse + bare-auto stays deferred and identical across engines.
+      const rootMainAuto =
+        parent === root && rootAxisIsBareZero(parent, mainSizeName) && !parentReverse;
       const rootMinMain = rootMainAuto
         ? minMaxInput(parent, mainSizeName === 'width' ? 'minWidth' : 'minHeight')
         : null;
