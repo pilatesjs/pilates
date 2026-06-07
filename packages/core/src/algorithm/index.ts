@@ -26,7 +26,13 @@ import {
   snapshotForCache,
   snapshotTreeLayouts,
 } from './cache.js';
-import { autoSizeRootFromContent, layoutChildren, resolveRootAxisSize } from './main-axis.js';
+import { mainAxis } from './axis.js';
+import {
+  autoSizeRootFromContent,
+  axisIsBareZero,
+  layoutChildren,
+  resolveRootAxisSize,
+} from './main-axis.js';
 import { roundLayout } from './round.js';
 import { type LayoutTrace, SpinelessLayout } from './spineless/layout.js';
 
@@ -240,7 +246,14 @@ function calculateLayoutImpl(
   root._layout.width = resolveRootAxisSize(root, 'row', availableWidth);
   root._layout.height = resolveRootAxisSize(root, 'column', availableHeight);
 
-  layoutChildren(root);
+  // #165: tell the flex pipeline when the root's MAIN axis is bare-auto
+  // (style auto, no aspect-derivation, no caller-supplied available), so it
+  // positions children with justify-content against clamp(content, min, max)
+  // instead of the not-yet-resolved 0.
+  const rootMain = mainAxis(root.style.flexDirection);
+  const rootMainAvailable = rootMain === 'row' ? availableWidth : availableHeight;
+  const rootMainAuto = axisIsBareZero(root, rootMain, rootMainAvailable);
+  layoutChildren(root, false, 0, 0, rootMainAuto);
   autoSizeRootFromContent(root, {
     ...(availableWidth !== undefined && { width: availableWidth }),
     ...(availableHeight !== undefined && { height: availableHeight }),

@@ -124,7 +124,13 @@ interface FlexLine {
  * non-hidden child so their own descendants are laid out within the box
  * we just assigned them.
  */
-export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, parentAbsY = 0): void {
+export function layoutChildren(
+  node: Node,
+  useCache = false,
+  parentAbsX = 0,
+  parentAbsY = 0,
+  rootMainAuto = false,
+): void {
   // Cache hit fast-path: only when useCache=true (i.e. we are in a path
   // that has already committed to skipping roundLayout — either the root
   // cache-hit fast-path or a recursive call from another cache-hit node).
@@ -180,7 +186,7 @@ export function layoutChildren(node: Node, useCache = false, parentAbsX = 0, par
   }
 
   if (flowChildren.length > 0) {
-    layoutFlexFlow(node, flowChildren);
+    layoutFlexFlow(node, flowChildren, rootMainAuto);
     for (const c of flowChildren) applyRelativeOffset(c);
   }
 
@@ -267,7 +273,7 @@ function computeAndCacheScrollSizes(node: Node): void {
 }
 
 /** The 8-step flex pipeline for in-flow children. */
-function layoutFlexFlow(node: Node, visible: readonly Node[]): void {
+function layoutFlexFlow(node: Node, visible: readonly Node[], rootMainAuto = false): void {
   const main: Axis = mainAxis(node.style.flexDirection);
   const cross: Axis = crossAxis(node.style.flexDirection);
 
@@ -315,8 +321,29 @@ function layoutFlexFlow(node: Node, visible: readonly Node[]): void {
   }
 
   // Step 6 & 7: per-line item positioning and cross-alignment.
+  //
+  // Bare-auto root main axis (#165): the root's main size is still the
+  // unresolved 0 here (resolveRootAxisSize returns 0 for auto + no available;
+  // autoSizeRootFromContent clamps it up AFTER this runs). Mirror the non-root
+  // path — a parent resolves a child's min-clamped main size before the child
+  // distributes — by positioning against clamp(content, min, max) instead of 0.
+  // Single-line only: a bare-auto main axis hugs content and never wraps, and
+  // this keeps the classic and spineless engines differential-identical.
+  let positionMain = innerMain;
+  if (rootMainAuto && lines.length === 1) {
+    let usedMain = 0;
+    const items = lines[0]!.items;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]!;
+      usedMain += it.finalMain + it.marginMainStart + it.marginMainEnd;
+      if (i < items.length - 1) usedMain += gapMain;
+    }
+    const clamped =
+      clampSize(node.style, main, usedMain + padMainStart + padMainEnd) - padMainStart - padMainEnd;
+    positionMain = Math.max(innerMain, clamped);
+  }
   for (const line of lines) {
-    positionItemsInLine(line, node.style.justifyContent, innerMain, gapMain);
+    positionItemsInLine(line, node.style.justifyContent, positionMain, gapMain);
     crossAlignItemsInLine(line, node.style.alignItems, node.style.flexWrap);
   }
 
@@ -1139,7 +1166,7 @@ export function autoSizeRootFromContent(
 }
 
 /** True iff `axis`'s size on `root` will fall through to the zero default. */
-function axisIsBareZero(root: Node, axis: Axis, available: number | undefined): boolean {
+export function axisIsBareZero(root: Node, axis: Axis, available: number | undefined): boolean {
   if (available !== undefined) return false;
   const sizeStyle = effectivePreferredSize(root.style, axis);
   return typeof sizeStyle !== 'number';

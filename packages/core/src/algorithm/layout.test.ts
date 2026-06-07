@@ -799,3 +799,59 @@ describe('root margin offset (#163)', () => {
     expect(kid.getComputedLayout()).toMatchObject({ left: 0, top: 0, width: 20, height: 20 });
   });
 });
+
+describe('root auto main-size from min-constraint (#165)', () => {
+  it('justify-content center distributes within min-width-resolved main size', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    root.setMinWidth(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().width).toBe(50);
+    expect(kid.getComputedLayout().left).toBe(15); // (50 - 20) / 2
+  });
+
+  it('justify-content flex-end on a min-width-resolved root', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('flex-end');
+    root.setMinWidth(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(kid.getComputedLayout().left).toBe(30); // 50 - 20
+  });
+
+  it('column main axis: min-height-resolved root centers on the main axis', () => {
+    const root = Node.create();
+    root.setFlexDirection('column');
+    root.setJustifyContent('center');
+    root.setMinHeight(50);
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().height).toBe(50);
+    expect(kid.getComputedLayout().top).toBe(15);
+  });
+
+  it('no min: bare-auto root still shrink-wraps (no spurious free space)', () => {
+    const root = Node.create();
+    root.setFlexDirection('row');
+    root.setJustifyContent('center');
+    const kid = Node.create();
+    kid.setWidth(20);
+    kid.setHeight(20);
+    root.insertChild(kid, 0);
+    root.calculateLayout();
+    expect(root.getComputedLayout().width).toBe(20);
+    expect(kid.getComputedLayout().left).toBe(0); // free space 0 → flush
+  });
+});
