@@ -84,6 +84,7 @@
  * @internal
  */
 
+import { Edge } from '../../edge.js';
 import { MeasureMode } from '../../measure-func.js';
 import type { Node } from '../../node.js';
 import type { Align, Justify } from '../../style.js';
@@ -1228,10 +1229,16 @@ function makeEmitter(
     //     every sibling's main size and on the parent's main size.
     if (parent === null || indexInParent === 0) {
       if (parent === null) {
-        // Root is parent-less — anchor at 0.
+        // Root is parent-less. Its own margin offsets the root from the
+        // implicit world origin (#163). The Spineless mainPosField for
+        // root resolves to its `left` Field (parentDirection === null
+        // falls through to row-default mapping), so Edge.Left is the
+        // correct margin edge regardless of the root's own
+        // flex-direction. Mirror at crossPosField below.
+        const rootMarginLeftF = marginInput(node, Edge.Left);
         grammar.set(mainPosField, {
-          deps: [],
-          compute: () => 0,
+          deps: [rootMarginLeftF as Field<unknown>],
+          compute: (read) => read(rootMarginLeftF),
         } satisfies FieldRule<number>);
       } else if (justify === 'flex-start') {
         // Phase 12: read directly from the parent's mainDistribution if
@@ -1406,10 +1413,12 @@ function makeEmitter(
           },
         } satisfies FieldRule<number>);
       } else {
-        // Root: no parent, no alignment to apply — anchor at 0.
+        // Root: no parent, no alignment to apply — anchor at margin.top
+        // (#163). Mirror of the mainPosField margin emission above.
+        const rootMarginTopF = marginInput(node, Edge.Top);
         grammar.set(crossPosField, {
-          deps: [],
-          compute: () => 0,
+          deps: [rootMarginTopF as Field<unknown>],
+          compute: (read) => read(rootMarginTopF),
         } satisfies FieldRule<number>);
       }
     } else if (posAlign === 'center') {
