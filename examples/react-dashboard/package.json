@@ -9,10 +9,10 @@
   },
   "dependencies": {
     "@pilates/react": "workspace:*",
-    "react": "^19.0.0"
+    "react": "^19.2.8"
   },
   "devDependencies": {
-    "@types/react": "^19.0.0",
+    "@types/react": "^19.2.17",
     "tsx": "^4.19.2"
   }
 }
